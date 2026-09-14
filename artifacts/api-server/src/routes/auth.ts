@@ -156,7 +156,7 @@ function sessionJson(user: typeof usersTable.$inferSelect) {
 router.post("/register", async (req, res): Promise<void> => {
   const body = RegisterBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "Use a valid email and a password of at least 10 characters." });
+    res.status(400).json({ error: "Use a valid email address." });
     return;
   }
   const email = normalizedEmail(body.data.email);
@@ -173,7 +173,9 @@ router.post("/register", async (req, res): Promise<void> => {
           .values({
             id: randomUUID(),
             email,
-            passwordHash: await hashPassword(body.data.password),
+            // Pending accounts cannot sign in. Verification replaces this
+            // random credential with the password chosen by the email owner.
+            passwordHash: await hashPassword(randomBytes(32).toString("hex")),
           })
           .returning()
       )[0];

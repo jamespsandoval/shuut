@@ -9,9 +9,4 @@
 export interface RegistrationInput {
   /** @maxLength 254 */
   email: string;
-  /**
-     * @minLength 10
-     * @maxLength 128
-     */
-  password: string;
 }

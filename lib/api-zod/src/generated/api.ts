@@ -15,14 +15,10 @@ export const HealthCheckResponse = zod.object({
 
 export const registerBodyEmailMax = 254;
 
-export const registerBodyPasswordMin = 10;
-export const registerBodyPasswordMax = 128;
-
 
 
 export const RegisterBody = zod.object({
-  "email": zod.string().email().max(registerBodyEmailMax),
-  "password": zod.string().min(registerBodyPasswordMin).max(registerBodyPasswordMax)
+  "email": zod.string().email().max(registerBodyEmailMax)
 })
 
 export const RegisterResponse = zod.object({

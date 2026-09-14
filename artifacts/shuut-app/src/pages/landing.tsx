@@ -49,7 +49,7 @@ export default function Landing() {
     setError(null);
     
     if (mode === 'sign-up') {
-      registerMutation.mutate({ data: { email, password } }, {
+      registerMutation.mutate({ data: { email } }, {
         onSuccess: () => {
           setMode('verify-email');
         },
@@ -178,7 +178,7 @@ export default function Landing() {
                     />
                   </div>
                   
-                  {mode !== 'forgot-password' && (
+                  {mode === 'sign-in' && (
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                         <Lock className="h-5 w-5 text-muted-foreground" />
@@ -217,7 +217,7 @@ export default function Landing() {
                 <Button 
                   type="submit" 
                   className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md mt-4"
-                  disabled={isPending || !email || (mode !== 'forgot-password' && !password)}
+                  disabled={isPending || !email || (mode === 'sign-in' && !password)}
                 >
                   {isPending ? (
                      <Loader2 className="w-5 h-5 animate-spin" />
@@ -292,9 +292,11 @@ export default function Landing() {
                     </div>
                   </div>
 
-                  {mode === 'reset-password' && (
+                  {(mode === 'verify-email' || mode === 'reset-password') && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
-                      <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider ml-1">New Password</label>
+                      <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider ml-1">
+                        {mode === 'verify-email' ? 'Create Password' : 'New Password'}
+                      </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                           <Lock className="h-5 w-5 text-muted-foreground" />
@@ -317,7 +319,7 @@ export default function Landing() {
                 <Button 
                   type="submit" 
                   className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md mt-2"
-                  disabled={isPending || code.length !== 6 || (mode === 'reset-password' && password.length < 10)}
+                  disabled={isPending || code.length !== 6 || password.length < 10}
                 >
                   {isPending ? (
                      <Loader2 className="w-5 h-5 animate-spin" />

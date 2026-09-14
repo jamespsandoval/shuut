@@ -272,10 +272,9 @@ components:
         message: { type: string }
     RegistrationInput:
       type: object
-      required: [email, password]
+      required: [email]
       properties:
         email: { type: string, format: email, maxLength: 254 }
-        password: { type: string, minLength: 10, maxLength: 128 }
     EmailCodeInput:
       type: object
       required: [email, code, password]
