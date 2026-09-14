@@ -2,8 +2,6 @@ import { Router, type IRouter, type Request } from "express";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
-  verifyAuthenticationResponse,
-  verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { and, eq, gt } from "drizzle-orm";
 import {
@@ -20,6 +18,7 @@ import {
   isPasskeyVerified,
 } from "../middlewares/sessionAuth";
 import { auditSecurityEvent } from "../lib/security";
+import { webauthnVerifier } from "../lib/webauthn";
 
 const router: IRouter = Router();
 const CHALLENGE_MS = 5 * 60 * 1000;
@@ -108,7 +107,7 @@ router.post("/passkey/register/verify", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const verification = await verifyRegistrationResponse({
+    const verification = await webauthnVerifier.verifyRegistration({
       response: req.body,
       expectedChallenge: saved.challenge,
       expectedOrigin: origin(req),
@@ -189,7 +188,7 @@ router.post("/passkey/assertion/verify", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const verification = await verifyAuthenticationResponse({
+    const verification = await webauthnVerifier.verifyAuthentication({
       response: req.body,
       expectedChallenge: saved.challenge,
       expectedOrigin: origin(req),
