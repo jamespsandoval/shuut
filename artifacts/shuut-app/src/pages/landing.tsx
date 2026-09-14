@@ -142,7 +142,7 @@ export default function Landing() {
                       onChange={(e) => setEmail(e.target.value)}
                       required
                       disabled={isPending}
-                      className="h-14 text-[15px] pl-11 rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground font-medium"
+                      className="h-14 text-[15px] pl-11 rounded-xl bg-white border-slate-300 shadow-sm hover:border-slate-400 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground font-medium"
                       autoFocus
                     />
                   </div>
