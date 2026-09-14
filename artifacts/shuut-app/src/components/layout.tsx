@@ -60,10 +60,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Right Sidebar (Desktop Empty Space / Trends placeholder) */}
       <aside className="hidden lg:block w-[320px] sticky top-0 h-[100dvh] p-6 shrink-0 flex flex-col gap-6">
         <div className="bg-secondary/50 rounded-2xl p-4 border border-border/50">
-          <h3 className="font-bold text-foreground mb-4">Umlaut Signals</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            The city's founders are speaking up. Listen in, say it, and shape the noise into signal.
-          </p>
+          <h3 className="font-bold text-foreground">Shape the noise to signal.</h3>
           <div className="flex gap-2 mt-4 text-primary font-bold">
             <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
             <span className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: '150ms' }} />
