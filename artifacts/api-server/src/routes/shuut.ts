@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { Readable } from "stream";
+import { getAuth } from "@clerk/express";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import {
   AskFounderBody,
   AskFounderParams,
@@ -23,16 +25,61 @@ import {
   UpdateProfileBody,
   UpdateProfileParams,
   UpdateProfileResponse,
+  RequestUploadUrlBody,
+  RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import {
   db,
   foundersTable,
   postsTable,
+  profileImageUploadsTable,
   type FounderRow,
   type PostRow,
 } from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
+const PENDING_UPLOAD_TTL_MS = 20 * 60 * 1000;
+
+async function cleanupExpiredProfileUploads() {
+  const expired = await db
+    .select()
+    .from(profileImageUploadsTable)
+    .where(lt(profileImageUploadsTable.createdAt, new Date(Date.now() - PENDING_UPLOAD_TTL_MS)));
+  for (const upload of expired) {
+    await objectStorage.deleteObject(upload.objectPath);
+  }
+  if (expired.length) {
+    await db
+      .delete(profileImageUploadsTable)
+      .where(lt(profileImageUploadsTable.createdAt, new Date(Date.now() - PENDING_UPLOAD_TTL_MS)));
+  }
+}
+
+function authenticatedUserId(req: Parameters<typeof getAuth>[0]): string | null {
+  const auth = getAuth(req);
+  return String(auth?.sessionClaims?.userId || auth?.userId || "") || null;
+}
+
+async function currentFounder(userId: string) {
+  const [linked] = await db.select().from(foundersTable).where(eq(foundersTable.clerkUserId, userId));
+  if (linked) return linked;
+  const suffix = userId.replace(/[^A-Za-z0-9]/g, "").slice(-10).toLowerCase();
+  const [created] = await db.insert(foundersTable).values({
+    clerkUserId: userId,
+    name: "New Founder",
+    handle: `founder_${suffix}`,
+    bio: "",
+    avatarColor: "#3B82F6",
+    isFollowing: false,
+    followerCount: 0,
+    followingCount: 0,
+  }).onConflictDoNothing({ target: foundersTable.clerkUserId }).returning();
+  if (created) return created;
+  const [concurrent] = await db.select().from(foundersTable).where(eq(foundersTable.clerkUserId, userId));
+  return concurrent ?? null;
+}
 
 const seedFounders = [
   {
@@ -110,13 +157,19 @@ async function ensureSeeded(): Promise<void> {
 }
 
 function founderJson(founder: FounderRow) {
+  const storedAvatar = founder.avatarObjectPath;
+  const avatarUrl = storedAvatar?.startsWith("/objects/uploads/")
+    ? `/api/storage${storedAvatar}`
+    : storedAvatar?.startsWith("data:image/")
+      ? storedAvatar
+      : null;
   return {
     id: founder.id,
     name: founder.name,
     handle: founder.handle,
     bio: founder.bio,
     avatarColor: founder.avatarColor,
-    avatarUrl: founder.avatarUrl,
+    avatarUrl,
     location: founder.location,
     website: founder.website,
     isFollowing: founder.isFollowing,
@@ -186,11 +239,17 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const resolvedHandle = params.data.handle === "me" ? "maya" : params.data.handle;
-  const [founder] = await db
-    .select()
-    .from(foundersTable)
-    .where(eq(foundersTable.handle, resolvedHandle));
+  let founder;
+  if (params.data.handle === "me") {
+    const userId = authenticatedUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Sign in to view your profile" });
+      return;
+    }
+    founder = await currentFounder(userId);
+  } else {
+    [founder] = await db.select().from(foundersTable).where(eq(foundersTable.handle, params.data.handle));
+  }
   if (!founder) {
     res.status(404).json({ error: "Founder not found" });
     return;
@@ -224,14 +283,37 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid profile details" });
     return;
   }
-  const resolvedHandle = params.data.handle === "me" ? "maya" : params.data.handle;
-  const [existing] = await db
-    .select()
-    .from(foundersTable)
-    .where(eq(foundersTable.handle, resolvedHandle));
+  const userId = authenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const existing = await currentFounder(userId);
   if (!existing) {
     res.status(404).json({ error: "Founder not found" });
     return;
+  }
+  if (body.data.avatarObjectPath && body.data.avatarObjectPath !== existing.avatarObjectPath) {
+    const [pendingUpload] = await db
+      .select()
+      .from(profileImageUploadsTable)
+      .where(and(
+        eq(profileImageUploadsTable.objectPath, body.data.avatarObjectPath),
+        eq(profileImageUploadsTable.clerkUserId, userId),
+      ));
+    if (!pendingUpload) {
+      res.status(403).json({ error: "This headshot upload does not belong to you" });
+      return;
+    }
+    try {
+      await objectStorage.setAcl(body.data.avatarObjectPath, {
+        owner: userId,
+        visibility: "public",
+      });
+    } catch {
+      res.status(400).json({ error: "The uploaded headshot could not be verified" });
+      return;
+    }
   }
   const [founder] = await db
     .update(foundersTable)
@@ -241,10 +323,16 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
       bio: body.data.bio,
       location: body.data.location || null,
       website: body.data.website || null,
-      avatarUrl: body.data.avatarDataUrl ?? existing.avatarUrl,
+      avatarObjectPath: body.data.avatarObjectPath ?? existing.avatarObjectPath,
     })
     .where(eq(foundersTable.id, existing.id))
     .returning();
+  if (body.data.avatarObjectPath) {
+    await db.delete(profileImageUploadsTable).where(and(
+      eq(profileImageUploadsTable.objectPath, body.data.avatarObjectPath),
+      eq(profileImageUploadsTable.clerkUserId, userId),
+    ));
+  }
   const rows = await db
     .select()
     .from(postsTable)
@@ -264,6 +352,45 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
       ],
     }),
   );
+});
+
+router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const body = RequestUploadUrlBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Choose a JPEG, PNG, or WebP image under 3MB" });
+    return;
+  }
+  try {
+    await cleanupExpiredProfileUploads();
+    const upload = await objectStorage.createUpload(body.data.size, body.data.contentType);
+    await db.insert(profileImageUploadsTable).values({
+      objectPath: upload.objectPath,
+      clerkUserId: userId,
+    });
+    res.json(RequestUploadUrlResponse.parse(upload));
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to create headshot upload");
+    res.status(500).json({ error: "Could not start the upload" });
+  }
+});
+
+router.get("/storage/objects/*path", async (req, res): Promise<void> => {
+  try {
+    const raw = req.params.path;
+    const path = Array.isArray(raw) ? raw.join("/") : raw;
+    const object = await objectStorage.stream(`/objects/${path}`);
+    res.setHeader("Content-Type", object.contentType);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    if (object.size) res.setHeader("Content-Length", object.size);
+    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Image not found" });
+  }
 });
 
 router.post("/posts", async (req, res): Promise<void> => {

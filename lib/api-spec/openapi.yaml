@@ -13,6 +13,7 @@ tags:
   - { name: posts, description: Voice posts }
   - { name: social, description: Social actions }
   - { name: agent, description: Founder Ask Me agent }
+  - { name: storage, description: Secure direct uploads }
 paths:
   /healthz:
     get:
@@ -54,6 +55,27 @@ paths:
         '200':
           description: Updated founder profile
           content: { application/json: { schema: { $ref: '#/components/schemas/ProfileDetail' } } }
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UploadUrlRequest' } } }
+      responses:
+        '200':
+          description: Presigned direct upload URL
+          content: { application/json: { schema: { $ref: '#/components/schemas/UploadUrlResponse' } } }
+  /storage/objects/{objectPath}:
+    get:
+      operationId: getStorageObject
+      tags: [storage]
+      parameters:
+        - { name: objectPath, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Stored image
+          content: { 'image/*': { schema: { type: string, format: binary } } }
   /posts:
     post:
       operationId: createPost
@@ -189,7 +211,20 @@ components:
         bio: { type: string, maxLength: 240 }
         location: { type: string, maxLength: 80 }
         website: { type: string, maxLength: 200 }
-        avatarDataUrl: { type: string, maxLength: 3000000 }
+        avatarObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: integer, minimum: 1, maximum: 3000000 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
     PostInput:
       type: object
       required: [transcript, durationSeconds]

@@ -89,8 +89,36 @@ export interface ProfileUpdate {
   location?: string;
   /** @maxLength 200 */
   website?: string;
-  /** @maxLength 3000000 */
-  avatarDataUrl?: string;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  avatarObjectPath?: string;
+}
+
+export type UploadUrlRequestContentType = typeof UploadUrlRequestContentType[keyof typeof UploadUrlRequestContentType];
+
+
+export const UploadUrlRequestContentType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+} as const;
+
+export interface UploadUrlRequest {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 3000000
+     */
+  size: number;
+  contentType: UploadUrlRequestContentType;
+}
+
+export interface UploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
 }
 
 export interface PostInput {

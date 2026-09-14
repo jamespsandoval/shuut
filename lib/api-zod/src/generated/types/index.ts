@@ -22,3 +22,6 @@ export * from './reactionInput';
 export * from './reactionInputEmojiType';
 export * from './reactionSummary';
 export * from './sourcePost';
+export * from './uploadUrlRequest';
+export * from './uploadUrlRequestContentType';
+export * from './uploadUrlResponse';

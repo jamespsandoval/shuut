@@ -24,6 +24,6 @@ export interface ProfileUpdate {
   location?: string;
   /** @maxLength 200 */
   website?: string;
-  /** @maxLength 3000000 */
-  avatarDataUrl?: string;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  avatarObjectPath?: string;
 }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams, Link, useLocation } from "wouter"
 import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Loader2, ArrowLeft, MessageSquareQuote, Camera, X, MapPin, Link as LinkIcon } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import * as Dialog from "@radix-ui/react-dialog"
+import * as Progress from "@radix-ui/react-progress"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -28,7 +29,6 @@ const profileSchema = z.object({
   bio: z.string().max(240, "Bio must be less than 240 characters"),
   location: z.string().max(80, "Location must be less than 80 characters").optional().default(""),
   website: z.string().max(200, "Website must be less than 200 characters").optional().default(""),
-  avatarDataUrl: z.string().optional()
 })
 
 function EditProfileDialog({ 
@@ -53,46 +53,92 @@ function EditProfileDialog({
       bio: profile.founder.bio || "",
       location: profile.founder.location || "",
       website: profile.founder.website || "",
-      avatarDataUrl: profile.founder.avatarUrl || ""
     }
   })
 
-  const avatarDataUrl = form.watch("avatarDataUrl")
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState(profile.founder.avatarUrl || "")
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [uploadError, setUploadError] = useState("")
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 3000000) {
-        toast({ title: "Error", description: "Image must be under 3MB", variant: "destructive" })
-        return
-      }
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        form.setValue("avatarDataUrl", event.target?.result as string, { shouldDirty: true })
-      }
-      reader.readAsDataURL(file)
+    if (!file) return
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 3000000) {
+      toast({ title: "Invalid image", description: "Choose a JPEG, PNG, or WebP image under 3MB.", variant: "destructive" })
+      e.target.value = ""
+      return
     }
+    if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl)
+    setSelectedFile(file)
+    setPreviewUrl(URL.createObjectURL(file))
+    setUploadError("")
+    form.setValue("name", form.getValues("name"), { shouldDirty: true })
   }
 
-  const onSubmit = (data: z.infer<typeof profileSchema>) => {
+  const uploadHeadshot = async (file: File): Promise<string> => {
+    const response = await fetch("/api/storage/uploads/request-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || "Could not start the upload")
+
+    await new Promise<void>((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open("PUT", payload.uploadURL)
+      request.setRequestHeader("Content-Type", file.type)
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100))
+      }
+      request.onload = () => request.status >= 200 && request.status < 300
+        ? resolve()
+        : reject(new Error("The image upload failed"))
+      request.onerror = () => reject(new Error("The image upload was interrupted"))
+      request.send(file)
+    })
+    return payload.objectPath
+  }
+
+  const onSubmit = async (data: z.infer<typeof profileSchema>) => {
+    setUploadError("")
+    let avatarObjectPath: string | undefined
+    if (selectedFile) {
+      setUploadProgress(0)
+      try {
+        avatarObjectPath = await uploadHeadshot(selectedFile)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to upload headshot"
+        setUploadError(message)
+        setUploadProgress(null)
+        toast({ title: "Upload failed", description: message, variant: "destructive" })
+        return
+      }
+    }
     updateProfile.mutate(
-      { handle: profile.founder.handle, data },
+      { handle: "me", data: { ...data, avatarObjectPath } },
       {
         onSuccess: (updatedProfile) => {
+          setUploadProgress(null)
+          setSelectedFile(null)
           toast({ title: "Profile updated successfully" })
           onOpenChange(false)
+          queryClient.setQueryData(getGetProfileQueryKey("me"), updatedProfile)
+          queryClient.invalidateQueries({ queryKey: ["/api/feed"] })
           
           if (updatedProfile.founder.handle !== profile.founder.handle) {
-            setLocation(`/u/${updatedProfile.founder.handle}`)
-          } else {
-            queryClient.setQueryData(getGetProfileQueryKey(profile.founder.handle), (old: any) => {
-              if (!old) return old;
-              return { ...old, founder: updatedProfile.founder }
-            })
-            queryClient.invalidateQueries({ queryKey: ["/api/feed"] })
+            setLocation("/u/me")
           }
         },
         onError: () => {
+          setUploadProgress(null)
           toast({ title: "Error", description: "Failed to update profile", variant: "destructive" })
         }
       }
@@ -118,10 +164,10 @@ function EditProfileDialog({
                 </div>
                 <Button 
                   type="submit" 
-                  disabled={!form.formState.isDirty || updateProfile.isPending}
+                  disabled={(!form.formState.isDirty && !selectedFile) || updateProfile.isPending || uploadProgress !== null}
                   className="rounded-full px-5 font-bold"
                 >
-                  {updateProfile.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {(updateProfile.isPending || uploadProgress !== null) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Save
                 </Button>
               </div>
@@ -134,8 +180,8 @@ function EditProfileDialog({
                       className="w-[112px] h-[112px] rounded-full border-4 border-card flex items-center justify-center text-white font-bold text-4xl overflow-hidden bg-secondary relative shadow-sm"
                       style={{ backgroundColor: profile.founder.avatarColor || '#3B82F6' }}
                     >
-                      {avatarDataUrl ? (
-                        <img src={avatarDataUrl} alt="Profile headshot preview" className="w-full h-full object-cover" />
+                      {previewUrl ? (
+                        <img src={previewUrl} alt="Profile headshot preview" className="w-full h-full object-cover" />
                       ) : (
                         profile.founder.name.charAt(0).toUpperCase()
                       )}
@@ -149,8 +195,18 @@ function EditProfileDialog({
                       aria-label="Upload profile headshot"
                       className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
                       onChange={handleImageChange}
+                      disabled={uploadProgress !== null}
                     />
                   </div>
+                  {uploadProgress !== null && (
+                    <div className="mt-3 w-[180px]" aria-live="polite">
+                      <div className="mb-1 text-xs text-muted-foreground">Uploading headshot… {uploadProgress}%</div>
+                      <Progress.Root value={uploadProgress} className="h-2 overflow-hidden rounded-full bg-secondary">
+                        <Progress.Indicator className="h-full bg-primary transition-transform" style={{ transform: `translateX(-${100 - uploadProgress}%)` }} />
+                      </Progress.Root>
+                    </div>
+                  )}
+                  {uploadError && <p className="mt-2 text-sm text-destructive">{uploadError}</p>}
                 </div>
                  
                  <div className="p-4 space-y-6">
@@ -250,8 +306,8 @@ function EditProfileDialog({
 
 export default function Profile() {
   const { handle } = useParams()
-  const resolvedHandle = handle === "me" ? "maya" : (handle || "")
-  const isCurrentUser = resolvedHandle === "maya"
+  const resolvedHandle = handle || ""
+  const isCurrentUser = resolvedHandle === "me"
 
   const { data: profile, isLoading, error } = useGetProfile(resolvedHandle)
   const queryClient = useQueryClient()

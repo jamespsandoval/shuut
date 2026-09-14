@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   pgTable,
   serial,
@@ -9,11 +10,12 @@ import {
 
 export const foundersTable = pgTable("shuut_founders", {
   id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").unique(),
   name: text("name").notNull(),
   handle: text("handle").notNull().unique(),
   bio: text("bio").notNull(),
   avatarColor: text("avatar_color").notNull(),
-  avatarUrl: text("avatar_url"),
+  avatarObjectPath: text("avatar_url"),
   location: text("location"),
   website: text("website"),
   isFollowing: boolean("is_following").notNull().default(false),
@@ -39,6 +41,16 @@ export const postsTable = pgTable("shuut_posts", {
   isReshuuted: boolean("is_reshuuted").notNull().default(false),
   reshuutedBy: text("reshuuted_by"),
 });
+
+export const profileImageUploadsTable = pgTable(
+  "shuut_profile_image_uploads",
+  {
+    objectPath: text("object_path").primaryKey(),
+    clerkUserId: text("clerk_user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("shuut_profile_image_uploads_user_idx").on(table.clerkUserId)],
+);
 
 export type FounderRow = typeof foundersTable.$inferSelect;
 export type PostRow = typeof postsTable.$inferSelect;

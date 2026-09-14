@@ -118,8 +118,7 @@ export const updateProfileBodyLocationMax = 80;
 
 export const updateProfileBodyWebsiteMax = 200;
 
-export const updateProfileBodyAvatarDataUrlMax = 3000000;
-
+export const updateProfileBodyAvatarObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 
 
 export const UpdateProfileBody = zod.object({
@@ -128,7 +127,7 @@ export const UpdateProfileBody = zod.object({
   "bio": zod.string().max(updateProfileBodyBioMax),
   "location": zod.string().max(updateProfileBodyLocationMax).optional(),
   "website": zod.string().max(updateProfileBodyWebsiteMax).optional(),
-  "avatarDataUrl": zod.string().max(updateProfileBodyAvatarDataUrlMax).optional()
+  "avatarObjectPath": zod.string().regex(updateProfileBodyAvatarObjectPathRegExp).optional()
 })
 
 export const UpdateProfileResponse = zod.object({
@@ -176,6 +175,31 @@ export const UpdateProfileResponse = zod.object({
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
+
+
+export const requestUploadUrlBodyNameMax = 255;
+
+export const requestUploadUrlBodySizeMax = 3000000;
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1).max(requestUploadUrlBodyNameMax),
+  "size": zod.number().int().min(1).max(requestUploadUrlBodySizeMax),
+  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp'])
+})
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string()
+})
+
+
+export const GetStorageObjectParams = zod.object({
+  "objectPath": zod.coerce.string()
+})
+
+export const GetStorageObjectResponse = zod.unknown()
 
 
 

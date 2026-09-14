@@ -4,28 +4,36 @@ import { Home, User, MoreHorizontal } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
-import { useGetProfile } from "@workspace/api-client-react"
+import { getGetProfileQueryKey, useGetProfile } from "@workspace/api-client-react"
 import * as Dialog from "@radix-ui/react-dialog"
 import { Button } from "./ui/button"
-import { useClerk } from "@clerk/react"
+import { useAuth, useClerk } from "@clerk/react"
+import { useQueryClient } from "@tanstack/react-query"
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation()
   const { theme } = useTheme()
-  const { data: profile } = useGetProfile('maya')
-  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
-  
+  const { isSignedIn } = useAuth()
   const { signOut } = useClerk()
-  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
+  const queryClient = useQueryClient()
+  const { data: profile } = useGetProfile('me', {
+    query: {
+      enabled: Boolean(isSignedIn),
+      queryKey: getGetProfileQueryKey('me'),
+    },
+  })
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/feed" },
-    { icon: User, label: "Profile", href: "/u/me" }, // Stub for current user
+    { icon: User, label: "Profile", href: "/u/me" },
   ]
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut()
+    queryClient.clear()
     setLogoutDialogOpen(false)
-    signOut({ redirectUrl: basePath || "/" })
+    setLocation("/")
   }
 
   return (
