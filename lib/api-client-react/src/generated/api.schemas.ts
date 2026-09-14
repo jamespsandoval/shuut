@@ -29,38 +29,11 @@ export interface EmailCodeInput {
   email: string;
   /** @pattern ^[0-9]{6}$ */
   code: string;
-  /**
-     * @minLength 10
-     * @maxLength 128
-     */
-  password: string;
 }
 
 export interface LoginInput {
   /** @maxLength 254 */
   email: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     */
-  password: string;
-}
-
-export interface ForgotPasswordInput {
-  /** @maxLength 254 */
-  email: string;
-}
-
-export interface PasswordResetInput {
-  /** @maxLength 254 */
-  email: string;
-  /** @pattern ^[0-9]{6}$ */
-  code: string;
-  /**
-     * @minLength 10
-     * @maxLength 128
-     */
-  password: string;
 }
 
 export interface ContactMessageInput {

@@ -29,15 +29,11 @@ export const RegisterResponse = zod.object({
 export const verifyEmailBodyEmailMax = 254;
 
 export const verifyEmailBodyCodeRegExp = new RegExp('^[0-9]{6}$');
-export const verifyEmailBodyPasswordMin = 10;
-export const verifyEmailBodyPasswordMax = 128;
-
 
 
 export const VerifyEmailBody = zod.object({
   "email": zod.string().email().max(verifyEmailBodyEmailMax),
-  "code": zod.string().regex(verifyEmailBodyCodeRegExp),
-  "password": zod.string().min(verifyEmailBodyPasswordMin).max(verifyEmailBodyPasswordMax)
+  "code": zod.string().regex(verifyEmailBodyCodeRegExp)
 })
 
 export const VerifyEmailResponse = zod.object({
@@ -51,16 +47,28 @@ export const VerifyEmailResponse = zod.object({
 
 export const loginBodyEmailMax = 254;
 
-export const loginBodyPasswordMax = 128;
-
 
 
 export const LoginBody = zod.object({
-  "email": zod.string().email().max(loginBodyEmailMax),
-  "password": zod.string().min(1).max(loginBodyPasswordMax)
+  "email": zod.string().email().max(loginBodyEmailMax)
 })
 
 export const LoginResponse = zod.object({
+  "message": zod.string()
+})
+
+
+export const verifyLoginBodyEmailMax = 254;
+
+export const verifyLoginBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+
+
+export const VerifyLoginBody = zod.object({
+  "email": zod.string().email().max(verifyLoginBodyEmailMax),
+  "code": zod.string().regex(verifyLoginBodyCodeRegExp)
+})
+
+export const VerifyLoginResponse = zod.object({
   "user": zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
@@ -79,38 +87,6 @@ export const GetCurrentUserResponse = zod.object({
 
 
 export const LogoutResponse = zod.void()
-
-
-export const forgotPasswordBodyEmailMax = 254;
-
-
-
-export const ForgotPasswordBody = zod.object({
-  "email": zod.string().email().max(forgotPasswordBodyEmailMax)
-})
-
-export const ForgotPasswordResponse = zod.object({
-  "message": zod.string()
-})
-
-
-export const resetPasswordBodyEmailMax = 254;
-
-export const resetPasswordBodyCodeRegExp = new RegExp('^[0-9]{6}$');
-export const resetPasswordBodyPasswordMin = 10;
-export const resetPasswordBodyPasswordMax = 128;
-
-
-
-export const ResetPasswordBody = zod.object({
-  "email": zod.string().email().max(resetPasswordBodyEmailMax),
-  "code": zod.string().regex(resetPasswordBodyCodeRegExp),
-  "password": zod.string().min(resetPasswordBodyPasswordMin).max(resetPasswordBodyPasswordMax)
-})
-
-export const ResetPasswordResponse = zod.object({
-  "message": zod.string()
-})
 
 
 export const DeleteAccountResponse = zod.void()

@@ -1,13 +1,11 @@
-import { randomBytes, randomInt, randomUUID, scrypt, timingSafeEqual, createHmac } from "crypto";
-import { promisify } from "util";
+import { randomBytes, randomInt, randomUUID, createHmac } from "crypto";
 import { Router, type IRouter, type Response } from "express";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import {
-  ForgotPasswordBody,
   LoginBody,
   RegisterBody,
-  ResetPasswordBody,
   VerifyEmailBody,
+  VerifyLoginBody,
 } from "@workspace/api-zod";
 import { authCodesTable, db, sessionsTable, usersTable } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
@@ -19,7 +17,6 @@ import {
 } from "../middlewares/sessionAuth";
 
 const router: IRouter = Router();
-const scryptAsync = promisify(scrypt);
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_MS = 15 * 60 * 1000;
 const attempts = new Map<string, { count: number; resetsAt: number }>();
@@ -52,21 +49,9 @@ function codeHash(userId: string, purpose: string, code: string) {
   return createHmac("sha256", secret).update(`${userId}:${purpose}:${code}`).digest("hex");
 }
 
-async function hashPassword(password: string) {
-  const salt = randomBytes(16);
-  const derived = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
-}
+type CodePurpose = "verify" | "login";
 
-async function verifyPassword(password: string, stored: string) {
-  const [algorithm, saltHex, hashHex] = stored.split("$");
-  if (algorithm !== "scrypt" || !saltHex || !hashHex) return false;
-  const expected = Buffer.from(hashHex, "hex");
-  const actual = (await scryptAsync(password, Buffer.from(saltHex, "hex"), expected.length)) as Buffer;
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-async function issueCode(userId: string, purpose: "verify" | "reset") {
+async function issueCode(userId: string, purpose: CodePurpose) {
   const code = String(randomInt(100000, 1000000));
   const hashedCode = codeHash(userId, purpose, code);
   await db.insert(authCodesTable).values({
@@ -80,7 +65,7 @@ async function issueCode(userId: string, purpose: "verify" | "reset") {
 
 async function retireOtherCodes(
   userId: string,
-  purpose: "verify" | "reset",
+  purpose: CodePurpose,
   activeHash: string,
 ) {
   await db
@@ -96,7 +81,7 @@ async function retireOtherCodes(
     );
 }
 
-async function discardCode(userId: string, purpose: "verify" | "reset", hashedCode: string) {
+async function discardCode(userId: string, purpose: CodePurpose, hashedCode: string) {
   await db
     .delete(authCodesTable)
     .where(
@@ -108,7 +93,7 @@ async function discardCode(userId: string, purpose: "verify" | "reset", hashedCo
     );
 }
 
-async function consumeCode(userId: string, purpose: "verify" | "reset", code: string) {
+async function consumeCode(userId: string, purpose: CodePurpose, code: string) {
   const [record] = await db
     .select()
     .from(authCodesTable)
@@ -173,9 +158,8 @@ router.post("/register", async (req, res): Promise<void> => {
           .values({
             id: randomUUID(),
             email,
-            // Pending accounts cannot sign in. Verification replaces this
-            // random credential with the password chosen by the email owner.
-            passwordHash: await hashPassword(randomBytes(32).toString("hex")),
+            // Retained for schema compatibility; password authentication is disabled.
+            passwordHash: `disabled:${randomBytes(32).toString("hex")}`,
           })
           .returning()
       )[0];
@@ -209,10 +193,7 @@ router.post("/verify-email", async (req, res): Promise<void> => {
   }
   const [verified] = await db
     .update(usersTable)
-    .set({
-      emailVerifiedAt: new Date(),
-      passwordHash: await hashPassword(body.data.password),
-    })
+    .set({ emailVerifiedAt: new Date() })
     .where(eq(usersTable.id, user.id))
     .returning();
   await createSession(res, user.id);
@@ -222,16 +203,42 @@ router.post("/verify-email", async (req, res): Promise<void> => {
 router.post("/login", async (req, res): Promise<void> => {
   const body = LoginBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "Enter your email and password." });
+    res.status(400).json({ error: "Enter a valid email address." });
     return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail(body.data.email))).limit(1);
-  if (!user || !(await verifyPassword(body.data.password, user.passwordHash))) {
-    res.status(401).json({ error: "Incorrect email or password." });
+  if (user?.emailVerifiedAt) {
+    const challenge = await issueCode(user.id, "login");
+    try {
+      await sendPostmarkEmail({
+        to: user.email,
+        subject: "Your SHÜÜT sign-in code",
+        textBody: `Your SHÜÜT sign-in code is ${challenge.code}. It expires in 15 minutes. If you did not request this, ignore this email.`,
+      });
+      await retireOtherCodes(user.id, "login", challenge.hashedCode);
+    } catch (error) {
+      await discardCode(user.id, "login", challenge.hashedCode);
+      req.log.error({ err: error }, "Failed to send sign-in code");
+      res.status(502).json({ error: "We could not send your sign-in code. Please try again." });
+      return;
+    }
+  }
+  res.status(202).json({ message: "If an account exists, a sign-in code has been sent." });
+});
+
+router.post("/login/verify", async (req, res): Promise<void> => {
+  const body = VerifyLoginBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Enter the six-digit sign-in code." });
     return;
   }
-  if (!user.emailVerifiedAt) {
-    res.status(403).json({ error: "Verify your email before signing in." });
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, normalizedEmail(body.data.email)))
+    .limit(1);
+  if (!user?.emailVerifiedAt || !(await consumeCode(user.id, "login", body.data.code))) {
+    res.status(400).json({ error: "That sign-in code is invalid or has expired." });
     return;
   }
   await createSession(res, user.id);
@@ -261,48 +268,6 @@ router.post("/logout", async (req, res): Promise<void> => {
   if (token) await db.delete(sessionsTable).where(eq(sessionsTable.tokenHash, hashSessionToken(decodeURIComponent(token))));
   clearSessionCookie(res);
   res.sendStatus(204);
-});
-
-router.post("/forgot-password", async (req, res): Promise<void> => {
-  const body = ForgotPasswordBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: "Enter a valid email address." });
-    return;
-  }
-  const email = normalizedEmail(body.data.email);
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-  if (user?.emailVerifiedAt) {
-    const challenge = await issueCode(user.id, "reset");
-    try {
-      await sendPostmarkEmail({
-        to: email,
-        subject: "Reset your SHÜÜT password",
-        textBody: `Your SHÜÜT password reset code is ${challenge.code}. It expires in 15 minutes. If you did not request this, ignore this email.`,
-      });
-      await retireOtherCodes(user.id, "reset", challenge.hashedCode);
-    } catch (error) {
-      await discardCode(user.id, "reset", challenge.hashedCode);
-      req.log.error({ err: error }, "Failed to send password reset email");
-    }
-  }
-  res.status(202).json({ message: "If an account exists, a reset code has been sent." });
-});
-
-router.post("/reset-password", async (req, res): Promise<void> => {
-  const body = ResetPasswordBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: "Enter a valid code and a password of at least 10 characters." });
-    return;
-  }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail(body.data.email))).limit(1);
-  if (!user || !(await consumeCode(user.id, "reset", body.data.code))) {
-    res.status(400).json({ error: "That reset code is invalid or has expired." });
-    return;
-  }
-  await db.update(usersTable).set({ passwordHash: await hashPassword(body.data.password) }).where(eq(usersTable.id, user.id));
-  await db.delete(sessionsTable).where(eq(sessionsTable.userId, user.id));
-  clearSessionCookie(res);
-  res.json({ message: "Password updated. You can now sign in." });
 });
 
 export default router;
