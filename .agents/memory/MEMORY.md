@@ -1,0 +1,1 @@
+- [Database schema safety](database-schema-safety.md) — preserve seeded founder content when legacy identity constraints trigger truncation prompts.

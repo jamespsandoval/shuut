@@ -10,7 +10,7 @@ import {
 
 export const foundersTable = pgTable("shuut_founders", {
   id: serial("id").primaryKey(),
-  clerkUserId: text("clerk_user_id").unique(),
+  userId: text("clerk_user_id"),
   name: text("name").notNull(),
   handle: text("handle").notNull().unique(),
   bio: text("bio").notNull(),
@@ -46,10 +46,47 @@ export const profileImageUploadsTable = pgTable(
   "shuut_profile_image_uploads",
   {
     objectPath: text("object_path").primaryKey(),
-    clerkUserId: text("clerk_user_id").notNull(),
+    userId: text("clerk_user_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("shuut_profile_image_uploads_user_idx").on(table.clerkUserId)],
+  (table) => [index("shuut_profile_image_uploads_user_idx").on(table.userId)],
+);
+
+export const usersTable = pgTable("shuut_users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sessionsTable = pgTable(
+  "shuut_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("shuut_sessions_user_idx").on(table.userId)],
+);
+
+export const authCodesTable = pgTable(
+  "shuut_auth_codes",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("shuut_auth_codes_user_purpose_idx").on(table.userId, table.purpose)],
 );
 
 export type FounderRow = typeof foundersTable.$inferSelect;

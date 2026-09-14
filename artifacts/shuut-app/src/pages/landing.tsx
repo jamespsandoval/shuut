@@ -1,81 +1,117 @@
 import { useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowRight, ArrowLeft, Mail, Lock, KeyRound } from 'lucide-react';
 import { Footer } from '@/components/footer';
+import { useQueryClient } from '@tanstack/react-query';
+import { 
+  useRegister, 
+  useVerifyEmail, 
+  useLogin, 
+  useForgotPassword, 
+  useResetPassword,
+  getGetCurrentUserQueryKey
+} from '@workspace/api-client-react';
+import { useToast } from '@/hooks/use-toast';
+
+type AuthMode = 'sign-in' | 'sign-up' | 'verify-email' | 'forgot-password' | 'reset-password';
 
 export default function Landing() {
-  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-up');
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [mode, setMode] = useState<AuthMode>('sign-up');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  const registerMutation = useRegister();
+  const verifyEmailMutation = useVerifyEmail();
+  const loginMutation = useLogin();
+  const forgotPasswordMutation = useForgotPassword();
+  const resetPasswordMutation = useResetPassword();
 
-  const { signUp } = useSignUp();
-  const { signIn } = useSignIn();
+  const isPending = 
+    registerMutation.isPending || 
+    verifyEmailMutation.isPending || 
+    loginMutation.isPending || 
+    forgotPasswordMutation.isPending || 
+    resetPasswordMutation.isPending;
+
+  const extractError = (err: any) => {
+    return err?.message || err?.error || err?.response?.data?.message || "An unexpected error occurred.";
+  };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signUp || !signIn) return;
-    
-    setPending(true);
     setError(null);
     
-    try {
-      if (mode === 'sign-up') {
-        const { error: createError } = await signUp.create({ emailAddress: email });
-        if (createError) throw createError;
-        
-        const { error: sendError } = await signUp.verifications.sendEmailCode();
-        if (sendError) throw sendError;
-        
-        setStep('code');
-      } else {
-        const { error: sendError } = await signIn.emailCode.sendCode({ emailAddress: email });
-        if (sendError) throw sendError;
-        
-        setStep('code');
-      }
-    } catch (err: any) {
-      setError(err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "An error occurred");
-    } finally {
-      setPending(false);
+    if (mode === 'sign-up') {
+      registerMutation.mutate({ data: { email, password } }, {
+        onSuccess: () => {
+          setMode('verify-email');
+        },
+        onError: (err) => {
+          setError(extractError(err));
+        }
+      });
+    } else if (mode === 'sign-in') {
+      loginMutation.mutate({ data: { email, password } }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
+        },
+        onError: (err) => {
+          setError(extractError(err));
+        }
+      });
+    } else if (mode === 'forgot-password') {
+      forgotPasswordMutation.mutate({ data: { email } }, {
+        onSuccess: () => {
+          setMode('reset-password');
+        },
+        onError: (err) => {
+          setError(extractError(err));
+        }
+      });
     }
   };
 
   const handleCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signUp || !signIn) return;
-
-    setPending(true);
     setError(null);
     
-    try {
-      if (mode === 'sign-up') {
-        const { error: verifyError } = await signUp.verifications.verifyEmailCode({ code });
-        if (verifyError) throw verifyError;
-        
-        const { error: finalizeError } = await signUp.finalize();
-        if (finalizeError) throw finalizeError;
-      } else {
-        const { error: verifyError } = await signIn.emailCode.verifyCode({ code });
-        if (verifyError) throw verifyError;
-        
-        const { error: finalizeError } = await signIn.finalize();
-        if (finalizeError) throw finalizeError;
-      }
-    } catch (err: any) {
-      setError(err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Invalid code");
-    } finally {
-      setPending(false);
+    if (mode === 'verify-email') {
+      verifyEmailMutation.mutate({ data: { email, code } }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
+        },
+        onError: (err) => {
+          setError(extractError(err));
+        }
+      });
+    } else if (mode === 'reset-password') {
+      resetPasswordMutation.mutate({ data: { email, code, password } }, {
+        onSuccess: () => {
+          toast({ title: "Password reset successful", description: "You can now sign in with your new password." });
+          setMode('sign-in');
+          setPassword('');
+          setCode('');
+          setError(null);
+        },
+        onError: (err) => {
+          setError(extractError(err));
+        }
+      });
     }
   };
   
   const resetFlow = () => {
-    setStep('email');
+    if (mode === 'verify-email') setMode('sign-up');
+    else if (mode === 'reset-password') setMode('forgot-password');
+    else if (mode === 'forgot-password') setMode('sign-in');
+    
     setCode('');
     setError(null);
   };
@@ -84,12 +120,11 @@ export default function Landing() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white text-foreground">
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[400px] mx-auto relative z-10">
-        <div className="relative w-full flex items-center justify-center mb-12">
-          <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[120px] max-h-[15vh] w-auto" />
-          <p className="absolute inset-x-0 bottom-0 text-xl font-medium text-gray-600 text-center whitespace-nowrap">
-            Say what's your mind
+      <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[420px] mx-auto relative z-10">
+        <div className="relative w-full flex flex-col items-center justify-center mb-10">
+          <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[100px] w-auto mb-2" />
+          <p className="text-[17px] font-semibold text-muted-foreground text-center tracking-tight">
+            Say what's on your mind
           </p>
         </div>
 
@@ -100,103 +135,194 @@ export default function Landing() {
             </Alert>
           )}
 
-          {step === 'email' ? (
+          {(mode === 'sign-up' || mode === 'sign-in' || mode === 'forgot-password') ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <h1 className="text-[28px] font-extrabold tracking-tight text-center mb-2 leading-tight">
-                {mode === 'sign-up' ? 'Create an account' : 'Welcome back'}
+              {mode === 'forgot-password' && (
+                <button 
+                  onClick={resetFlow}
+                  type="button"
+                  className="mb-6 flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-1.5" />
+                  Back to sign in
+                </button>
+              )}
+              
+              <h1 className="text-3xl font-extrabold tracking-tight text-center mb-2 leading-tight text-foreground">
+                {mode === 'sign-up' ? 'Create your account' : mode === 'sign-in' ? 'Welcome back' : 'Reset password'}
               </h1>
-              <p className="text-muted-foreground text-center text-sm font-medium mb-8">
+              <p className="text-muted-foreground text-center text-[15px] font-medium mb-8">
                 {mode === 'sign-up' 
-                  ? 'Enter your email to get started'
-                  : 'Enter your email to sign in'}
+                  ? 'Join the voice-first founder community.'
+                  : mode === 'sign-in'
+                  ? 'Sign in to hear what founders are saying.'
+                  : 'Enter your email to receive a reset code.'}
               </p>
 
               <form onSubmit={handleEmailSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Input
-                    type="email"
-                    placeholder="name@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={pending}
-                    className="h-14 text-[15px] px-4 rounded-xl bg-gray-50/80 border-gray-200 focus-visible:ring-primary/20 focus-visible:border-primary transition-all placeholder:text-gray-400 font-medium text-gray-900"
-                    autoFocus
-                  />
+                <div className="space-y-4">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <Mail className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      placeholder="Email address"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isPending}
+                      className="h-14 text-[15px] pl-11 rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground font-medium"
+                      autoFocus
+                    />
+                  </div>
+                  
+                  {mode !== 'forgot-password' && (
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Lock className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <Input
+                        type="password"
+                        autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        disabled={isPending}
+                        minLength={10}
+                        className="h-14 text-[15px] pl-11 rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground font-medium"
+                      />
+                    </div>
+                  )}
                 </div>
+
+                {mode === 'sign-in' && (
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot-password');
+                        setError(null);
+                      }}
+                      className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors"
+                      disabled={isPending}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
                 <Button 
                   type="submit" 
-                  className="w-full h-14 rounded-xl text-[15px] font-semibold transition-all active:scale-[0.98] shadow-sm hover:shadow-md bg-primary hover:bg-primary/90 text-white"
-                  disabled={pending || !email}
+                  className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md mt-4"
+                  disabled={isPending || !email || (mode !== 'forgot-password' && !password)}
                 >
-                  {pending ? (
+                  {isPending ? (
                      <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                     <>{mode === 'sign-up' ? 'Continue' : 'Sign in'} <ArrowRight className="w-4 h-4 ml-2 opacity-80" /></>
+                     <>
+                       {mode === 'sign-up' ? 'Continue' : mode === 'sign-in' ? 'Sign in' : 'Send reset code'} 
+                       <ArrowRight className="w-5 h-5 ml-2 opacity-80" />
+                     </>
                   )}
                 </Button>
               </form>
 
-              <div className="mt-8 text-center text-sm text-muted-foreground font-medium">
-                {mode === 'sign-up' ? 'Already have an account?' : 'New to SHÜÜT?'}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode(mode === 'sign-up' ? 'sign-in' : 'sign-up');
-                    setError(null);
-                  }}
-                  className="ml-1.5 font-bold text-gray-900 hover:text-primary transition-colors"
-                  disabled={pending}
-                >
-                  {mode === 'sign-up' ? 'Sign in' : 'Create account'}
-                </button>
-              </div>
+              {mode !== 'forgot-password' && (
+                <div className="mt-8 text-center text-[15px] text-muted-foreground font-medium">
+                  {mode === 'sign-up' ? 'Already have an account?' : 'New to SHÜÜT?'}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode(mode === 'sign-up' ? 'sign-in' : 'sign-up');
+                      setError(null);
+                      setPassword('');
+                    }}
+                    className="ml-2 font-bold text-foreground hover:text-primary transition-colors"
+                    disabled={isPending}
+                  >
+                    {mode === 'sign-up' ? 'Sign in' : 'Create account'}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
               <button 
                 onClick={resetFlow}
                 type="button"
-                className="mb-8 flex items-center text-sm font-semibold text-muted-foreground hover:text-gray-900 transition-colors"
+                className="mb-8 flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft className="w-4 h-4 mr-1.5" />
                 Back
               </button>
               
-              <h1 className="text-[28px] font-extrabold tracking-tight mb-2 leading-tight">
-                Check your email
+              <h1 className="text-3xl font-extrabold tracking-tight mb-2 leading-tight">
+                {mode === 'verify-email' ? 'Check your email' : 'Set new password'}
               </h1>
-              <p className="text-muted-foreground text-sm font-medium mb-8 leading-relaxed">
-                We sent a 6-digit verification code to <br/>
-                <span className="font-bold text-gray-900">{email}</span>
+              <p className="text-muted-foreground text-[15px] font-medium mb-8 leading-relaxed">
+                We sent a 6-digit code to <br/>
+                <span className="font-bold text-foreground">{email}</span>
               </p>
 
               <form onSubmit={handleCodeSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    pattern="\d{6}"
-                    maxLength={6}
-                    placeholder="000000"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    required
-                    disabled={pending}
-                    className="h-16 text-center text-[28px] tracking-[0.5em] font-mono font-semibold rounded-xl bg-gray-50/80 border-gray-200 focus-visible:ring-primary/20 focus-visible:border-primary transition-all text-gray-900 placeholder:text-gray-300"
-                    autoFocus
-                  />
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider ml-1">Verification Code</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <KeyRound className="h-5 w-5 text-muted-foreground opacity-50" />
+                      </div>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="\d{6}"
+                        maxLength={6}
+                        placeholder="000000"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                        required
+                        disabled={isPending}
+                        className="h-16 text-center text-2xl tracking-[0.5em] font-mono font-bold rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground/30"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {mode === 'reset-password' && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                      <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider ml-1">New Password</label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <Lock className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <Input
+                          type="password"
+                          placeholder="Must be at least 10 characters"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          minLength={10}
+                          disabled={isPending}
+                          className="h-14 text-[15px] pl-11 rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all font-medium"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
+
                 <Button 
                   type="submit" 
-                  className="w-full h-14 rounded-xl text-[15px] font-semibold transition-all active:scale-[0.98] shadow-sm hover:shadow-md bg-primary hover:bg-primary/90 text-white"
-                  disabled={pending || code.length !== 6}
+                  className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md mt-2"
+                  disabled={isPending || code.length !== 6 || (mode === 'reset-password' && password.length < 10)}
                 >
-                  {pending ? (
+                  {isPending ? (
                      <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                     "Verify code"
+                     mode === 'verify-email' ? "Verify & Sign in" : "Reset Password"
                   )}
                 </Button>
               </form>

@@ -8,6 +8,7 @@ servers:
     description: Base API path
 tags:
   - { name: health, description: Health operations }
+  - { name: auth, description: Email and password authentication }
   - { name: feed, description: Social feed }
   - { name: profiles, description: Founder profiles }
   - { name: posts, description: Voice posts }
@@ -25,6 +26,75 @@ paths:
         '200':
           description: Healthy
           content: { application/json: { schema: { $ref: '#/components/schemas/HealthStatus' } } }
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RegistrationInput' } } }
+      responses:
+        '202':
+          description: Verification email sent
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthMessage' } } }
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmailCodeInput' } } }
+      responses:
+        '200':
+          description: Email verified and session created
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoginInput' } } }
+      responses:
+        '200':
+          description: Session created
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      responses:
+        '200':
+          description: Current authenticated user
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      responses:
+        '204': { description: Session ended }
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ForgotPasswordInput' } } }
+      responses:
+        '202':
+          description: Reset instructions sent when the account exists
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthMessage' } } }
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PasswordResetInput' } } }
+      responses:
+        '200':
+          description: Password reset
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthMessage' } } }
   /account:
     delete:
       operationId: deleteAccount
@@ -177,7 +247,59 @@ paths:
           description: Grounded answer
           content: { application/json: { schema: { $ref: '#/components/schemas/AskAnswer' } } }
 components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: shu_session
   schemas:
+    AuthUser:
+      type: object
+      required: [id, email, emailVerified]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        emailVerified: { type: boolean }
+    AuthSession:
+      type: object
+      required: [user]
+      properties:
+        user: { $ref: '#/components/schemas/AuthUser' }
+    AuthMessage:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    RegistrationInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 10, maxLength: 128 }
+    EmailCodeInput:
+      type: object
+      required: [email, code]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 1, maxLength: 128 }
+    ForgotPasswordInput:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+    PasswordResetInput:
+      type: object
+      required: [email, code, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        code: { type: string, pattern: '^[0-9]{6}$' }
+        password: { type: string, minLength: 10, maxLength: 128 }
     ContactMessageInput:
       type: object
       required: [firstName, lastName, email, message, consent]

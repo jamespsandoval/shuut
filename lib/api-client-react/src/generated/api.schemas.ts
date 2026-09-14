@@ -5,6 +5,64 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+export interface AuthUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+}
+
+export interface AuthSession {
+  user: AuthUser;
+}
+
+export interface AuthMessage {
+  message: string;
+}
+
+export interface RegistrationInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 10
+     * @maxLength 128
+     */
+  password: string;
+}
+
+export interface EmailCodeInput {
+  /** @maxLength 254 */
+  email: string;
+  /** @pattern ^[0-9]{6}$ */
+  code: string;
+}
+
+export interface LoginInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+}
+
+export interface ForgotPasswordInput {
+  /** @maxLength 254 */
+  email: string;
+}
+
+export interface PasswordResetInput {
+  /** @maxLength 254 */
+  email: string;
+  /** @pattern ^[0-9]{6}$ */
+  code: string;
+  /**
+     * @minLength 10
+     * @maxLength 128
+     */
+  password: string;
+}
+
 export interface ContactMessageInput {
   /**
      * @minLength 1

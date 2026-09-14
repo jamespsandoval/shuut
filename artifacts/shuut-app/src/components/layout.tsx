@@ -7,14 +7,15 @@ import { useTheme } from "./theme-provider"
 import { getGetProfileQueryKey, useGetProfile } from "@workspace/api-client-react"
 import * as Dialog from "@radix-ui/react-dialog"
 import { Button } from "./ui/button"
-import { useAuth, useClerk } from "@clerk/react"
+import { useAuth } from "@/hooks/use-auth"
+import { useLogout } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation()
   const { theme } = useTheme()
   const { isSignedIn } = useAuth()
-  const { signOut } = useClerk()
+  const logoutMutation = useLogout()
   const queryClient = useQueryClient()
   const { data: profile } = useGetProfile('me', {
     query: {
@@ -29,11 +30,14 @@ export function Layout({ children }: { children: ReactNode }) {
     { icon: User, label: "Profile", href: "/u/me" },
   ]
 
-  const handleLogout = async () => {
-    await signOut()
-    queryClient.clear()
-    setLogoutDialogOpen(false)
-    setLocation("/")
+  const handleLogout = () => {
+    logoutMutation.mutate(undefined, {
+      onSettled: () => {
+        queryClient.clear()
+        setLogoutDialogOpen(false)
+        setLocation("/")
+      }
+    })
   }
 
   return (

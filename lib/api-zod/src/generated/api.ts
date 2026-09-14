@@ -13,6 +13,106 @@ export const HealthCheckResponse = zod.object({
 })
 
 
+export const registerBodyEmailMax = 254;
+
+export const registerBodyPasswordMin = 10;
+export const registerBodyPasswordMax = 128;
+
+
+
+export const RegisterBody = zod.object({
+  "email": zod.string().email().max(registerBodyEmailMax),
+  "password": zod.string().min(registerBodyPasswordMin).max(registerBodyPasswordMax)
+})
+
+export const RegisterResponse = zod.object({
+  "message": zod.string()
+})
+
+
+export const verifyEmailBodyEmailMax = 254;
+
+export const verifyEmailBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+
+
+export const VerifyEmailBody = zod.object({
+  "email": zod.string().email().max(verifyEmailBodyEmailMax),
+  "code": zod.string().regex(verifyEmailBodyCodeRegExp)
+})
+
+export const VerifyEmailResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean()
+})
+})
+
+
+export const loginBodyEmailMax = 254;
+
+export const loginBodyPasswordMax = 128;
+
+
+
+export const LoginBody = zod.object({
+  "email": zod.string().email().max(loginBodyEmailMax),
+  "password": zod.string().min(1).max(loginBodyPasswordMax)
+})
+
+export const LoginResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean()
+})
+})
+
+
+export const GetCurrentUserResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean()
+})
+})
+
+
+export const LogoutResponse = zod.void()
+
+
+export const forgotPasswordBodyEmailMax = 254;
+
+
+
+export const ForgotPasswordBody = zod.object({
+  "email": zod.string().email().max(forgotPasswordBodyEmailMax)
+})
+
+export const ForgotPasswordResponse = zod.object({
+  "message": zod.string()
+})
+
+
+export const resetPasswordBodyEmailMax = 254;
+
+export const resetPasswordBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+export const resetPasswordBodyPasswordMin = 10;
+export const resetPasswordBodyPasswordMax = 128;
+
+
+
+export const ResetPasswordBody = zod.object({
+  "email": zod.string().email().max(resetPasswordBodyEmailMax),
+  "code": zod.string().regex(resetPasswordBodyCodeRegExp),
+  "password": zod.string().min(resetPasswordBodyPasswordMin).max(resetPasswordBodyPasswordMax)
+})
+
+export const ResetPasswordResponse = zod.object({
+  "message": zod.string()
+})
+
+
 export const DeleteAccountResponse = zod.void()
 
 

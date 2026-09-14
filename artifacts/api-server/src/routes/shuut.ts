@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
-import { clerkClient, getAuth } from "@clerk/express";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import {
   AskFounderBody,
@@ -33,10 +32,12 @@ import {
   foundersTable,
   postsTable,
   profileImageUploadsTable,
+  usersTable,
   type FounderRow,
   type PostRow,
 } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { getAuthenticatedUserId } from "../middlewares/sessionAuth";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -57,17 +58,12 @@ async function cleanupExpiredProfileUploads() {
   }
 }
 
-function authenticatedUserId(req: Parameters<typeof getAuth>[0]): string | null {
-  const auth = getAuth(req);
-  return String(auth?.sessionClaims?.userId || auth?.userId || "") || null;
-}
-
 async function currentFounder(userId: string) {
-  const [linked] = await db.select().from(foundersTable).where(eq(foundersTable.clerkUserId, userId));
+  const [linked] = await db.select().from(foundersTable).where(eq(foundersTable.userId, userId));
   if (linked) return linked;
   const suffix = userId.replace(/[^A-Za-z0-9]/g, "").slice(-10).toLowerCase();
   const [created] = await db.insert(foundersTable).values({
-    clerkUserId: userId,
+    userId,
     name: "New Founder",
     handle: `founder_${suffix}`,
     bio: "",
@@ -75,10 +71,8 @@ async function currentFounder(userId: string) {
     isFollowing: false,
     followerCount: 0,
     followingCount: 0,
-  }).onConflictDoNothing({ target: foundersTable.clerkUserId }).returning();
-  if (created) return created;
-  const [concurrent] = await db.select().from(foundersTable).where(eq(foundersTable.clerkUserId, userId));
-  return concurrent ?? null;
+  }).returning();
+  return created ?? null;
 }
 
 const seedFounders = [
@@ -241,7 +235,7 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
   }
   let founder;
   if (params.data.handle === "me") {
-    const userId = authenticatedUserId(req);
+    const userId = getAuthenticatedUserId(req);
     if (!userId) {
       res.status(401).json({ error: "Sign in to view your profile" });
       return;
@@ -283,7 +277,7 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid profile details" });
     return;
   }
-  const userId = authenticatedUserId(req);
+  const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -299,7 +293,7 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
       .from(profileImageUploadsTable)
       .where(and(
         eq(profileImageUploadsTable.objectPath, body.data.avatarObjectPath),
-        eq(profileImageUploadsTable.clerkUserId, userId),
+        eq(profileImageUploadsTable.userId, userId),
       ));
     if (!pendingUpload) {
       res.status(403).json({ error: "This headshot upload does not belong to you" });
@@ -330,7 +324,7 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
   if (body.data.avatarObjectPath) {
     await db.delete(profileImageUploadsTable).where(and(
       eq(profileImageUploadsTable.objectPath, body.data.avatarObjectPath),
-      eq(profileImageUploadsTable.clerkUserId, userId),
+      eq(profileImageUploadsTable.userId, userId),
     ));
   }
   const rows = await db
@@ -355,7 +349,7 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
 });
 
 router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
-  const userId = authenticatedUserId(req);
+  const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -370,7 +364,7 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
     const upload = await objectStorage.createUpload(body.data.size, body.data.contentType);
     await db.insert(profileImageUploadsTable).values({
       objectPath: upload.objectPath,
-      clerkUserId: userId,
+      userId,
     });
     res.json(RequestUploadUrlResponse.parse(upload));
   } catch (error) {
@@ -554,7 +548,7 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
 });
 
 router.delete("/account", async (req, res): Promise<void> => {
-  const userId = authenticatedUserId(req);
+  const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -572,8 +566,8 @@ router.delete("/account", async (req, res): Promise<void> => {
   }
   await db
     .delete(profileImageUploadsTable)
-    .where(eq(profileImageUploadsTable.clerkUserId, userId));
-  await clerkClient.users.deleteUser(userId);
+    .where(eq(profileImageUploadsTable.userId, userId));
+  await db.delete(usersTable).where(eq(usersTable.id, userId));
   res.status(204).send();
 });
 

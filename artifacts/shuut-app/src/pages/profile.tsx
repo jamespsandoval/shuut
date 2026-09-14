@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link, useLocation } from "wouter"
-import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, useDeleteAccount } from "@workspace/api-client-react"
+import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, useDeleteAccount, useLogout } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
 import { PostCard } from "@/components/post-card"
@@ -14,7 +14,6 @@ import * as Progress from "@radix-ui/react-progress"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useClerk } from "@clerk/react"
 import {
   Form,
   FormControl,
@@ -315,7 +314,7 @@ export default function Profile() {
   const toggleFollow = useToggleFollow()
   const askFounder = useAskFounder()
   const { toast } = useToast()
-  const { signOut } = useClerk()
+  const logoutMutation = useLogout()
   const [, setLocation] = useLocation()
   const deleteAccountMutation = useDeleteAccount()
 
@@ -329,14 +328,14 @@ export default function Profile() {
 
   const handleDeleteAccount = () => {
     deleteAccountMutation.mutate(undefined, {
-      onSuccess: async () => {
+      onSuccess: () => {
         toast({ title: "Account deleted successfully." })
-        queryClient.clear()
-        try {
-          await signOut({ redirectUrl: import.meta.env.BASE_URL || "/" })
-        } finally {
-          setLocation("/")
-        }
+        logoutMutation.mutate(undefined, {
+          onSettled: () => {
+            queryClient.clear()
+            setLocation("/")
+          }
+        })
       },
       onError: (err) => {
         toast({ 
