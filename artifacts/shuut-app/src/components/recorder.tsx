@@ -199,8 +199,9 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
           if (!previewTranscript) {
-            window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), 2500)
-            window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), 6000)
+            for (const delay of [2500, 6000, 12000, 24000]) {
+              window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), delay)
+            }
           }
           handleCancel()
         },

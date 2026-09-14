@@ -522,6 +522,7 @@ async function transcribeRecording(audioObjectPath: string): Promise<string> {
     const audio = await objectStorage.readAudio(audioObjectPath);
     const form = new FormData();
     form.append("model_id", "scribe_v1");
+    form.append("language_code", "eng");
     form.append(
       "file",
       new Blob([Uint8Array.from(audio.data)], { type: audio.contentType }),

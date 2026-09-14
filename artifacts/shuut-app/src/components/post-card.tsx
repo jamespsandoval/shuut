@@ -144,9 +144,9 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <Link href={`/u/${post.author.handle}`} className="flex items-center gap-2 group truncate">
-              <span className="font-bold text-foreground group-hover:underline truncate">{post.author.name}</span>
-              <span className="text-muted-foreground text-sm truncate">@{post.author.handle}</span>
+            <Link href={`/u/${post.author.handle}`} className="group min-w-0">
+              <div className="truncate font-bold text-foreground group-hover:underline">{post.author.name}</div>
+              <div className="truncate text-sm text-muted-foreground">@{post.author.handle}</div>
             </Link>
             <Link href={`/p/${post.id}`} className="text-xs text-muted-foreground hover:underline whitespace-nowrap ml-2">
               {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
