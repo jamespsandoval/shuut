@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -127,6 +127,23 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 
+function ScrollToTop() {
+  const [location] = useLocation();
+
+  useLayoutEffect(() => {
+    window.history.scrollRestoration = 'manual';
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location]);
+
+  useEffect(() => {
+    return () => {
+      window.history.scrollRestoration = 'auto';
+    };
+  }, []);
+
+  return null;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -156,6 +173,7 @@ function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="shuut-theme">
       <WouterRouter base={basePath}>
+        <ScrollToTop />
         <ClerkProviderWithRoutes />
       </WouterRouter>
     </ThemeProvider>
