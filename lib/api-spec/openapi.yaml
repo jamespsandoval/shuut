@@ -278,10 +278,11 @@ components:
         password: { type: string, minLength: 10, maxLength: 128 }
     EmailCodeInput:
       type: object
-      required: [email, code]
+      required: [email, code, password]
       properties:
         email: { type: string, format: email, maxLength: 254 }
         code: { type: string, pattern: '^[0-9]{6}$' }
+        password: { type: string, minLength: 10, maxLength: 128 }
     LoginInput:
       type: object
       required: [email, password]

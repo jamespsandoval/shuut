@@ -33,11 +33,15 @@ export const RegisterResponse = zod.object({
 export const verifyEmailBodyEmailMax = 254;
 
 export const verifyEmailBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+export const verifyEmailBodyPasswordMin = 10;
+export const verifyEmailBodyPasswordMax = 128;
+
 
 
 export const VerifyEmailBody = zod.object({
   "email": zod.string().email().max(verifyEmailBodyEmailMax),
-  "code": zod.string().regex(verifyEmailBodyCodeRegExp)
+  "code": zod.string().regex(verifyEmailBodyCodeRegExp),
+  "password": zod.string().min(verifyEmailBodyPasswordMin).max(verifyEmailBodyPasswordMax)
 })
 
 export const VerifyEmailResponse = zod.object({

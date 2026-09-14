@@ -83,7 +83,7 @@ export default function Landing() {
     setError(null);
     
     if (mode === 'verify-email') {
-      verifyEmailMutation.mutate({ data: { email, code } }, {
+      verifyEmailMutation.mutate({ data: { email, code, password } }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
         },

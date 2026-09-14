@@ -11,4 +11,9 @@ export interface EmailCodeInput {
   email: string;
   /** @pattern ^[0-9]{6}$ */
   code: string;
+  /**
+     * @minLength 10
+     * @maxLength 128
+     */
+  password: string;
 }

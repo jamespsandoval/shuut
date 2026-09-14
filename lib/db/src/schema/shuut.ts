@@ -10,7 +10,7 @@ import {
 
 export const foundersTable = pgTable("shuut_founders", {
   id: serial("id").primaryKey(),
-  userId: text("clerk_user_id"),
+  userId: text("user_id"),
   name: text("name").notNull(),
   handle: text("handle").notNull().unique(),
   bio: text("bio").notNull(),
@@ -46,7 +46,7 @@ export const profileImageUploadsTable = pgTable(
   "shuut_profile_image_uploads",
   {
     objectPath: text("object_path").primaryKey(),
-    userId: text("clerk_user_id").notNull(),
+    userId: text("user_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("shuut_profile_image_uploads_user_idx").on(table.userId)],

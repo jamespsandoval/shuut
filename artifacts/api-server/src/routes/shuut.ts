@@ -326,6 +326,16 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
       eq(profileImageUploadsTable.objectPath, body.data.avatarObjectPath),
       eq(profileImageUploadsTable.userId, userId),
     ));
+    if (
+      existing.avatarObjectPath &&
+      existing.avatarObjectPath !== body.data.avatarObjectPath
+    ) {
+      try {
+        await objectStorage.deleteObject(existing.avatarObjectPath);
+      } catch (error) {
+        req.log.warn({ err: error }, "Could not remove replaced account headshot");
+      }
+    }
   }
   const rows = await db
     .select()
@@ -389,22 +399,31 @@ router.get("/storage/objects/*path", async (req, res): Promise<void> => {
 
 router.post("/posts", async (req, res): Promise<void> => {
   await ensureSeeded();
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const body = CreatePostBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const [maya] = await db.select().from(foundersTable).where(eq(foundersTable.handle, "maya"));
+  const author = await currentFounder(userId);
+  if (!author) {
+    res.status(404).json({ error: "Founder not found" });
+    return;
+  }
   const [created] = await db
     .insert(postsTable)
     .values({
-      authorId: maya.id,
+      authorId: author.id,
       transcript: body.data.transcript,
       durationSeconds: body.data.durationSeconds,
       audioUrl: body.data.audioDataUrl,
     })
     .returning();
-  res.status(201).json(CreatePostResponse.parse(postJson(created, maya)));
+  res.status(201).json(CreatePostResponse.parse(postJson(created, author)));
 });
 
 router.get("/posts/:postId", async (req, res): Promise<void> => {
@@ -424,12 +443,27 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
 });
 
 router.delete("/posts/:postId", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const params = DeletePostParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  await db.delete(postsTable).where(eq(postsTable.id, params.data.postId));
+  const founder = await currentFounder(userId);
+  const [post] = await db.select().from(postsTable).where(eq(postsTable.id, params.data.postId));
+  if (!post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+  if (!founder || post.authorId !== founder.id) {
+    res.status(403).json({ error: "You can only delete your own posts" });
+    return;
+  }
+  await db.delete(postsTable).where(eq(postsTable.id, post.id));
   res.sendStatus(204);
 });
 
@@ -563,6 +597,17 @@ router.delete("/account", async (req, res): Promise<void> => {
   }
   if (founder) {
     await db.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+  }
+  const pendingUploads = await db
+    .select({ objectPath: profileImageUploadsTable.objectPath })
+    .from(profileImageUploadsTable)
+    .where(eq(profileImageUploadsTable.userId, userId));
+  for (const upload of pendingUploads) {
+    try {
+      await objectStorage.deleteObject(upload.objectPath);
+    } catch (error) {
+      req.log.warn({ err: error }, "Could not remove pending account upload");
+    }
   }
   await db
     .delete(profileImageUploadsTable)
