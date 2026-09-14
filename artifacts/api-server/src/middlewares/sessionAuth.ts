@@ -5,6 +5,15 @@ import { db, sessionsTable } from "@workspace/db";
 
 export const SESSION_COOKIE = "shu_session";
 
+export function clearSessionCookie(res: Response): void {
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+}
+
 type AuthenticatedRequest = Request & { authUserId?: string };
 
 function cookieValue(req: Request, name: string): string | null {

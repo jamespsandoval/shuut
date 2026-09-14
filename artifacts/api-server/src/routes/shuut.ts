@@ -37,7 +37,10 @@ import {
   type PostRow,
 } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { getAuthenticatedUserId } from "../middlewares/sessionAuth";
+import {
+  clearSessionCookie,
+  getAuthenticatedUserId,
+} from "../middlewares/sessionAuth";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -613,6 +616,7 @@ router.delete("/account", async (req, res): Promise<void> => {
     .delete(profileImageUploadsTable)
     .where(eq(profileImageUploadsTable.userId, userId));
   await db.delete(usersTable).where(eq(usersTable.id, userId));
+  clearSessionCookie(res);
   res.status(204).send();
 });
 

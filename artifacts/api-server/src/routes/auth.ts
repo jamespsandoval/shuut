@@ -12,6 +12,7 @@ import {
 import { authCodesTable, db, sessionsTable, usersTable } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
 import {
+  clearSessionCookie,
   getAuthenticatedUserId,
   hashSessionToken,
   SESSION_COOKIE,
@@ -256,7 +257,7 @@ router.post("/logout", async (req, res): Promise<void> => {
     .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
     ?.slice(SESSION_COOKIE.length + 1);
   if (token) await db.delete(sessionsTable).where(eq(sessionsTable.tokenHash, hashSessionToken(decodeURIComponent(token))));
-  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  clearSessionCookie(res);
   res.sendStatus(204);
 });
 
@@ -298,6 +299,7 @@ router.post("/reset-password", async (req, res): Promise<void> => {
   }
   await db.update(usersTable).set({ passwordHash: await hashPassword(body.data.password) }).where(eq(usersTable.id, user.id));
   await db.delete(sessionsTable).where(eq(sessionsTable.userId, user.id));
+  clearSessionCookie(res);
   res.json({ message: "Password updated. You can now sign in." });
 });
 
