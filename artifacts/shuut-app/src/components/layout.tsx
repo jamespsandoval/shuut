@@ -4,12 +4,10 @@ import { Mic, Home, User, Search, Settings, Activity } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
-import { useHealthCheck } from "@workspace/api-client-react"
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation()
   const { theme } = useTheme()
-  const { data: health, isError } = useHealthCheck()
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/" },
@@ -69,19 +67,6 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 bg-secondary/30 rounded-full w-fit text-xs font-mono border border-border/30">
-          {isError ? (
-            <div className="flex items-center gap-2 text-destructive">
-              <div className="w-2 h-2 rounded-full bg-destructive" />
-              API Disconnected
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              API {health?.status || 'Online'}
-            </div>
-          )}
-        </div>
       </aside>
 
       {/* Mobile Bottom Nav */}
