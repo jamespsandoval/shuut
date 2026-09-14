@@ -6,6 +6,7 @@ import { auditSecurityEvent, ipPrefix, privacyHash } from "../lib/security";
 
 export const SESSION_COOKIE = "shu_session";
 export const DEVICE_COOKIE = "shu_device";
+export const PASSKEYS_REQUIRED = process.env.NODE_ENV !== "development";
 
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE, {
@@ -109,7 +110,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  if (!isPasskeyVerified(req)) {
+  if (PASSKEYS_REQUIRED && !isPasskeyVerified(req)) {
     res.status(403).json({ error: "Additional sign-in verification is required.", code: "passkey_required" });
     return;
   }

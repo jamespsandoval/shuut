@@ -39,6 +39,7 @@ const queryClient = new QueryClient({
 });
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+const passkeysRequired = !import.meta.env.DEV;
 
 function HomeRedirect() {
   const { user, isSignedIn, isLoading } = useAuth();
@@ -55,7 +56,7 @@ function HomeRedirect() {
     if (!user?.onboardingComplete) {
       return <Onboarding />;
     }
-    if (!user.passkeyVerified) {
+    if (passkeysRequired && !user.passkeyVerified) {
       return <PasskeyGate />;
     }
     return <Redirect to="/feed" />;
@@ -82,7 +83,7 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
           if (!user?.onboardingComplete) {
             return <Redirect to="/" />;
           }
-          if (!user.passkeyVerified) {
+          if (passkeysRequired && !user.passkeyVerified) {
             return <Redirect to="/passkey" />;
           }
           return <Component params={params} />;
@@ -105,7 +106,9 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/cookies" component={Cookies} />
         <Route path="/contact" component={Contact} />
-        <Route path="/passkey" component={PasskeyGate} />
+        <Route path="/passkey">
+          {passkeysRequired ? <PasskeyGate /> : <Redirect to="/feed" />}
+        </Route>
         <ProtectedRoute path="/feed" component={Home} />
         <ProtectedRoute path="/explore" component={Explore} />
         <ProtectedRoute path="/p/:postId" component={PostDetail} />
