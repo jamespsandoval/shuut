@@ -102,7 +102,7 @@ export default function Landing() {
     <div className="min-h-[100dvh] flex flex-col bg-white text-foreground">
       <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[420px] mx-auto relative z-10">
         <div className="relative w-full flex flex-col items-center justify-center mb-10">
-          <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[100px] w-auto" />
+          <img src={`${basePath}/shuut-logo.png`} alt="SHÜÜT" className="h-[100px] w-auto" />
           <p className="-mt-2 text-[17px] font-semibold text-muted-foreground text-center tracking-tight">
             Say what's on your mind
           </p>
