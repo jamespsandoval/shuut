@@ -49,7 +49,7 @@ export default function Privacy() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">9. Changes to this Policy</h2>
-          <p>We may update this Privacy Policy periodically. We will notify you of significant changes, and your continued use of the platform will signify your acceptance.</p>
+          <p>We may update this Privacy Policy periodically. We will notify you of significant changes, and your continued use of the platform will signify your acceptance. For privacy questions or requests, email <a href="mailto:privacy@shuut.me" className="font-medium text-gray-900 underline underline-offset-2">privacy@shuut.me</a>.</p>
         </section>
       </div>
     </PublicLayout>

@@ -25,6 +25,7 @@ import Community from '@/pages/community';
 import Terms from '@/pages/terms';
 import Privacy from '@/pages/privacy';
 import Cookies from '@/pages/cookies';
+import Contact from '@/pages/contact';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -110,6 +111,7 @@ function Router() {
         <Route path="/terms" component={Terms} />
         <Route path="/privacy" component={Privacy} />
         <Route path="/cookies" component={Cookies} />
+        <Route path="/contact" component={Contact} />
         <ProtectedRoute path="/feed" component={Home} />
         <ProtectedRoute path="/explore" component={Explore} />
         <ProtectedRoute path="/p/:postId" component={PostDetail} />

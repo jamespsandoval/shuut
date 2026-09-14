@@ -15,6 +15,7 @@ tags:
   - { name: agent, description: Founder Ask Me agent }
   - { name: storage, description: Secure direct uploads }
   - { name: account, description: Account lifecycle }
+  - { name: contact, description: Public contact form }
 paths:
   /healthz:
     get:
@@ -31,6 +32,23 @@ paths:
       responses:
         '204':
           description: Account data deleted
+  /contact:
+    post:
+      operationId: sendContactMessage
+      tags: [contact]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactMessageInput'
+      responses:
+        '200':
+          description: Message accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactMessageResult'
   /feed:
     get:
       operationId: getFeed
@@ -160,6 +178,21 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/AskAnswer' } } }
 components:
   schemas:
+    ContactMessageInput:
+      type: object
+      required: [firstName, lastName, email, message, consent]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 80 }
+        lastName: { type: string, minLength: 1, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 254 }
+        message: { type: string, minLength: 1, maxLength: 1000 }
+        consent: { type: boolean, const: true }
+        website: { type: string, maxLength: 0 }
+    ContactMessageResult:
+      type: object
+      required: [sent]
+      properties:
+        sent: { type: boolean, const: true }
     HealthStatus:
       type: object
       required: [status]

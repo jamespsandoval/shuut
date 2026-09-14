@@ -29,7 +29,7 @@ export default function Cookies() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">5. Updates</h2>
-          <p>We may update this Cookie Policy from time to time. Please review it periodically. If you have any questions, feel free to contact us.</p>
+          <p>We may update this Cookie Policy from time to time. Please review it periodically. If you have any questions, email <a href="mailto:cookies@shuut.me" className="font-medium text-gray-900 underline underline-offset-2">cookies@shuut.me</a>.</p>
         </section>
       </div>
     </PublicLayout>

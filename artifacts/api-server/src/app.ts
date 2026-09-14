@@ -2,6 +2,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import contactRouter from "./routes/contact";
 import { logger } from "./lib/logger";
 import { clerkMiddleware, getAuth } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
@@ -55,6 +56,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+app.use("/api/contact", contactRouter);
 app.use("/api", requireAuth, router);
 
 export default app;

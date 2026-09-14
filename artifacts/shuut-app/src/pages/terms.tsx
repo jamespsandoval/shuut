@@ -54,7 +54,7 @@ export default function Terms() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">10. Updates & Contact</h2>
-          <p>We may update these Terms from time to time. Your continued use of the service constitutes acceptance of any changes. For questions about these Terms, please contact us.</p>
+          <p>We may update these Terms from time to time. Your continued use of the service constitutes acceptance of any changes. For questions about these Terms, email <a href="mailto:terms@shuut.me" className="font-medium text-gray-900 underline underline-offset-2">terms@shuut.me</a>.</p>
         </section>
       </div>
     </PublicLayout>

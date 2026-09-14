@@ -4,7 +4,7 @@ export function Footer() {
   const footerLinks = [
     { label: "About", href: "/about" },
     { label: "Community Guidelines", href: "/community" },
-    { label: "Contact", href: "#", isAnchor: true },
+    { label: "Contact", href: "/contact" },
     { label: "Terms of Service", href: "/terms" },
     { label: "Privacy Policy", href: "/privacy" },
     { label: "Cookie Policy", href: "/cookies" },
@@ -16,15 +16,9 @@ export function Footer() {
         <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-3 text-[13px] text-gray-500 font-medium">
           {footerLinks.map((link, i) => (
             <div key={link.label} className="flex items-center gap-3">
-              {link.isAnchor ? (
-                <a href={link.href} className="hover:text-gray-900 transition-colors">
-                  {link.label}
-                </a>
-              ) : (
-                <Link href={link.href} className="hover:text-gray-900 transition-colors">
-                  {link.label}
-                </Link>
-              )}
+              <Link href={link.href} className="hover:text-gray-900 transition-colors">
+                {link.label}
+              </Link>
               {i < footerLinks.length - 1 && (
                 <span className="text-gray-300 font-light" aria-hidden="true">|</span>
               )}

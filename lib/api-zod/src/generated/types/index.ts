@@ -8,6 +8,8 @@
 
 export * from './askAnswer';
 export * from './askInput';
+export * from './contactMessageInput';
+export * from './contactMessageResult';
 export * from './followState';
 export * from './founder';
 export * from './getFeedParams';

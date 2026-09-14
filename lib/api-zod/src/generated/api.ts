@@ -16,6 +16,32 @@ export const HealthCheckResponse = zod.object({
 export const DeleteAccountResponse = zod.void()
 
 
+export const sendContactMessageBodyFirstNameMax = 80;
+
+export const sendContactMessageBodyLastNameMax = 80;
+
+export const sendContactMessageBodyEmailMax = 254;
+
+export const sendContactMessageBodyMessageMax = 1000;
+
+export const sendContactMessageBodyWebsiteMax = 0;
+
+
+
+export const SendContactMessageBody = zod.object({
+  "firstName": zod.string().min(1).max(sendContactMessageBodyFirstNameMax),
+  "lastName": zod.string().min(1).max(sendContactMessageBodyLastNameMax),
+  "email": zod.string().email().max(sendContactMessageBodyEmailMax),
+  "message": zod.string().min(1).max(sendContactMessageBodyMessageMax),
+  "consent": zod.literal(true),
+  "website": zod.string().max(sendContactMessageBodyWebsiteMax).optional()
+})
+
+export const SendContactMessageResponse = zod.object({
+  "sent": zod.literal(true)
+})
+
+
 export const getFeedQueryViewDefault = `everyone`;
 
 export const GetFeedQueryParams = zod.object({
