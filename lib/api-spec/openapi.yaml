@@ -14,6 +14,7 @@ tags:
   - { name: social, description: Social actions }
   - { name: agent, description: Founder Ask Me agent }
   - { name: storage, description: Secure direct uploads }
+  - { name: account, description: Account lifecycle }
 paths:
   /healthz:
     get:
@@ -23,6 +24,13 @@ paths:
         '200':
           description: Healthy
           content: { application/json: { schema: { $ref: '#/components/schemas/HealthStatus' } } }
+  /account:
+    delete:
+      operationId: deleteAccount
+      tags: [account]
+      responses:
+        '204':
+          description: Account data deleted
   /feed:
     get:
       operationId: getFeed

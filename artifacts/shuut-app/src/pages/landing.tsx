@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Footer } from '@/components/footer';
 
 export default function Landing() {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-up');
@@ -78,17 +79,6 @@ export default function Landing() {
     setCode('');
     setError(null);
   };
-  
-  // Footer content matches the requested Suru-style template exactly
-  const footerLinks = [
-    { label: "About", href: "#" },
-    { label: "Community Guidelines", href: "#" },
-    { label: "Help", href: "#" },
-    { label: "Contact", href: "#" },
-    { label: "Terms of Service", href: "#" },
-    { label: "Privacy Policy", href: "#" },
-    { label: "Cookie Policy", href: "#" },
-  ];
 
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -96,8 +86,9 @@ export default function Landing() {
     <div className="min-h-[100dvh] flex flex-col bg-white text-foreground">
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[400px] mx-auto relative z-10">
-        <div className="w-full flex justify-center mb-12">
-          <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-10" />
+        <div className="w-full flex flex-col items-center justify-center mb-12">
+          <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[120px] max-h-[15vh] w-auto" />
+          <p className="mt-4 text-xl font-medium text-gray-600 text-center">Say what's your mind</p>
         </div>
 
         <div className="w-full">
@@ -212,26 +203,7 @@ export default function Landing() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="w-full py-10 px-6 border-t border-gray-100 bg-white z-10">
-        <div className="max-w-screen-lg mx-auto flex flex-col items-center gap-6">
-          <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-3 text-[13px] text-gray-500 font-medium">
-            {footerLinks.map((link, i) => (
-              <div key={link.label} className="flex items-center gap-3">
-                <a href={link.href} className="hover:text-gray-900 transition-colors">
-                  {link.label}
-                </a>
-                {i < footerLinks.length - 1 && (
-                  <span className="text-gray-300 font-light" aria-hidden="true">|</span>
-                )}
-              </div>
-            ))}
-          </div>
-          <p className="text-[13px] text-gray-400 font-medium">
-            © 2026 SHÜÜT — A DoublePortrait Labs Production. All rights reserved.
-          </p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

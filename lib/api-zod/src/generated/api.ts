@@ -13,6 +13,9 @@ export const HealthCheckResponse = zod.object({
 })
 
 
+export const DeleteAccountResponse = zod.void()
+
+
 export const getFeedQueryViewDefault = `everyone`;
 
 export const GetFeedQueryParams = zod.object({

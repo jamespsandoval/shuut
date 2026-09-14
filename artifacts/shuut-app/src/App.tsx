@@ -20,6 +20,11 @@ import PostDetail from '@/pages/post-detail';
 import Profile from '@/pages/profile';
 import Explore from '@/pages/explore';
 import Landing from '@/pages/landing';
+import About from '@/pages/about';
+import Community from '@/pages/community';
+import Terms from '@/pages/terms';
+import Privacy from '@/pages/privacy';
+import Cookies from '@/pages/cookies';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,6 +105,11 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={HomeRedirect} />
+        <Route path="/about" component={About} />
+        <Route path="/community" component={Community} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/cookies" component={Cookies} />
         <ProtectedRoute path="/feed" component={Home} />
         <ProtectedRoute path="/explore" component={Explore} />
         <ProtectedRoute path="/p/:postId" component={PostDetail} />

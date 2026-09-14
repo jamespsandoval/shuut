@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link, useLocation } from "wouter"
-import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey } from "@workspace/api-client-react"
+import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, useDeleteAccount } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
 import { PostCard } from "@/components/post-card"
@@ -14,6 +14,7 @@ import * as Progress from "@radix-ui/react-progress"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useClerk } from "@clerk/react"
 import {
   Form,
   FormControl,
@@ -314,12 +315,38 @@ export default function Profile() {
   const toggleFollow = useToggleFollow()
   const askFounder = useAskFounder()
   const { toast } = useToast()
+  const { signOut } = useClerk()
+  const [, setLocation] = useLocation()
+  const deleteAccountMutation = useDeleteAccount()
 
   const [askQuestion, setAskQuestion] = useState("")
   const [askDialogOpen, setAskDialogOpen] = useState(false)
   const [askAnswer, setAskAnswer] = useState<{ answer: string; hasContext: boolean } | null>(null)
   
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState("")
+
+  const handleDeleteAccount = () => {
+    deleteAccountMutation.mutate(undefined, {
+      onSuccess: async () => {
+        toast({ title: "Account deleted successfully." })
+        queryClient.clear()
+        try {
+          await signOut({ redirectUrl: import.meta.env.BASE_URL || "/" })
+        } finally {
+          setLocation("/")
+        }
+      },
+      onError: (err) => {
+        toast({ 
+          title: "Failed to delete account", 
+          description: err instanceof Error ? err.message : "An unexpected error occurred.",
+          variant: "destructive" 
+        })
+      }
+    })
+  }
 
   const handleFollowToggle = () => {
     if (!profile) return
@@ -560,6 +587,61 @@ export default function Profile() {
                 <span className="text-muted-foreground">Followers</span>
               </div>
             </div>
+
+            {isCurrentUser && (
+              <div className="mt-8 pt-6 border-t border-border/30 flex justify-end">
+                <Dialog.Root open={deleteDialogOpen} onOpenChange={(open) => {
+                  setDeleteDialogOpen(open);
+                  if (!open) setDeleteConfirm("");
+                }}>
+                  <Dialog.Trigger asChild>
+                    <Button variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive text-sm font-medium px-4">
+                      Delete account
+                    </Button>
+                  </Dialog.Trigger>
+                  <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 animate-in fade-in" />
+                    <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl bg-card border border-border shadow-xl p-6 animate-in fade-in zoom-in-95 slide-in-from-bottom-4">
+                      <Dialog.Title className="text-xl font-bold text-foreground mb-4">
+                        Delete Account
+                      </Dialog.Title>
+                      <Dialog.Description className="text-sm text-muted-foreground mb-6">
+                        This action cannot be undone. Your profile, SHÜÜTs, headshot, and account will be permanently deleted and cannot be recovered.
+                      </Dialog.Description>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-sm font-medium text-foreground mb-2 block">
+                            Please type <span className="font-bold">DELETE</span> to confirm:
+                          </label>
+                          <Input 
+                            value={deleteConfirm}
+                            onChange={(e) => setDeleteConfirm(e.target.value)}
+                            placeholder="DELETE"
+                            className="bg-background h-12"
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border/30">
+                          <Dialog.Close asChild>
+                            <Button variant="outline" disabled={deleteAccountMutation.isPending}>Cancel</Button>
+                          </Dialog.Close>
+                          <Button 
+                            variant="destructive"
+                            disabled={deleteConfirm !== "DELETE" || deleteAccountMutation.isPending}
+                            onClick={handleDeleteAccount}
+                            className="font-bold"
+                          >
+                            {deleteAccountMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Permanently Delete
+                          </Button>
+                        </div>
+                      </div>
+                    </Dialog.Content>
+                  </Dialog.Portal>
+                </Dialog.Root>
+              </div>
+            )}
           </div>
 
           {/* Posts */}

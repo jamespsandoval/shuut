@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
-import { getAuth } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import {
   AskFounderBody,
@@ -551,6 +551,30 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
       })),
     }),
   );
+});
+
+router.delete("/account", async (req, res): Promise<void> => {
+  const userId = authenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const founder = await currentFounder(userId);
+  if (founder?.avatarObjectPath) {
+    try {
+      await objectStorage.deleteObject(founder.avatarObjectPath);
+    } catch (error) {
+      req.log.warn({ err: error }, "Could not remove account headshot");
+    }
+  }
+  if (founder) {
+    await db.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+  }
+  await db
+    .delete(profileImageUploadsTable)
+    .where(eq(profileImageUploadsTable.clerkUserId, userId));
+  await clerkClient.users.deleteUser(userId);
+  res.status(204).send();
 });
 
 export default router;
