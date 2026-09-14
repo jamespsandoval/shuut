@@ -74,5 +74,7 @@
     "wouter": "^3.3.5",
     "zod": "catalog:"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@simplewebauthn/browser": "^13.2.2"
+  }
 }
