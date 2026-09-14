@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react"
 import { Link, useLocation } from "wouter"
-import { Home, User, MoreHorizontal } from "lucide-react"
+import { Home, User, MoreHorizontal, Settings } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
@@ -28,6 +28,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { icon: Home, label: "Feed", href: "/feed" },
     { icon: User, label: "Profile", href: "/u/me" },
+    { icon: Settings, label: "Settings", href: "/settings" },
   ]
 
   const handleLogout = () => {

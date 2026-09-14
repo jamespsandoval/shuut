@@ -28,6 +28,7 @@ import Privacy from '@/pages/privacy';
 import Cookies from '@/pages/cookies';
 import Contact from '@/pages/contact';
 import PasskeyGate from '@/pages/passkey-gate';
+import SettingsPage from '@/pages/settings';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -113,6 +114,7 @@ function Router() {
         <ProtectedRoute path="/explore" component={Explore} />
         <ProtectedRoute path="/p/:postId" component={PostDetail} />
         <ProtectedRoute path="/u/:handle" component={Profile} />
+        <ProtectedRoute path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>

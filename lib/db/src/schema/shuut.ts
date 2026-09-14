@@ -102,10 +102,25 @@ export const passkeysTable = pgTable(
     publicKey: text("public_key").notNull(),
     counter: integer("counter").notNull().default(0),
     transports: text("transports"),
+    deviceName: text("device_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   },
   (table) => [index("shuut_passkeys_user_idx").on(table.userId)],
+);
+
+export const passkeyRecoveriesTable = pgTable(
+  "shuut_passkey_recoveries",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull(),
+    confirmationCodeHash: text("confirmation_code_hash"),
+    confirmationCodeExpiresAt: timestamp("confirmation_code_expires_at", { withTimezone: true }),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("shuut_passkey_recoveries_available_idx").on(table.availableAt)],
 );
 
 export const webauthnChallengesTable = pgTable(

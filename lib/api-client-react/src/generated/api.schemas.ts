@@ -22,6 +22,33 @@ export interface AuthMessage {
   message: string;
 }
 
+export interface WebAuthnCredential { [key: string]: unknown }
+
+export interface PasskeyDevice {
+  id: string;
+  name: string;
+  createdAt: string;
+  /** @nullable */
+  lastUsedAt: string | null;
+}
+
+export interface PasskeyDeviceList {
+  devices: PasskeyDevice[];
+}
+
+export interface PasskeyRecoveryStatus {
+  pending: boolean;
+  /** @nullable */
+  availableAt: string | null;
+  /** @nullable */
+  codeExpiresAt: string | null;
+}
+
+export interface RecoveryCodeInput {
+  /** @pattern ^[0-9]{6}$ */
+  code: string;
+}
+
 export interface RegistrationInput {
   /** @maxLength 254 */
   email: string;
@@ -268,6 +295,14 @@ export interface AskAnswer {
   sources: SourcePost[];
   hasEnoughContext: boolean;
 }
+
+export type BeginPasskeyRegistration200 = { [key: string]: unknown };
+
+export type BeginPasskeyAssertion200 = { [key: string]: unknown };
+
+export type ConfirmPasskeyRecovery200 = {
+  recovered: boolean;
+};
 
 export type GetFeedParams = {
 view?: GetFeedView;

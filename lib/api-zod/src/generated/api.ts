@@ -95,6 +95,72 @@ export const GetCurrentUserResponse = zod.object({
 })
 
 
+export const BeginPasskeyRegistrationResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const CompletePasskeyRegistrationBody = zod.record(zod.string(), zod.unknown())
+
+export const CompletePasskeyRegistrationResponse = zod.unknown()
+
+
+export const BeginPasskeyAssertionResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const CompletePasskeyAssertionBody = zod.record(zod.string(), zod.unknown())
+
+export const CompletePasskeyAssertionResponse = zod.unknown()
+
+
+export const ListPasskeyDevicesResponse = zod.object({
+  "devices": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "lastUsedAt": zod.coerce.date().nullable()
+}))
+})
+
+
+export const RemovePasskeyDeviceParams = zod.object({
+  "credentialId": zod.coerce.string()
+})
+
+export const RemovePasskeyDeviceResponse = zod.void()
+
+
+export const GetPasskeyRecoveryStatusResponse = zod.object({
+  "pending": zod.boolean(),
+  "availableAt": zod.coerce.date().nullable(),
+  "codeExpiresAt": zod.coerce.date().nullable()
+})
+
+
+export const RequestPasskeyRecoveryResponse = zod.object({
+  "pending": zod.boolean(),
+  "availableAt": zod.coerce.date().nullable(),
+  "codeExpiresAt": zod.coerce.date().nullable()
+})
+
+
+export const SendPasskeyRecoveryCodeResponse = zod.object({
+  "pending": zod.boolean(),
+  "availableAt": zod.coerce.date().nullable(),
+  "codeExpiresAt": zod.coerce.date().nullable()
+})
+
+
+export const confirmPasskeyRecoveryBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+
+
+export const ConfirmPasskeyRecoveryBody = zod.object({
+  "code": zod.string().regex(confirmPasskeyRecoveryBodyCodeRegExp)
+})
+
+export const ConfirmPasskeyRecoveryResponse = zod.object({
+  "recovered": zod.boolean()
+})
+
+
 export const LogoutResponse = zod.void()
 
 

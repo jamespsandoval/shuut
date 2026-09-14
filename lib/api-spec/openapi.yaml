@@ -92,7 +92,7 @@ paths:
       tags: [auth]
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/WebAuthnCredential' } } }
       responses:
         '200': { description: Passkey registered }
   /auth/passkey/assertion/options:
@@ -109,9 +109,60 @@ paths:
       tags: [auth]
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/WebAuthnCredential' } } }
       responses:
         '200': { description: Passkey verified }
+  /auth/passkey/devices:
+    get:
+      operationId: listPasskeyDevices
+      tags: [auth]
+      responses:
+        '200':
+          description: Enrolled passkey devices
+          content: { application/json: { schema: { $ref: '#/components/schemas/PasskeyDeviceList' } } }
+  /auth/passkey/devices/{credentialId}:
+    delete:
+      operationId: removePasskeyDevice
+      tags: [auth]
+      parameters:
+        - { name: credentialId, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Passkey removed }
+  /auth/passkey/recovery/status:
+    get:
+      operationId: getPasskeyRecoveryStatus
+      tags: [auth]
+      responses:
+        '200':
+          description: Current recovery status
+          content: { application/json: { schema: { $ref: '#/components/schemas/PasskeyRecoveryStatus' } } }
+  /auth/passkey/recovery/request:
+    post:
+      operationId: requestPasskeyRecovery
+      tags: [auth]
+      responses:
+        '202':
+          description: Recovery delay started
+          content: { application/json: { schema: { $ref: '#/components/schemas/PasskeyRecoveryStatus' } } }
+  /auth/passkey/recovery/code:
+    post:
+      operationId: sendPasskeyRecoveryCode
+      tags: [auth]
+      responses:
+        '202':
+          description: Confirmation code sent
+          content: { application/json: { schema: { $ref: '#/components/schemas/PasskeyRecoveryStatus' } } }
+  /auth/passkey/recovery/confirm:
+    post:
+      operationId: confirmPasskeyRecovery
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RecoveryCodeInput' } } }
+      responses:
+        '200':
+          description: Passkeys reset and sessions revoked
+          content: { application/json: { schema: { type: object, required: [recovered], properties: { recovered: { type: boolean } } } } }
   /auth/logout:
     post:
       operationId: logout
@@ -331,6 +382,34 @@ components:
       required: [message]
       properties:
         message: { type: string }
+    WebAuthnCredential:
+      type: object
+      additionalProperties: true
+    PasskeyDevice:
+      type: object
+      required: [id, name, createdAt, lastUsedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: [string, 'null'], format: date-time }
+    PasskeyDeviceList:
+      type: object
+      required: [devices]
+      properties:
+        devices: { type: array, items: { $ref: '#/components/schemas/PasskeyDevice' } }
+    PasskeyRecoveryStatus:
+      type: object
+      required: [pending, availableAt, codeExpiresAt]
+      properties:
+        pending: { type: boolean }
+        availableAt: { type: [string, 'null'], format: date-time }
+        codeExpiresAt: { type: [string, 'null'], format: date-time }
+    RecoveryCodeInput:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, pattern: '^[0-9]{6}$' }
     RegistrationInput:
       type: object
       required: [email]
