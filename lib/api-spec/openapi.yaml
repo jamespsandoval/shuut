@@ -42,6 +42,18 @@ paths:
         '200':
           description: Founder profile
           content: { application/json: { schema: { $ref: '#/components/schemas/ProfileDetail' } } }
+    patch:
+      operationId: updateProfile
+      tags: [profiles]
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProfileUpdate' } } }
+      responses:
+        '200':
+          description: Updated founder profile
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProfileDetail' } } }
   /posts:
     post:
       operationId: createPost
@@ -131,6 +143,9 @@ components:
         handle: { type: string }
         bio: { type: string }
         avatarColor: { type: string }
+        avatarUrl: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        website: { type: [string, 'null'] }
         isFollowing: { type: boolean }
     ReactionSummary:
       type: object
@@ -165,6 +180,16 @@ components:
         postCount: { type: integer }
         posts: { type: array, items: { $ref: '#/components/schemas/Post' } }
         suggestedQuestions: { type: array, items: { type: string } }
+    ProfileUpdate:
+      type: object
+      required: [name, handle, bio]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        handle: { type: string, minLength: 2, maxLength: 30, pattern: '^[A-Za-z0-9_]+$' }
+        bio: { type: string, maxLength: 240 }
+        location: { type: string, maxLength: 80 }
+        website: { type: string, maxLength: 200 }
+        avatarDataUrl: { type: string, maxLength: 3000000 }
     PostInput:
       type: object
       required: [transcript, durationSeconds]

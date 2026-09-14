@@ -12,5 +12,11 @@ export interface Founder {
   handle: string;
   bio: string;
   avatarColor: string;
+  /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
+  location?: string | null;
+  /** @nullable */
+  website?: string | null;
   isFollowing: boolean;
 }

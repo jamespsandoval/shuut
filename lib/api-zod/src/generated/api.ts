@@ -27,6 +27,9 @@ export const GetFeedResponseItem = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "transcript": zod.string(),
@@ -58,6 +61,9 @@ export const GetProfileResponse = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "followerCount": zod.number().int(),
@@ -71,6 +77,86 @@ export const GetProfileResponse = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "audioUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "goat": zod.number().int(),
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "confused": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish()
+})),
+  "suggestedQuestions": zod.array(zod.string())
+})
+
+
+export const UpdateProfileParams = zod.object({
+  "handle": zod.coerce.string()
+})
+
+export const updateProfileBodyNameMax = 80;
+
+export const updateProfileBodyHandleMin = 2;
+export const updateProfileBodyHandleMax = 30;
+
+
+export const updateProfileBodyHandleRegExp = new RegExp('^[A-Za-z0-9_]+$');
+export const updateProfileBodyBioMax = 240;
+
+export const updateProfileBodyLocationMax = 80;
+
+export const updateProfileBodyWebsiteMax = 200;
+
+export const updateProfileBodyAvatarDataUrlMax = 3000000;
+
+
+
+export const UpdateProfileBody = zod.object({
+  "name": zod.string().min(1).max(updateProfileBodyNameMax),
+  "handle": zod.string().min(updateProfileBodyHandleMin).max(updateProfileBodyHandleMax).regex(updateProfileBodyHandleRegExp),
+  "bio": zod.string().max(updateProfileBodyBioMax),
+  "location": zod.string().max(updateProfileBodyLocationMax).optional(),
+  "website": zod.string().max(updateProfileBodyWebsiteMax).optional(),
+  "avatarDataUrl": zod.string().max(updateProfileBodyAvatarDataUrlMax).optional()
+})
+
+export const UpdateProfileResponse = zod.object({
+  "founder": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean()
+}),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "postCount": zod.number().int(),
+  "posts": zod.array(zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "transcript": zod.string(),
@@ -111,6 +197,9 @@ export const CreatePostResponse = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "transcript": zod.string(),
@@ -142,6 +231,9 @@ export const GetPostResponse = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "transcript": zod.string(),
@@ -184,6 +276,9 @@ export const SetReactionResponse = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "transcript": zod.string(),
@@ -215,6 +310,9 @@ export const ReshuutPostResponse = zod.object({
   "handle": zod.string(),
   "bio": zod.string(),
   "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "isFollowing": zod.boolean()
 }),
   "transcript": zod.string(),

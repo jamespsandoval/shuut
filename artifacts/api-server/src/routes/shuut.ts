@@ -20,6 +20,9 @@ import {
   SetReactionResponse,
   ToggleFollowParams,
   ToggleFollowResponse,
+  UpdateProfileBody,
+  UpdateProfileParams,
+  UpdateProfileResponse,
 } from "@workspace/api-zod";
 import {
   db,
@@ -113,6 +116,9 @@ function founderJson(founder: FounderRow) {
     handle: founder.handle,
     bio: founder.bio,
     avatarColor: founder.avatarColor,
+    avatarUrl: founder.avatarUrl,
+    location: founder.location,
+    website: founder.website,
     isFollowing: founder.isFollowing,
   };
 }
@@ -180,10 +186,11 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const resolvedHandle = params.data.handle === "me" ? "maya" : params.data.handle;
   const [founder] = await db
     .select()
     .from(foundersTable)
-    .where(eq(foundersTable.handle, params.data.handle));
+    .where(eq(foundersTable.handle, resolvedHandle));
   if (!founder) {
     res.status(404).json({ error: "Founder not found" });
     return;
@@ -195,6 +202,56 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     .orderBy(desc(postsTable.createdAt));
   res.json(
     GetProfileResponse.parse({
+      founder: founderJson(founder),
+      followerCount: founder.followerCount,
+      followingCount: founder.followingCount,
+      postCount: rows.length,
+      posts: await hydratePosts(rows),
+      suggestedQuestions: [
+        `What is ${founder.name.split(" ")[0]} learning right now?`,
+        `What does ${founder.name.split(" ")[0]} believe about building teams?`,
+        `What recent idea keeps coming up?`,
+      ],
+    }),
+  );
+});
+
+router.patch("/profiles/:handle", async (req, res): Promise<void> => {
+  await ensureSeeded();
+  const params = UpdateProfileParams.safeParse(req.params);
+  const body = UpdateProfileBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid profile details" });
+    return;
+  }
+  const resolvedHandle = params.data.handle === "me" ? "maya" : params.data.handle;
+  const [existing] = await db
+    .select()
+    .from(foundersTable)
+    .where(eq(foundersTable.handle, resolvedHandle));
+  if (!existing) {
+    res.status(404).json({ error: "Founder not found" });
+    return;
+  }
+  const [founder] = await db
+    .update(foundersTable)
+    .set({
+      name: body.data.name,
+      handle: body.data.handle,
+      bio: body.data.bio,
+      location: body.data.location || null,
+      website: body.data.website || null,
+      avatarUrl: body.data.avatarDataUrl ?? existing.avatarUrl,
+    })
+    .where(eq(foundersTable.id, existing.id))
+    .returning();
+  const rows = await db
+    .select()
+    .from(postsTable)
+    .where(eq(postsTable.authorId, founder.id))
+    .orderBy(desc(postsTable.createdAt));
+  res.json(
+    UpdateProfileResponse.parse({
       founder: founderJson(founder),
       followerCount: founder.followerCount,
       followingCount: founder.followingCount,

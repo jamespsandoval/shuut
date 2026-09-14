@@ -1,19 +1,259 @@
 import { useState } from "react"
-import { useParams, Link } from "wouter"
-import { useGetProfile, useToggleFollow, useAskFounder } from "@workspace/api-client-react"
-import { getGetProfileQueryKey } from "@workspace/api-client-react"
+import { useParams, Link, useLocation } from "wouter"
+import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
 import { PostCard } from "@/components/post-card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, ArrowLeft, MessageSquareQuote } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Loader2, ArrowLeft, MessageSquareQuote, Camera, X, MapPin, Link as LinkIcon } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import * as Dialog from "@radix-ui/react-dialog"
+import { z } from "zod"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+
+const profileSchema = z.object({
+  name: z.string().min(1, "Name is required").max(80, "Name must be less than 80 characters"),
+  handle: z.string().min(2, "Handle must be at least 2 characters").max(30, "Handle must be less than 30 characters").regex(/^[A-Za-z0-9_]+$/, "Handle can only contain letters, numbers, and underscores"),
+  bio: z.string().max(240, "Bio must be less than 240 characters"),
+  location: z.string().max(80, "Location must be less than 80 characters").optional().default(""),
+  website: z.string().max(200, "Website must be less than 200 characters").optional().default(""),
+  avatarDataUrl: z.string().optional()
+})
+
+function EditProfileDialog({ 
+  profile, 
+  open, 
+  onOpenChange 
+}: { 
+  profile: any; 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void 
+}) {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const [, setLocation] = useLocation()
+  const updateProfile = useUpdateProfile()
+  
+  const form = useForm<z.infer<typeof profileSchema>>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: {
+      name: profile.founder.name,
+      handle: profile.founder.handle,
+      bio: profile.founder.bio || "",
+      location: profile.founder.location || "",
+      website: profile.founder.website || "",
+      avatarDataUrl: profile.founder.avatarUrl || ""
+    }
+  })
+
+  const avatarDataUrl = form.watch("avatarDataUrl")
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 3000000) {
+        toast({ title: "Error", description: "Image must be under 3MB", variant: "destructive" })
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        form.setValue("avatarDataUrl", event.target?.result as string, { shouldDirty: true })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const onSubmit = (data: z.infer<typeof profileSchema>) => {
+    updateProfile.mutate(
+      { handle: profile.founder.handle, data },
+      {
+        onSuccess: (updatedProfile) => {
+          toast({ title: "Profile updated successfully" })
+          onOpenChange(false)
+          
+          if (updatedProfile.founder.handle !== profile.founder.handle) {
+            setLocation(`/u/${updatedProfile.founder.handle}`)
+          } else {
+            queryClient.setQueryData(getGetProfileQueryKey(profile.founder.handle), (old: any) => {
+              if (!old) return old;
+              return { ...old, founder: updatedProfile.founder }
+            })
+            queryClient.invalidateQueries({ queryKey: ["/api/feed"] })
+          }
+        },
+        onError: () => {
+          toast({ title: "Error", description: "Failed to update profile", variant: "destructive" })
+        }
+      }
+    )
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/60 z-[60] animate-in fade-in" />
+        <Dialog.Content className="fixed left-[50%] top-[50%] z-[60] w-full max-w-xl h-full sm:h-auto sm:max-h-[90vh] translate-x-[-50%] translate-y-[-50%] bg-card sm:rounded-2xl shadow-xl flex flex-col animate-in fade-in zoom-in-95 slide-in-from-bottom-10 sm:slide-in-from-bottom-0">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 shrink-0">
+                <div className="flex items-center gap-6">
+                  <Dialog.Close asChild>
+                    <Button variant="ghost" size="icon" className="rounded-full shrink-0 hover:bg-secondary">
+                      <X className="w-5 h-5" />
+                    </Button>
+                  </Dialog.Close>
+                  <Dialog.Title className="text-xl font-bold text-foreground">Edit profile</Dialog.Title>
+                </div>
+                <Button 
+                  type="submit" 
+                  disabled={!form.formState.isDirty || updateProfile.isPending}
+                  className="rounded-full px-5 font-bold"
+                >
+                  {updateProfile.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Save
+                </Button>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-4 pb-1">
+                  <div className="relative group w-[112px] h-[112px]">
+                    <div 
+                      className="w-[112px] h-[112px] rounded-full border-4 border-card flex items-center justify-center text-white font-bold text-4xl overflow-hidden bg-secondary relative shadow-sm"
+                      style={{ backgroundColor: profile.founder.avatarColor || '#3B82F6' }}
+                    >
+                      {avatarDataUrl ? (
+                        <img src={avatarDataUrl} alt="Profile headshot preview" className="w-full h-full object-cover" />
+                      ) : (
+                        profile.founder.name.charAt(0).toUpperCase()
+                      )}
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity cursor-pointer">
+                        <Camera className="w-7 h-7 text-white" />
+                      </div>
+                    </div>
+                    <input 
+                      type="file" 
+                      accept="image/png,image/jpeg,image/webp" 
+                      aria-label="Upload profile headshot"
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full rounded-full"
+                      onChange={handleImageChange}
+                    />
+                  </div>
+                </div>
+                 
+                 <div className="p-4 space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1">
+                        <FormLabel className="text-muted-foreground text-xs font-medium uppercase tracking-wider ml-1">Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Name" {...field} className="h-14 bg-transparent focus-visible:ring-1 text-lg rounded-xl" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="handle"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1">
+                        <FormLabel className="text-muted-foreground text-xs font-medium uppercase tracking-wider ml-1">Handle</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-lg">@</span>
+                            <Input placeholder="handle" {...field} className="h-14 pl-9 bg-transparent focus-visible:ring-1 text-lg rounded-xl" />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="bio"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1">
+                        <FormLabel className="text-muted-foreground text-xs font-medium uppercase tracking-wider ml-1">Bio</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Bio" 
+                            {...field} 
+                            className="min-h-[120px] resize-none bg-transparent focus-visible:ring-1 text-lg rounded-xl py-3"
+                            onChange={(e) => {
+                              if (e.target.value.length <= 240) {
+                                field.onChange(e)
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <div className="flex justify-end mt-1">
+                          <span className="text-xs text-muted-foreground">{field.value?.length || 0} / 240</span>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1">
+                        <FormLabel className="text-muted-foreground text-xs font-medium uppercase tracking-wider ml-1">Location</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Location" {...field} className="h-14 bg-transparent focus-visible:ring-1 text-lg rounded-xl" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1">
+                        <FormLabel className="text-muted-foreground text-xs font-medium uppercase tracking-wider ml-1">Website</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Website" {...field} className="h-14 bg-transparent focus-visible:ring-1 text-lg rounded-xl" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </form>
+          </Form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
 
 export default function Profile() {
   const { handle } = useParams()
-  const { data: profile, isLoading, error } = useGetProfile(handle || "")
+  const resolvedHandle = handle === "me" ? "maya" : (handle || "")
+  const isCurrentUser = resolvedHandle === "maya"
+
+  const { data: profile, isLoading, error } = useGetProfile(resolvedHandle)
   const queryClient = useQueryClient()
   const toggleFollow = useToggleFollow()
   const askFounder = useAskFounder()
@@ -22,6 +262,8 @@ export default function Profile() {
   const [askQuestion, setAskQuestion] = useState("")
   const [askDialogOpen, setAskDialogOpen] = useState(false)
   const [askAnswer, setAskAnswer] = useState<{ answer: string; hasContext: boolean } | null>(null)
+  
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   const handleFollowToggle = () => {
     if (!profile) return
@@ -29,7 +271,7 @@ export default function Profile() {
       { handle: profile.founder.handle },
       {
         onSuccess: (data) => {
-          queryClient.setQueryData(getGetProfileQueryKey(handle || ""), (old: any) => {
+          queryClient.setQueryData(getGetProfileQueryKey(resolvedHandle), (old: any) => {
             if (!old) return old
             return {
               ...old,
@@ -46,10 +288,10 @@ export default function Profile() {
   }
 
   const handleAskSubmit = () => {
-    if (!handle || !askQuestion.trim()) return
+    if (!resolvedHandle || !askQuestion.trim()) return
     setAskAnswer(null)
     askFounder.mutate(
-      { handle, data: { question: askQuestion } },
+      { handle: resolvedHandle, data: { question: askQuestion } },
       {
         onSuccess: (res) => {
           setAskAnswer({ answer: res.answer, hasContext: res.hasEnoughContext })
@@ -107,113 +349,150 @@ export default function Profile() {
           <div className="px-6 py-8 border-b border-border/30 bg-card">
             <div className="flex justify-between items-start mb-6">
               <div 
-                className="w-24 h-24 rounded-full border-4 border-background flex items-center justify-center text-white font-bold text-4xl shadow-md"
+                className="w-[112px] h-[112px] rounded-full border-4 border-card flex items-center justify-center text-white font-bold text-4xl shadow-sm overflow-hidden"
                 style={{ backgroundColor: profile.founder.avatarColor || '#3B82F6' }}
               >
-                {profile.founder.name.charAt(0).toUpperCase()}
+                {profile.founder.avatarUrl ? (
+                  <img src={profile.founder.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  profile.founder.name.charAt(0).toUpperCase()
+                )}
               </div>
               
               <div className="flex gap-3">
-                <Dialog.Root open={askDialogOpen} onOpenChange={resetAsk}>
-                  <Dialog.Trigger asChild>
-                    <Button variant="outline" className="rounded-full gap-2">
-                      <MessageSquareQuote className="w-4 h-4" />
-                      Ask Me
-                    </Button>
-                  </Dialog.Trigger>
-                  <Dialog.Portal>
-                    <Dialog.Overlay className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 animate-in fade-in" />
-                    <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] rounded-2xl bg-card border border-border shadow-xl p-6 animate-in fade-in zoom-in-95 slide-in-from-left-1/2 slide-in-from-top-[48%]">
-                      <Dialog.Title className="text-xl font-bold text-foreground mb-4">
-                        Ask {profile.founder.name}
-                      </Dialog.Title>
-                      <Dialog.Description className="text-sm text-muted-foreground mb-6">
-                        Ask an AI agent trained exclusively on their past voice notes and transcripts.
-                      </Dialog.Description>
+                {isCurrentUser ? (
+                  <Button 
+                    variant="outline" 
+                    className="rounded-full px-6 font-bold"
+                    onClick={() => setEditDialogOpen(true)}
+                  >
+                    Edit profile
+                  </Button>
+                ) : (
+                  <>
+                    <Dialog.Root open={askDialogOpen} onOpenChange={resetAsk}>
+                      <Dialog.Trigger asChild>
+                        <Button variant="outline" className="rounded-full gap-2 font-bold">
+                          <MessageSquareQuote className="w-4 h-4" />
+                          Ask Me
+                        </Button>
+                      </Dialog.Trigger>
+                      <Dialog.Portal>
+                        <Dialog.Overlay className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 animate-in fade-in" />
+                        <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%] rounded-2xl bg-card border border-border shadow-xl p-6 animate-in fade-in zoom-in-95 slide-in-from-left-1/2 slide-in-from-top-[48%]">
+                          <Dialog.Title className="text-xl font-bold text-foreground mb-4">
+                            Ask {profile.founder.name}
+                          </Dialog.Title>
+                          <Dialog.Description className="text-sm text-muted-foreground mb-6">
+                            Ask an AI agent trained exclusively on their past voice notes and transcripts.
+                          </Dialog.Description>
 
-                      {!askAnswer ? (
-                        <div className="space-y-4">
-                          <Textarea 
-                            value={askQuestion}
-                            onChange={e => setAskQuestion(e.target.value)}
-                            placeholder="What's your framework for hiring?"
-                            className="min-h-[120px]"
-                          />
-                          
-                          {profile.suggestedQuestions.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-4">
-                              {profile.suggestedQuestions.map((q, i) => (
-                                <button
-                                  key={i}
-                                  onClick={() => setAskQuestion(q)}
-                                  className="text-xs bg-secondary hover:bg-primary/20 hover:text-primary text-muted-foreground px-3 py-1.5 rounded-full transition-colors text-left"
+                          {!askAnswer ? (
+                            <div className="space-y-4">
+                              <Textarea 
+                                value={askQuestion}
+                                onChange={e => setAskQuestion(e.target.value)}
+                                placeholder="What's your framework for hiring?"
+                                className="min-h-[120px]"
+                              />
+                              
+                              {profile.suggestedQuestions.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mt-4">
+                                  {profile.suggestedQuestions.map((q, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => setAskQuestion(q)}
+                                      className="text-xs bg-secondary hover:bg-primary/20 hover:text-primary text-muted-foreground px-3 py-1.5 rounded-full transition-colors text-left"
+                                    >
+                                      {q}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="flex justify-end gap-3 mt-6">
+                                <Dialog.Close asChild>
+                                  <Button variant="ghost">Cancel</Button>
+                                </Dialog.Close>
+                                <Button 
+                                  onClick={handleAskSubmit} 
+                                  disabled={askFounder.isPending || !askQuestion.trim()}
+                                  className="rounded-full gap-2 px-6"
                                 >
-                                  {q}
-                                </button>
-                              ))}
+                                  {askFounder.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                                  Ask Agent
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                              <div className="bg-secondary/30 p-4 rounded-xl border border-border/50">
+                                <p className="text-foreground font-medium mb-4">{askQuestion}</p>
+                                
+                                <div className="prose prose-sm dark:prose-invert">
+                                  <p className="whitespace-pre-wrap">{askAnswer.answer}</p>
+                                </div>
+
+                                {!askAnswer.hasContext && (
+                                  <div className="mt-4 p-3 bg-destructive/10 text-destructive text-xs rounded-lg border border-destructive/20">
+                                    ⚠️ I don't have enough context from their past posts to answer this confidently.
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="flex justify-end">
+                                <Button variant="outline" onClick={() => setAskAnswer(null)}>
+                                  Ask Another
+                                </Button>
+                              </div>
                             </div>
                           )}
+                        </Dialog.Content>
+                      </Dialog.Portal>
+                    </Dialog.Root>
 
-                          <div className="flex justify-end gap-3 mt-6">
-                            <Dialog.Close asChild>
-                              <Button variant="ghost">Cancel</Button>
-                            </Dialog.Close>
-                            <Button 
-                              onClick={handleAskSubmit} 
-                              disabled={askFounder.isPending || !askQuestion.trim()}
-                              className="rounded-full gap-2 px-6"
-                            >
-                              {askFounder.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                              Ask Agent
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-6 animate-in slide-in-from-bottom-4">
-                          <div className="bg-secondary/30 p-4 rounded-xl border border-border/50">
-                            <p className="text-foreground font-medium mb-4">{askQuestion}</p>
-                            
-                            <div className="prose prose-sm dark:prose-invert">
-                              <p className="whitespace-pre-wrap">{askAnswer.answer}</p>
-                            </div>
-
-                            {!askAnswer.hasContext && (
-                              <div className="mt-4 p-3 bg-destructive/10 text-destructive text-xs rounded-lg border border-destructive/20">
-                                ⚠️ I don't have enough context from their past posts to answer this confidently.
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="flex justify-end">
-                            <Button variant="outline" onClick={() => setAskAnswer(null)}>
-                              Ask Another
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </Dialog.Content>
-                  </Dialog.Portal>
-                </Dialog.Root>
-
-                <Button 
-                  onClick={handleFollowToggle}
-                  disabled={toggleFollow.isPending}
-                  variant={profile.founder.isFollowing ? "outline" : "default"}
-                  className="rounded-full px-6 min-w-[100px]"
-                >
-                  {profile.founder.isFollowing ? "Following" : "Follow"}
-                </Button>
+                    <Button 
+                      onClick={handleFollowToggle}
+                      disabled={toggleFollow.isPending}
+                      variant={profile.founder.isFollowing ? "outline" : "default"}
+                      className="rounded-full px-6 min-w-[100px] font-bold"
+                    >
+                      {profile.founder.isFollowing ? "Following" : "Follow"}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="mb-4">
-              <h2 className="text-2xl font-bold text-foreground">{profile.founder.name}</h2>
-              <p className="text-muted-foreground">@{profile.founder.handle}</p>
+            <div className="mb-3">
+              <h2 className="text-2xl font-bold text-foreground leading-tight">{profile.founder.name}</h2>
+              <p className="text-muted-foreground text-[15px]">@{profile.founder.handle}</p>
             </div>
 
-            <p className="text-foreground leading-relaxed mb-6 whitespace-pre-wrap">
-              {profile.founder.bio}
-            </p>
+            {profile.founder.bio && (
+              <p className="text-foreground leading-relaxed mb-3 whitespace-pre-wrap text-[15px]">
+                {profile.founder.bio}
+              </p>
+            )}
+
+            {(profile.founder.location || profile.founder.website) && (
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-muted-foreground mb-4 text-[15px]">
+                {profile.founder.location && (
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-4 h-4" />
+                    <span>{profile.founder.location}</span>
+                  </div>
+                )}
+                {profile.founder.website && (
+                  <div className="flex items-center gap-1">
+                    <LinkIcon className="w-4 h-4" />
+                    <a href={profile.founder.website.startsWith('http') ? profile.founder.website : `https://${profile.founder.website}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      {profile.founder.website.replace(/^https?:\/\//, '')}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-6 text-sm">
               <div className="flex gap-1.5 items-center">
@@ -242,8 +521,15 @@ export default function Profile() {
               ))
             )}
           </div>
+          
+          <EditProfileDialog 
+            profile={profile} 
+            open={editDialogOpen} 
+            onOpenChange={setEditDialogOpen} 
+          />
         </div>
       )}
     </Layout>
   )
 }
+

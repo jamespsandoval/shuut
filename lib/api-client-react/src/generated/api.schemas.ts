@@ -15,6 +15,12 @@ export interface Founder {
   handle: string;
   bio: string;
   avatarColor: string;
+  /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
+  location?: string | null;
+  /** @nullable */
+  website?: string | null;
   isFollowing: boolean;
 }
 
@@ -63,6 +69,28 @@ export interface ProfileDetail {
   postCount: number;
   posts: Post[];
   suggestedQuestions: string[];
+}
+
+export interface ProfileUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /**
+     * @minLength 2
+     * @maxLength 30
+     * @pattern ^[A-Za-z0-9_]+$
+     */
+  handle: string;
+  /** @maxLength 240 */
+  bio: string;
+  /** @maxLength 80 */
+  location?: string;
+  /** @maxLength 200 */
+  website?: string;
+  /** @maxLength 3000000 */
+  avatarDataUrl?: string;
 }
 
 export interface PostInput {

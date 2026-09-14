@@ -17,6 +17,7 @@ export * from './post';
 export * from './postInput';
 export * from './postViewerReaction';
 export * from './profileDetail';
+export * from './profileUpdate';
 export * from './reactionInput';
 export * from './reactionInputEmojiType';
 export * from './reactionSummary';
