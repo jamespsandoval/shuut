@@ -31,6 +31,14 @@ const profileSchema = z.object({
   website: z.string().max(200, "Website must be less than 200 characters").optional().default(""),
 })
 
+function csrfToken(): string | null {
+  const entry = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("shu_csrf="))
+  return entry ? decodeURIComponent(entry.slice("shu_csrf=".length)) : null
+}
+
 function EditProfileDialog({ 
   profile, 
   open, 
@@ -83,9 +91,14 @@ function EditProfileDialog({
   }
 
   const uploadHeadshot = async (file: File): Promise<string> => {
+    const csrf = csrfToken()
     const response = await fetch("/api/storage/uploads/request-url", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
       body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
     })
     const payload = await response.json().catch(() => ({}))
