@@ -149,9 +149,9 @@ function EditProfileDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/60 z-[60] animate-in fade-in" />
-        <Dialog.Content className="fixed left-[50%] top-[50%] z-[60] w-full max-w-xl h-full sm:h-auto sm:max-h-[90vh] translate-x-[-50%] translate-y-[-50%] bg-card sm:rounded-2xl shadow-xl flex flex-col animate-in fade-in zoom-in-95 slide-in-from-bottom-10 sm:slide-in-from-bottom-0">
+        <Dialog.Content className="fixed left-[50%] top-[50%] z-[60] flex h-[100dvh] max-h-[100dvh] w-full max-w-xl translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden bg-card shadow-xl animate-in fade-in zoom-in-95 slide-in-from-bottom-10 sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl sm:slide-in-from-bottom-0">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 shrink-0">
                 <div className="flex items-center gap-6">
@@ -173,7 +173,7 @@ function EditProfileDialog({
               </div>
               
               {/* Content */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <div className="p-4 pb-1">
                   <div className="relative group w-[112px] h-[112px]">
                     <div 
@@ -209,7 +209,7 @@ function EditProfileDialog({
                   {uploadError && <p className="mt-2 text-sm text-destructive">{uploadError}</p>}
                 </div>
                  
-                 <div className="p-4 space-y-6">
+                 <div className="space-y-6 p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                   <FormField
                     control={form.control}
                     name="name"
