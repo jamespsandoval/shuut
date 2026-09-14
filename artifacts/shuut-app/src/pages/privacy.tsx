@@ -24,7 +24,7 @@ export default function Privacy() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">4. Data Sharing & Vendors</h2>
-          <p>We share your data with trusted third-party vendors who provide essential infrastructure, including hosting, authentication, storage, and transcription services. For this deployment, our published app compute, database, and object storage are hosted in an EU-based region selected through our hosting provider's regional hosting settings. We do not sell your personal data, nor do we use it for advertising purposes.</p>
+          <p>We share your data with trusted third-party vendors who provide essential infrastructure, including hosting, authentication, storage, email delivery, and transcription services. For this deployment, our published app compute, database, and object storage are hosted in North America. We do not sell your personal data, nor do we use it for advertising purposes.</p>
         </section>
 
         <section>
@@ -33,13 +33,13 @@ export default function Privacy() {
         </section>
 
         <section>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">6. Your UK and EU Data Rights</h2>
-          <p>Under applicable UK and EU data protection law, you may have the right to access, rectify, erase, restrict, or object to the processing of your personal data, as well as the right to data portability and to withdraw consent where processing is based on consent. You can exercise these rights by managing your account settings or contacting us.</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">6. Your Data Protection Rights</h2>
+          <p>Under applicable data protection law, including UK GDPR, you may have the right to access, rectify, erase, restrict, or object to the processing of your personal data, as well as the right to data portability and to withdraw consent where processing is based on consent. The rights available to you may depend on where you live. You can exercise these rights by managing your account settings or contacting us.</p>
         </section>
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">7. Security & International Transfers</h2>
-          <p>We implement reasonable security measures to protect your data. Our primary hosting infrastructure for this deployment is located in an EU-based region. However, some global service providers, including authentication or transcription providers, may transfer or process information outside the UK or EU, subject to appropriate legal safeguards such as adequacy decisions or approved contractual protections.</p>
+          <p>We implement reasonable security measures to protect your data. Our primary hosting infrastructure for this deployment is located in North America, so personal data may be transferred to and processed outside the United Kingdom. Some of our other service providers may also process information in countries outside the United Kingdom. Where required by applicable law, we use appropriate safeguards for these international transfers, such as adequacy regulations or approved contractual protections.</p>
         </section>
 
         <section>
