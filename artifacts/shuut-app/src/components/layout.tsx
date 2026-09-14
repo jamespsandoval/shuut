@@ -7,22 +7,25 @@ import { useTheme } from "./theme-provider"
 import { useGetProfile } from "@workspace/api-client-react"
 import * as Dialog from "@radix-ui/react-dialog"
 import { Button } from "./ui/button"
+import { useClerk } from "@clerk/react"
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation()
   const { theme } = useTheme()
   const { data: profile } = useGetProfile('maya')
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
+  
+  const { signOut } = useClerk()
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
 
   const navItems = [
-    { icon: Home, label: "Feed", href: "/" },
+    { icon: Home, label: "Feed", href: "/feed" },
     { icon: User, label: "Profile", href: "/u/me" }, // Stub for current user
   ]
 
   const handleLogout = () => {
-    // TODO: Call auth sign-out endpoint when implemented
     setLogoutDialogOpen(false)
-    setLocation("/")
+    signOut({ redirectUrl: basePath || "/" })
   }
 
   return (
@@ -30,7 +33,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-[280px] sticky top-0 h-[100dvh] border-r border-border/40 p-6 shrink-0 z-10">
         <div className="mb-4">
-          <Link href="/" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
+          <Link href="/feed" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
             <img 
               src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
               alt="SHÜÜT" 
@@ -41,7 +44,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
         <nav className="flex flex-col gap-4 flex-1">
           {navItems.map((item) => {
-            const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href))
+            const isActive = location === item.href || (item.href !== "/feed" && location.startsWith(item.href))
             return (
               <Link 
                 key={item.href} 
@@ -119,7 +122,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile Bottom Nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-lg border-t border-border flex items-center justify-around z-50 pb-safe">
         {navItems.map((item) => {
-          const isActive = location === item.href
+          const isActive = location === item.href || (item.href !== "/feed" && location.startsWith(item.href))
           return (
             <Link key={item.href} href={item.href} className="p-3 rounded-full hover:bg-secondary/50 transition-colors">
               <item.icon 
