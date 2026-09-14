@@ -5,6 +5,7 @@ type AuthUser = {
   id: string;
   email: string;
   emailVerified: boolean;
+  onboardingComplete: boolean;
 };
 
 type AuthContextType = {

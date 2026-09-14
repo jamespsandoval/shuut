@@ -1,6 +1,6 @@
 # SHÜÜT
 
-A voice-note-first social feed where London founders publish short recordings, readable transcripts, and a growing cited record of how they think.
+A voice-note-first social feed where people publish short recordings, readable transcripts, and a growing cited record of how they think.
 
 ## Run & Operate
 
@@ -25,22 +25,22 @@ A voice-note-first social feed where London founders publish short recordings, r
 - `artifacts/shuut-app` — React web app and SHÜÜT visual system
 - `artifacts/api-server/src/routes/shuut.ts` — feed, profile, post, reaction, follow, reshüüt, and Ask Me API
 - `lib/api-spec/openapi.yaml` — source of truth for the API contract
-- `lib/db/src/schema/shuut.ts` — persistent founder and post data
+- `lib/db/src/schema/shuut.ts` — persistent profile and post data
 
 ## Architecture decisions
 
 - Web first, mobile-first responsive UI; business data is exposed through a platform-neutral JSON API.
-- The initial experience uses a seeded current founder so the social loop can be evaluated before full account onboarding is connected.
+- New accounts complete a two-step name and lowercase-username onboarding before any in-app navigation or feed content appears.
 - Everyone is the default launch feed; Following is available but secondary during the community cold start.
 - Recording uses the browser MediaRecorder API with a hard 90-second limit and an editable transcript before publish.
 
 ## Product
 
-Founders can record and publish voice posts, scan a chronological transcript-first feed, react with the SHÜÜT reaction set, reshüüt, follow profiles, share direct post links, and ask a profile-scoped agent questions with source-post citations.
+Members can record and publish voice posts, scan a chronological transcript-first feed, react with the SHÜÜT reaction set, reshüüt, follow profiles, share direct post links, and ask a profile-scoped agent questions with source-post citations.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Use neutral audience language such as people, members, profiles, and usernames. Do not describe SHÜÜT as exclusively for founders.
 
 ## Gotchas
 

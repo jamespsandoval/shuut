@@ -84,6 +84,30 @@ paths:
       tags: [auth]
       responses:
         '204': { description: Session ended }
+  /auth/onboarding:
+    post:
+      operationId: completeOnboarding
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OnboardingInput' } } }
+      responses:
+        '200':
+          description: Profile created and onboarding completed
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/usernames/{handle}/availability:
+    get:
+      operationId: checkUsernameAvailability
+      tags: [auth]
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 30, pattern: '^[a-z0-9_]+$' }
+      responses:
+        '200':
+          description: Username availability
+          content: { application/json: { schema: { $ref: '#/components/schemas/UsernameAvailability' } } }
   /account:
     delete:
       operationId: deleteAccount
@@ -255,11 +279,12 @@ components:
   schemas:
     AuthUser:
       type: object
-      required: [id, email, emailVerified]
+      required: [id, email, emailVerified, onboardingComplete]
       properties:
         id: { type: string }
         email: { type: string, format: email }
         emailVerified: { type: boolean }
+        onboardingComplete: { type: boolean }
     AuthSession:
       type: object
       required: [user]
@@ -286,6 +311,19 @@ components:
       required: [email]
       properties:
         email: { type: string, format: email, maxLength: 254 }
+    OnboardingInput:
+      type: object
+      required: [firstName, lastName, handle]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 40 }
+        lastName: { type: string, minLength: 1, maxLength: 40 }
+        handle: { type: string, minLength: 2, maxLength: 30, pattern: '^[a-z0-9_]+$' }
+    UsernameAvailability:
+      type: object
+      required: [handle, available]
+      properties:
+        handle: { type: string }
+        available: { type: boolean }
     ContactMessageInput:
       type: object
       required: [firstName, lastName, email, message, consent]

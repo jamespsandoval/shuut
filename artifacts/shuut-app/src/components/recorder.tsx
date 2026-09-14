@@ -17,6 +17,7 @@ function getSupportedRecordingType() {
 }
 
 export function Recorder() {
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
   const [isRecording, setIsRecording] = useState(false)
   const [time, setTime] = useState(0)
   const [audioData, setAudioData] = useState<string | null>(null)
@@ -217,13 +218,21 @@ export function Recorder() {
 
   return (
     <div className="bg-card border-b border-border/50 p-6 flex flex-col items-center justify-center min-h-[140px] transition-all">
-      <div className="text-center mb-4">
-        <h3 className="font-semibold text-lg text-foreground">
-          {isRecording ? "Recording..." : "Speak up"}
-        </h3>
-        <p className="text-sm text-muted-foreground font-mono tabular-nums h-5">
-          {isRecording ? `${formatTime(time)} / 1:30` : "Tap to SHÜÜT"}
-        </p>
+      <div className="flex h-14 items-center justify-center mb-4">
+        {isRecording ? (
+          <div className="text-center">
+            <h3 className="font-semibold text-lg text-foreground">Recording...</h3>
+            <p className="text-sm text-muted-foreground font-mono tabular-nums h-5">
+              {formatTime(time)} / 1:30
+            </p>
+          </div>
+        ) : (
+          <img
+            src={`${basePath}/shuut-logo.png`}
+            alt="SHÜÜT"
+            className="h-14 w-auto object-contain"
+          />
+        )}
       </div>
 
       <button

@@ -40,7 +40,8 @@ export const VerifyEmailResponse = zod.object({
   "user": zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
-  "emailVerified": zod.boolean()
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean()
 })
 })
 
@@ -72,7 +73,8 @@ export const VerifyLoginResponse = zod.object({
   "user": zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
-  "emailVerified": zod.boolean()
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean()
 })
 })
 
@@ -81,12 +83,57 @@ export const GetCurrentUserResponse = zod.object({
   "user": zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
-  "emailVerified": zod.boolean()
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean()
 })
 })
 
 
 export const LogoutResponse = zod.void()
+
+
+export const completeOnboardingBodyFirstNameMax = 40;
+
+export const completeOnboardingBodyLastNameMax = 40;
+
+export const completeOnboardingBodyHandleMin = 2;
+export const completeOnboardingBodyHandleMax = 30;
+
+
+export const completeOnboardingBodyHandleRegExp = new RegExp('^[a-z0-9_]+$');
+
+
+export const CompleteOnboardingBody = zod.object({
+  "firstName": zod.string().min(1).max(completeOnboardingBodyFirstNameMax),
+  "lastName": zod.string().min(1).max(completeOnboardingBodyLastNameMax),
+  "handle": zod.string().min(completeOnboardingBodyHandleMin).max(completeOnboardingBodyHandleMax).regex(completeOnboardingBodyHandleRegExp)
+})
+
+export const CompleteOnboardingResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean()
+})
+})
+
+
+export const checkUsernameAvailabilityPathHandleMin = 2;
+export const checkUsernameAvailabilityPathHandleMax = 30;
+
+
+export const checkUsernameAvailabilityPathHandleRegExp = new RegExp('^[a-z0-9_]+$');
+
+
+export const CheckUsernameAvailabilityParams = zod.object({
+  "handle": zod.coerce.string().min(checkUsernameAvailabilityPathHandleMin).max(checkUsernameAvailabilityPathHandleMax).regex(checkUsernameAvailabilityPathHandleRegExp)
+})
+
+export const CheckUsernameAvailabilityResponse = zod.object({
+  "handle": zod.string(),
+  "available": zod.boolean()
+})
 
 
 export const DeleteAccountResponse = zod.void()

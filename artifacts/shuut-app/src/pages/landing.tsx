@@ -63,12 +63,14 @@ export default function Landing() {
     }
   };
 
-  const handleCodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitCode = (codeToVerify: string) => {
+    if (codeToVerify.length !== 6 || verifyEmailMutation.isPending || verifyLoginMutation.isPending) {
+      return;
+    }
     setError(null);
     
     if (mode === 'verify-email') {
-      verifyEmailMutation.mutate({ data: { email, code } }, {
+      verifyEmailMutation.mutate({ data: { email, code: codeToVerify } }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
         },
@@ -77,7 +79,7 @@ export default function Landing() {
         }
       });
     } else if (mode === 'verify-login') {
-      verifyLoginMutation.mutate({ data: { email, code } }, {
+      verifyLoginMutation.mutate({ data: { email, code: codeToVerify } }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
         },
@@ -86,6 +88,11 @@ export default function Landing() {
         }
       });
     }
+  };
+
+  const handleCodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitCode(code);
   };
   
   const resetFlow = () => {
@@ -217,7 +224,12 @@ export default function Landing() {
                         maxLength={6}
                         placeholder="000000"
                         value={code}
-                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                        onChange={(e) => {
+                          const nextCode = e.target.value.replace(/\D/g, '').slice(0, 6);
+                          setCode(nextCode);
+                          setError(null);
+                          if (nextCode.length === 6) submitCode(nextCode);
+                        }}
                         required
                         disabled={isPending}
                         className="h-16 text-center text-2xl tracking-[0.5em] font-mono font-bold rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground/30"

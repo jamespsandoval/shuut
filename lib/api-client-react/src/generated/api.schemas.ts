@@ -9,6 +9,7 @@ export interface AuthUser {
   id: string;
   email: string;
   emailVerified: boolean;
+  onboardingComplete: boolean;
 }
 
 export interface AuthSession {
@@ -34,6 +35,30 @@ export interface EmailCodeInput {
 export interface LoginInput {
   /** @maxLength 254 */
   email: string;
+}
+
+export interface OnboardingInput {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  firstName: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  lastName: string;
+  /**
+     * @minLength 2
+     * @maxLength 30
+     * @pattern ^[a-z0-9_]+$
+     */
+  handle: string;
+}
+
+export interface UsernameAvailability {
+  handle: string;
+  available: boolean;
 }
 
 export interface ContactMessageInput {

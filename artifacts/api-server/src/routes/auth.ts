@@ -3,11 +3,15 @@ import { Router, type IRouter, type Response } from "express";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import {
   LoginBody,
+  CheckUsernameAvailabilityParams,
+  CheckUsernameAvailabilityResponse,
+  CompleteOnboardingBody,
+  CompleteOnboardingResponse,
   RegisterBody,
   VerifyEmailBody,
   VerifyLoginBody,
 } from "@workspace/api-zod";
-import { authCodesTable, db, sessionsTable, usersTable } from "@workspace/db";
+import { authCodesTable, db, foundersTable, sessionsTable, usersTable } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
 import {
   clearSessionCookie,
@@ -134,8 +138,20 @@ async function createSession(res: Response, userId: string) {
   });
 }
 
-function sessionJson(user: typeof usersTable.$inferSelect) {
-  return { user: { id: user.id, email: user.email, emailVerified: Boolean(user.emailVerifiedAt) } };
+async function sessionJson(user: typeof usersTable.$inferSelect) {
+  const [profile] = await db
+    .select({ id: foundersTable.id })
+    .from(foundersTable)
+    .where(eq(foundersTable.userId, user.id))
+    .limit(1);
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      onboardingComplete: Boolean(profile),
+    },
+  };
 }
 
 router.post("/register", async (req, res): Promise<void> => {
@@ -197,7 +213,7 @@ router.post("/verify-email", async (req, res): Promise<void> => {
     .where(eq(usersTable.id, user.id))
     .returning();
   await createSession(res, user.id);
-  res.json(sessionJson(verified));
+  res.json(await sessionJson(verified));
 });
 
 router.post("/login", async (req, res): Promise<void> => {
@@ -242,7 +258,7 @@ router.post("/login/verify", async (req, res): Promise<void> => {
     return;
   }
   await createSession(res, user.id);
-  res.json(sessionJson(user));
+  res.json(await sessionJson(user));
 });
 
 router.get("/me", async (req, res): Promise<void> => {
@@ -256,7 +272,79 @@ router.get("/me", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.json(sessionJson(user));
+  res.json(await sessionJson(user));
+});
+
+router.post("/onboarding", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const body = CompleteOnboardingBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Enter your name and a valid lowercase username." });
+    return;
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const [existingProfile] = await db
+    .select({ id: foundersTable.id })
+    .from(foundersTable)
+    .where(eq(foundersTable.userId, userId))
+    .limit(1);
+  if (existingProfile) {
+    res.json(CompleteOnboardingResponse.parse(await sessionJson(user)));
+    return;
+  }
+  const handle = body.data.handle.trim().toLowerCase();
+  const [taken] = await db
+    .select({ id: foundersTable.id })
+    .from(foundersTable)
+    .where(eq(foundersTable.handle, handle))
+    .limit(1);
+  if (taken) {
+    res.status(409).json({ error: "That username is already taken." });
+    return;
+  }
+  await db.insert(foundersTable).values({
+    userId,
+    name: `${body.data.firstName.trim()} ${body.data.lastName.trim()}`,
+    handle,
+    bio: "",
+    avatarColor: "#3B82F6",
+    isFollowing: false,
+    followerCount: 0,
+    followingCount: 0,
+  });
+  res.json(CompleteOnboardingResponse.parse(await sessionJson(user)));
+});
+
+router.get("/usernames/:handle/availability", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const params = CheckUsernameAvailabilityParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Enter at least two lowercase letters, numbers, or underscores." });
+    return;
+  }
+  const [existing] = await db
+    .select({ userId: foundersTable.userId })
+    .from(foundersTable)
+    .where(eq(foundersTable.handle, params.data.handle))
+    .limit(1);
+  res.json(
+    CheckUsernameAvailabilityResponse.parse({
+      handle: params.data.handle,
+      available: !existing || existing.userId === userId,
+    }),
+  );
 });
 
 router.post("/logout", async (req, res): Promise<void> => {

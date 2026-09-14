@@ -381,7 +381,7 @@ export default function Profile() {
         onError: () => {
           toast({
             title: "Error",
-            description: "Failed to ask the founder.",
+            description: "We could not send your question.",
             variant: "destructive"
           })
         }

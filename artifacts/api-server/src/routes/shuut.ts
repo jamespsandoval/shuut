@@ -65,19 +65,7 @@ async function cleanupExpiredProfileUploads() {
 
 async function currentFounder(userId: string) {
   const [linked] = await db.select().from(foundersTable).where(eq(foundersTable.userId, userId));
-  if (linked) return linked;
-  const suffix = userId.replace(/[^A-Za-z0-9]/g, "").slice(-10).toLowerCase();
-  const [created] = await db.insert(foundersTable).values({
-    userId,
-    name: "New Founder",
-    handle: `founder_${suffix}`,
-    bio: "",
-    avatarColor: "#3B82F6",
-    isFollowing: false,
-    followerCount: 0,
-    followingCount: 0,
-  }).returning();
-  return created ?? null;
+  return linked ?? null;
 }
 
 const seedFounders = [
@@ -93,7 +81,7 @@ const seedFounders = [
   {
     name: "Alex Tan",
     handle: "alextan",
-    bio: "Founder at Fold. Thinking out loud about product, people and momentum.",
+    bio: "Building Fold. Thinking out loud about product, people and momentum.",
     avatarColor: "#3B82F6",
     isFollowing: true,
     followerCount: 428,
@@ -102,7 +90,7 @@ const seedFounders = [
   {
     name: "Priya Shah",
     handle: "priyashah",
-    bio: "Climate tech founder. London. Usually asking the uncomfortable question.",
+    bio: "Working in climate tech. London. Usually asking the uncomfortable question.",
     avatarColor: "#10B981",
     isFollowing: false,
     followerCount: 316,
@@ -111,6 +99,36 @@ const seedFounders = [
 ];
 
 async function ensureSeeded(): Promise<void> {
+  await db
+    .update(foundersTable)
+    .set({ bio: "Building Fold. Thinking out loud about product, people and momentum." })
+    .where(
+      and(
+        eq(foundersTable.handle, "alextan"),
+        eq(foundersTable.bio, "Founder at Fold. Thinking out loud about product, people and momentum."),
+      ),
+    );
+  await db
+    .update(foundersTable)
+    .set({ bio: "Working in climate tech. London. Usually asking the uncomfortable question." })
+    .where(
+      and(
+        eq(foundersTable.handle, "nia"),
+        eq(foundersTable.bio, "Climate tech founder. London. Usually asking the uncomfortable question."),
+      ),
+    );
+  await db
+    .update(postsTable)
+    .set({
+      transcript:
+        "The best conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
+    })
+    .where(
+      eq(
+        postsTable.transcript,
+        "The best founder conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
+      ),
+    );
   const existing = await db.select({ id: foundersTable.id }).from(foundersTable).limit(1);
   if (existing.length) return;
   const founders = await db.insert(foundersTable).values(seedFounders).returning();
@@ -119,7 +137,7 @@ async function ensureSeeded(): Promise<void> {
     {
       authorId: byHandle.get("alextan")!.id,
       transcript:
-        "The best founder conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
+        "The best conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
       durationSeconds: 28,
       goat: 18,
       rocket: 9,
@@ -254,7 +272,7 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     [founder] = await db.select().from(foundersTable).where(eq(foundersTable.handle, params.data.handle));
   }
   if (!founder) {
-    res.status(404).json({ error: "Founder not found" });
+    res.status(404).json({ error: "Profile not found" });
     return;
   }
   const rows = await db

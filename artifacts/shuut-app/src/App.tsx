@@ -20,6 +20,7 @@ import PostDetail from '@/pages/post-detail';
 import Profile from '@/pages/profile';
 import Explore from '@/pages/explore';
 import Landing from '@/pages/landing';
+import Onboarding from '@/pages/onboarding';
 import About from '@/pages/about';
 import Community from '@/pages/community';
 import Terms from '@/pages/terms';
@@ -39,7 +40,7 @@ const queryClient = new QueryClient({
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function HomeRedirect() {
-  const { isSignedIn, isLoading } = useAuth();
+  const { user, isSignedIn, isLoading } = useAuth();
   
   if (isLoading) {
     return (
@@ -50,6 +51,9 @@ function HomeRedirect() {
   }
 
   if (isSignedIn) {
+    if (!user?.onboardingComplete) {
+      return <Onboarding />;
+    }
     return <Redirect to="/feed" />;
   }
 
@@ -57,7 +61,7 @@ function HomeRedirect() {
 }
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
-  const { isSignedIn, isLoading } = useAuth();
+  const { user, isSignedIn, isLoading } = useAuth();
   
   return (
     <Route {...rest}>
@@ -71,6 +75,9 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
         }
 
         if (isSignedIn) {
+          if (!user?.onboardingComplete) {
+            return <Redirect to="/" />;
+          }
           return <Component params={params} />;
         }
         

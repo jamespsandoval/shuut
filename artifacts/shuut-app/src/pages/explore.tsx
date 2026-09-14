@@ -13,7 +13,7 @@ export default function Explore() {
           <Search className="w-8 h-8 text-muted-foreground" />
         </div>
         <h2 className="text-xl font-bold mb-2">Search the noise</h2>
-        <p className="text-muted-foreground">Find founders, topics, and signals.</p>
+        <p className="text-muted-foreground">Find people, topics, and signals.</p>
         <div className="mt-8 text-sm text-primary font-mono bg-primary/10 px-4 py-2 rounded-lg border border-primary/20">
           Coming soon
         </div>

@@ -33,6 +33,7 @@ import type {
   GetFeedParams,
   HealthStatus,
   LoginInput,
+  OnboardingInput,
   Post,
   PostInput,
   ProfileDetail,
@@ -40,7 +41,8 @@ import type {
   ReactionInput,
   RegistrationInput,
   UploadUrlRequest,
-  UploadUrlResponse
+  UploadUrlResponse,
+  UsernameAvailability
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -607,6 +609,159 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getLogoutMutationOptions(options));
     }
+
+export const getCompleteOnboardingUrl = () => {
+
+
+
+
+  return `/api/auth/onboarding`
+}
+
+export const completeOnboarding = async (onboardingInput: OnboardingInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AuthSession>(getCompleteOnboardingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(onboardingInput)
+  }
+);}
+
+
+
+
+
+export const getCompleteOnboardingMutationKey = () => ['completeOnboarding'] as const;
+
+export const getCompleteOnboardingMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,CompleteOnboardingMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,CompleteOnboardingMutationVariables, TContext> => {
+
+const mutationKey = getCompleteOnboardingMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeOnboarding>>, CompleteOnboardingMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  completeOnboarding(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteOnboardingMutationResult = NonNullable<Awaited<ReturnType<typeof completeOnboarding>>>
+    export type CompleteOnboardingMutationBody = BodyType<OnboardingInput>
+    export type CompleteOnboardingMutationError = ErrorType<unknown>
+    export type CompleteOnboardingMutationVariables = {data: BodyType<OnboardingInput>}
+
+    export const useCompleteOnboarding = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,CompleteOnboardingMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeOnboarding>>,
+        TError,
+        CompleteOnboardingMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCompleteOnboardingMutationOptions(options));
+    }
+
+export const getCheckUsernameAvailabilityUrl = (handle: string,) => {
+
+
+
+
+  return `/api/auth/usernames/${handle}/availability`
+}
+
+export const checkUsernameAvailability = async (handle: string, options?: Parameters<typeof customFetch>[1]): Promise<UsernameAvailability> => {
+
+  return customFetch<UsernameAvailability>(getCheckUsernameAvailabilityUrl(handle),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCheckUsernameAvailabilityQueryKey = (handle: string,) => {
+    return [
+    `/api/auth/usernames/${handle}/availability`
+    ] as const;
+    }
+
+
+export const getCheckUsernameAvailabilityQueryOptions = <TData = Awaited<ReturnType<typeof checkUsernameAvailability>>, TError = ErrorType<unknown>>(handle: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof checkUsernameAvailability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCheckUsernameAvailabilityQueryKey(handle);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof checkUsernameAvailability>>> = ({ signal }) => checkUsernameAvailability(handle, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: handle !== null && handle !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof checkUsernameAvailability>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type CheckUsernameAvailabilityQueryResult = NonNullable<Awaited<ReturnType<typeof checkUsernameAvailability>>>
+export type CheckUsernameAvailabilityQueryError = ErrorType<unknown>
+
+
+
+export function useCheckUsernameAvailability<TData = Awaited<ReturnType<typeof checkUsernameAvailability>>, TError = ErrorType<unknown>>(
+ handle: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof checkUsernameAvailability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getCheckUsernameAvailabilityQueryOptions(handle,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getDeleteAccountUrl = () => {
 
