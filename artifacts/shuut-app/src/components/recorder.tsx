@@ -10,6 +10,11 @@ import { useToast } from "@/hooks/use-toast"
 import { AudioPlayer } from "./audio-player"
 
 const MAX_DURATION = 90
+const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
+
+function getSupportedRecordingType() {
+  return RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
+}
 
 export function Recorder() {
   const [isRecording, setIsRecording] = useState(false)
@@ -47,7 +52,11 @@ export function Recorder() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      mediaRecorderRef.current = new MediaRecorder(stream)
+      const supportedType = getSupportedRecordingType()
+      mediaRecorderRef.current = new MediaRecorder(
+        stream,
+        supportedType ? { mimeType: supportedType } : undefined,
+      )
       chunksRef.current = []
       
       mediaRecorderRef.current.ondataavailable = (e) => {
@@ -55,7 +64,8 @@ export function Recorder() {
       }
       
       mediaRecorderRef.current.onstop = async () => {
-        const contentType = mediaRecorderRef.current?.mimeType || chunksRef.current[0]?.type || 'audio/webm'
+        const recorderType = mediaRecorderRef.current?.mimeType || chunksRef.current[0]?.type || "audio/webm"
+        const contentType = recorderType.split(";")[0].toLowerCase()
         const blob = new Blob(chunksRef.current, { type: contentType })
         setAudioData(URL.createObjectURL(blob))
         try {

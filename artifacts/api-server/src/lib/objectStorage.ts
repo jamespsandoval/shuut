@@ -97,15 +97,16 @@ export class ObjectStorageService {
     await storage.bucket(bucketName).file(objectName).delete({ ignoreNotFound: true });
   }
 
-  async stream(objectPath: string) {
+  async stream(objectPath: string, range?: { start: number; end: number }) {
     const file = await this.getFile(objectPath);
     const policy = await getObjectAclPolicy(file);
     if (policy?.visibility !== "public") throw new Error("Object not found");
     const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size || 0);
     return {
-      body: Readable.toWeb(file.createReadStream()) as ReadableStream,
+      body: Readable.toWeb(file.createReadStream(range)) as ReadableStream,
       contentType: String(metadata.contentType || "application/octet-stream"),
-      size: metadata.size ? String(metadata.size) : undefined,
+      size,
     };
   }
 }

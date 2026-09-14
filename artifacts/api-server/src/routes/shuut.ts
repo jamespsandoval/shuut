@@ -450,10 +450,38 @@ router.get("/storage/objects/*path", async (req, res): Promise<void> => {
   try {
     const raw = req.params.path;
     const path = Array.isArray(raw) ? raw.join("/") : raw;
-    const object = await objectStorage.stream(`/objects/${path}`);
+    const metadata = await objectStorage.stream(`/objects/${path}`);
+    const rangeHeader = req.headers.range;
+    let range: { start: number; end: number } | undefined;
+    if (rangeHeader && metadata.size > 0) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+      if (!match) {
+        res.setHeader("Content-Range", `bytes */${metadata.size}`);
+        res.sendStatus(416);
+        return;
+      }
+      const requestedStart = match[1] ? Number(match[1]) : undefined;
+      const requestedEnd = match[2] ? Number(match[2]) : undefined;
+      const start = requestedStart ?? Math.max(0, metadata.size - (requestedEnd ?? 0));
+      const end = Math.min(requestedEnd ?? metadata.size - 1, metadata.size - 1);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= metadata.size) {
+        res.setHeader("Content-Range", `bytes */${metadata.size}`);
+        res.sendStatus(416);
+        return;
+      }
+      range = { start, end };
+    }
+    const object = range ? await objectStorage.stream(`/objects/${path}`, range) : metadata;
     res.setHeader("Content-Type", object.contentType);
     res.setHeader("Cache-Control", "public, max-age=3600");
-    if (object.size) res.setHeader("Content-Length", object.size);
+    res.setHeader("Accept-Ranges", "bytes");
+    if (range) {
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${object.size}`);
+      res.setHeader("Content-Length", range.end - range.start + 1);
+    } else if (object.size) {
+      res.setHeader("Content-Length", object.size);
+    }
     Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
   } catch {
     res.status(404).json({ error: "File not found" });
@@ -554,14 +582,16 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
     res.status(403).json({ error: "You can only delete your own posts" });
     return;
   }
-  await db.delete(postsTable).where(eq(postsTable.id, post.id));
   if (post.audioUrl?.startsWith("/objects/uploads/")) {
     try {
       await objectStorage.deleteObject(post.audioUrl);
     } catch (error) {
-      req.log.warn({ err: error, postId: post.id }, "Could not remove post recording");
+      req.log.error({ err: error, postId: post.id }, "Could not remove post recording");
+      res.status(500).json({ error: "The post recording could not be removed" });
+      return;
     }
   }
+  await db.delete(postsTable).where(eq(postsTable.id, post.id));
   res.sendStatus(204);
 });
 

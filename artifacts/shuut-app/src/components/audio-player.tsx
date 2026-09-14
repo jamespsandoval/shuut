@@ -11,24 +11,34 @@ interface AudioPlayerProps {
 export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [mediaDuration, setMediaDuration] = useState(durationSeconds)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const togglePlay = (e: React.MouseEvent) => {
+  useEffect(() => {
+    setIsPlaying(false)
+    setProgress(0)
+    setMediaDuration(durationSeconds)
+  }, [audioUrl, durationSeconds])
+
+  const togglePlay = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause()
       } else {
-        audioRef.current.play()
+        try {
+          await audioRef.current.play()
+        } catch {
+          setIsPlaying(false)
+        }
       }
-      setIsPlaying(!isPlaying)
     }
   }
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
-      setProgress((audioRef.current.currentTime / durationSeconds) * 100)
+      setProgress(mediaDuration > 0 ? (audioRef.current.currentTime / mediaDuration) * 100 : 0)
     }
   }
 
@@ -45,7 +55,7 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
       const x = e.clientX - bounds.left
       const percentage = Math.max(0, Math.min(100, (x / bounds.width) * 100))
       
-      const newTime = (percentage / 100) * durationSeconds
+      const newTime = (percentage / 100) * mediaDuration
       audioRef.current.currentTime = newTime
       setProgress(percentage)
     }
@@ -65,6 +75,14 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
         src={audioUrl}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onLoadedMetadata={(event) => {
+          const loadedDuration = event.currentTarget.duration
+          if (Number.isFinite(loadedDuration) && loadedDuration > 0) {
+            setMediaDuration(loadedDuration)
+          }
+        }}
         preload="metadata"
       />
       
@@ -100,7 +118,7 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
       </div>
 
       <div className="text-xs font-mono font-medium text-muted-foreground shrink-0 tabular-nums">
-        {durationSeconds} sec
+        {Math.max(1, Math.round(mediaDuration))} sec
       </div>
     </div>
   )
