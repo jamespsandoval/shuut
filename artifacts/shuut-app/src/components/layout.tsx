@@ -18,7 +18,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background w-full max-w-7xl mx-auto border-x border-border/40 shadow-sm relative">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-[280px] sticky top-0 h-[100dvh] border-r border-border/40 p-6 shrink-0 z-10">
-        <div className="mb-10">
+        <div className="mb-4">
           <Link href="/" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
             <img 
               src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
