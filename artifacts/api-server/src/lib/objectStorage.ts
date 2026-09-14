@@ -25,6 +25,26 @@ function parsePath(path: string) {
   return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
 }
 
+async function signedPutUrl(bucketName: string, objectName: string): Promise<string> {
+  const response = await fetch(`${SIDECAR}/object-storage/signed-object-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      bucket_name: bucketName,
+      object_name: objectName,
+      method: "PUT",
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Could not create upload URL (${response.status})`);
+  }
+  const payload = await response.json() as { signed_url?: string };
+  if (!payload.signed_url) throw new Error("Upload URL was not returned");
+  return payload.signed_url;
+}
+
 export class ObjectStorageService {
   privateDir() {
     const value = process.env.PRIVATE_OBJECT_DIR;
@@ -35,14 +55,9 @@ export class ObjectStorageService {
   async createUpload(contentLength: number, contentType: string) {
     const fullPath = `${this.privateDir()}/uploads/${randomUUID()}`;
     const { bucketName, objectName } = parsePath(fullPath);
-    const file = storage.bucket(bucketName).file(objectName);
-    const [uploadURL] = await file.createResumableUpload({
-      metadata: {
-        contentLength,
-        contentType,
-      },
-      preconditionOpts: { ifGenerationMatch: 0 },
-    });
+    void contentLength;
+    void contentType;
+    const uploadURL = await signedPutUrl(bucketName, objectName);
     return { uploadURL, objectPath: `/objects/uploads/${objectName.split("/").at(-1)}` };
   }
 
