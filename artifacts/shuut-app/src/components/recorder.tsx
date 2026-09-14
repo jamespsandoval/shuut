@@ -203,10 +203,6 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), 6000)
           }
           handleCancel()
-          toast({
-            title: "Published",
-            description: previewTranscript ? "Your SHÜÜT is live." : "Your voice note is being prepared.",
-          })
         },
         onError: () => {
           toast({
