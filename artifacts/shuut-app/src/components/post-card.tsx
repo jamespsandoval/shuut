@@ -159,7 +159,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
                     )}
                     title={type}
                   >
-                    <span>{emoji}</span>
+                    <span className="text-base leading-none">{emoji}</span>
                     {count > 0 && <span className="tabular-nums">{count}</span>}
                   </button>
                 )
