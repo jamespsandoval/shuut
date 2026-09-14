@@ -1,1 +1,2 @@
 - [Database schema safety](database-schema-safety.md) — preserve seeded founder content when legacy identity constraints trigger truncation prompts.
+- [Postmark sender](postmark-sender.md) — shuut.me is verified and configured for domain-wide sending in Postmark.
