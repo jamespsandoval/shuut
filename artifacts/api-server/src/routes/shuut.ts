@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
+import { ReplitConnectors } from "@replit/connectors-sdk";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import {
   AskFounderBody,
@@ -26,6 +27,8 @@ import {
   UpdateProfileResponse,
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
+  TranscribeAudioBody,
+  TranscribeAudioResponse,
 } from "@workspace/api-zod";
 import {
   db,
@@ -44,6 +47,7 @@ import {
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
+const connectors = new ReplitConnectors();
 const PENDING_UPLOAD_TTL_MS = 20 * 60 * 1000;
 
 async function cleanupExpiredProfileUploads() {
@@ -174,11 +178,15 @@ function founderJson(founder: FounderRow) {
 }
 
 function postJson(post: PostRow, author: FounderRow) {
+  const storedAudio = post.audioUrl;
+  const audioUrl = storedAudio?.startsWith("/objects/uploads/")
+    ? `/api/storage${storedAudio}`
+    : storedAudio;
   return {
     id: post.id,
     author: founderJson(author),
     transcript: post.transcript,
-    audioUrl: post.audioUrl,
+    audioUrl,
     durationSeconds: post.durationSeconds,
     createdAt: post.createdAt,
     reactions: {
@@ -369,7 +377,7 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
   }
   const body = RequestUploadUrlBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "Choose a JPEG, PNG, or WebP image under 3MB" });
+    res.status(400).json({ error: "Choose a supported image or audio file under 15MB" });
     return;
   }
   try {
@@ -381,8 +389,55 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
     });
     res.json(RequestUploadUrlResponse.parse(upload));
   } catch (error) {
-    req.log.error({ err: error }, "Failed to create headshot upload");
+    req.log.error({ err: error }, "Failed to create upload");
     res.status(500).json({ error: "Could not start the upload" });
+  }
+});
+
+router.post("/transcriptions", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  const body = TranscribeAudioBody.safeParse(req.body);
+  if (!userId || !body.success) {
+    res.status(userId ? 400 : 401).json({ error: userId ? "Invalid voice recording" : "Unauthorized" });
+    return;
+  }
+
+  const [pendingUpload] = await db
+    .select()
+    .from(profileImageUploadsTable)
+    .where(and(
+      eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+      eq(profileImageUploadsTable.userId, userId),
+    ))
+    .limit(1);
+  if (!pendingUpload) {
+    res.status(403).json({ error: "This voice recording does not belong to you" });
+    return;
+  }
+
+  try {
+    const audio = await objectStorage.readAudio(body.data.audioObjectPath);
+    const form = new FormData();
+    form.append("model_id", "scribe_v1");
+    form.append(
+      "file",
+      new Blob([Uint8Array.from(audio.data)], { type: audio.contentType }),
+      "shuut-recording",
+    );
+    const response = await connectors.proxy("elevenlabs", "/v1/speech-to-text", {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) {
+      req.log.error({ statusCode: response.status }, "ElevenLabs rejected transcription");
+      res.status(502).json({ error: "We could not transcribe this recording. Please try again." });
+      return;
+    }
+    const result = await response.json() as { text?: string };
+    res.json(TranscribeAudioResponse.parse({ transcript: result.text?.trim() ?? "" }));
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to transcribe voice recording");
+    res.status(502).json({ error: "We could not transcribe this recording. Please try again." });
   }
 });
 
@@ -396,7 +451,7 @@ router.get("/storage/objects/*path", async (req, res): Promise<void> => {
     if (object.size) res.setHeader("Content-Length", object.size);
     Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
   } catch {
-    res.status(404).json({ error: "Image not found" });
+    res.status(404).json({ error: "File not found" });
   }
 });
 
@@ -417,15 +472,43 @@ router.post("/posts", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
+  let audioObjectPath: string | null = null;
+  if (body.data.audioObjectPath) {
+    const [pendingUpload] = await db
+      .select()
+      .from(profileImageUploadsTable)
+      .where(and(
+        eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+        eq(profileImageUploadsTable.userId, userId),
+      ))
+      .limit(1);
+    if (!pendingUpload) {
+      res.status(403).json({ error: "This voice recording does not belong to you" });
+      return;
+    }
+    try {
+      await objectStorage.publishAudio(body.data.audioObjectPath, userId);
+      audioObjectPath = body.data.audioObjectPath;
+    } catch {
+      res.status(400).json({ error: "The voice recording could not be verified" });
+      return;
+    }
+  }
   const [created] = await db
     .insert(postsTable)
     .values({
       authorId: author.id,
       transcript: body.data.transcript,
       durationSeconds: body.data.durationSeconds,
-      audioUrl: body.data.audioDataUrl,
+      audioUrl: audioObjectPath,
     })
     .returning();
+  if (audioObjectPath) {
+    await db.delete(profileImageUploadsTable).where(and(
+      eq(profileImageUploadsTable.objectPath, audioObjectPath),
+      eq(profileImageUploadsTable.userId, userId),
+    ));
+  }
   res.status(201).json(CreatePostResponse.parse(postJson(created, author)));
 });
 
@@ -467,6 +550,13 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
     return;
   }
   await db.delete(postsTable).where(eq(postsTable.id, post.id));
+  if (post.audioUrl?.startsWith("/objects/uploads/")) {
+    try {
+      await objectStorage.deleteObject(post.audioUrl);
+    } catch (error) {
+      req.log.warn({ err: error, postId: post.id }, "Could not remove post recording");
+    }
+  }
   res.sendStatus(204);
 });
 
@@ -591,6 +681,12 @@ router.delete("/account", async (req, res): Promise<void> => {
     return;
   }
   const founder = await currentFounder(userId);
+  const recordings = founder
+    ? await db
+        .select({ objectPath: postsTable.audioUrl })
+        .from(postsTable)
+        .where(eq(postsTable.authorId, founder.id))
+    : [];
   if (founder?.avatarObjectPath) {
     try {
       await objectStorage.deleteObject(founder.avatarObjectPath);
@@ -600,6 +696,14 @@ router.delete("/account", async (req, res): Promise<void> => {
   }
   if (founder) {
     await db.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+  }
+  for (const recording of recordings) {
+    if (!recording.objectPath?.startsWith("/objects/uploads/")) continue;
+    try {
+      await objectStorage.deleteObject(recording.objectPath);
+    } catch (error) {
+      req.log.warn({ err: error }, "Could not remove account voice recording");
+    }
   }
   const pendingUploads = await db
     .select({ objectPath: profileImageUploadsTable.objectPath })

@@ -162,6 +162,17 @@ paths:
         '200':
           description: Presigned direct upload URL
           content: { application/json: { schema: { $ref: '#/components/schemas/UploadUrlResponse' } } }
+  /transcriptions:
+    post:
+      operationId: transcribeAudio
+      tags: [posts]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AudioTranscriptionInput' } } }
+      responses:
+        '200':
+          description: Audio transcript
+          content: { application/json: { schema: { $ref: '#/components/schemas/AudioTranscript' } } }
   /storage/objects/{objectPath}:
     get:
       operationId: getStorageObject
@@ -380,8 +391,8 @@ components:
       required: [name, size, contentType]
       properties:
         name: { type: string, minLength: 1, maxLength: 255 }
-        size: { type: integer, minimum: 1, maximum: 3000000 }
-        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        size: { type: integer, minimum: 1, maximum: 15000000 }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp, audio/webm, audio/mp4, audio/mpeg, audio/ogg] }
     UploadUrlResponse:
       type: object
       required: [uploadURL, objectPath]
@@ -393,8 +404,18 @@ components:
       required: [transcript, durationSeconds]
       properties:
         transcript: { type: string, minLength: 1 }
-        audioDataUrl: { type: string }
+        audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
         durationSeconds: { type: integer, minimum: 1, maximum: 90 }
+    AudioTranscriptionInput:
+      type: object
+      required: [audioObjectPath]
+      properties:
+        audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+    AudioTranscript:
+      type: object
+      required: [transcript]
+      properties:
+        transcript: { type: string }
     ReactionInput:
       type: object
       required: [emojiType]

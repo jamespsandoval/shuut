@@ -308,19 +308,31 @@ export const UpdateProfileResponse = zod.object({
 
 export const requestUploadUrlBodyNameMax = 255;
 
-export const requestUploadUrlBodySizeMax = 3000000;
+export const requestUploadUrlBodySizeMax = 15000000;
 
 
 
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1).max(requestUploadUrlBodyNameMax),
   "size": zod.number().int().min(1).max(requestUploadUrlBodySizeMax),
-  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp'])
+  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp', 'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg'])
 })
 
 export const RequestUploadUrlResponse = zod.object({
   "uploadURL": zod.string().url(),
   "objectPath": zod.string()
+})
+
+
+export const transcribeAudioBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+
+
+export const TranscribeAudioBody = zod.object({
+  "audioObjectPath": zod.string().regex(transcribeAudioBodyAudioObjectPathRegExp)
+})
+
+export const TranscribeAudioResponse = zod.object({
+  "transcript": zod.string()
 })
 
 
@@ -332,13 +344,14 @@ export const GetStorageObjectResponse = zod.unknown()
 
 
 
+export const createPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const createPostBodyDurationSecondsMax = 90;
 
 
 
 export const CreatePostBody = zod.object({
   "transcript": zod.string().min(1),
-  "audioDataUrl": zod.string().optional(),
+  "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp).optional(),
   "durationSeconds": zod.number().int().min(1).max(createPostBodyDurationSecondsMax)
 })
 

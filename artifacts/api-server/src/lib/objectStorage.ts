@@ -68,6 +68,28 @@ export class ObjectStorageService {
     await setObjectAclPolicy(file, policy);
   }
 
+  async readAudio(objectPath: string) {
+    const file = await this.getFile(objectPath);
+    const [metadata] = await file.getMetadata();
+    const contentType = String(metadata.contentType || "");
+    const size = Number(metadata.size || 0);
+    if (
+      !["audio/webm", "audio/mp4", "audio/mpeg", "audio/ogg"].includes(contentType) ||
+      size < 1 ||
+      size > 15_000_000
+    ) {
+      throw new Error("Invalid voice recording");
+    }
+    const [data] = await file.download();
+    return { data, contentType };
+  }
+
+  async publishAudio(objectPath: string, owner: string) {
+    const file = await this.getFile(objectPath);
+    await this.readAudio(objectPath);
+    await setObjectAclPolicy(file, { owner, visibility: "public" });
+  }
+
   async deleteObject(objectPath: string) {
     if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) return;
     const relative = objectPath.replace(/^\/objects\//, "");

@@ -3,7 +3,7 @@ import { Mic, Square, Loader2, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatTime } from "@/lib/utils"
-import { useCreatePost } from "@workspace/api-client-react"
+import { useCreatePost, useTranscribeAudio } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
 import { useToast } from "@/hooks/use-toast"
@@ -15,6 +15,7 @@ export function Recorder() {
   const [isRecording, setIsRecording] = useState(false)
   const [time, setTime] = useState(0)
   const [audioData, setAudioData] = useState<string | null>(null)
+  const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null)
   const [transcript, setTranscript] = useState("")
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -22,6 +23,7 @@ export function Recorder() {
   const timerRef = useRef<number | null>(null)
   
   const createPost = useCreatePost()
+  const transcribeAudio = useTranscribeAudio()
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
@@ -52,12 +54,47 @@ export function Recorder() {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
       
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-        const reader = new FileReader()
-        reader.readAsDataURL(blob)
-        reader.onloadend = () => {
-          setAudioData(reader.result as string)
+      mediaRecorderRef.current.onstop = async () => {
+        const contentType = mediaRecorderRef.current?.mimeType || chunksRef.current[0]?.type || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: contentType })
+        setAudioData(URL.createObjectURL(blob))
+        try {
+          const uploadResponse = await fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: "shuut-recording",
+              size: blob.size,
+              contentType,
+            }),
+          })
+          const upload = await uploadResponse.json()
+          if (!uploadResponse.ok) throw new Error(upload.error || "Could not prepare recording upload")
+          const putResponse = await fetch(upload.uploadURL, {
+            method: "PUT",
+            headers: { "Content-Type": contentType },
+            body: blob,
+          })
+          if (!putResponse.ok) throw new Error("Recording upload failed")
+          setAudioObjectPath(upload.objectPath)
+          transcribeAudio.mutate(
+            { data: { audioObjectPath: upload.objectPath } },
+            {
+              onSuccess: (result) => setTranscript(result.transcript),
+              onError: () => toast({
+                title: "Transcription failed",
+                description: "Please try recording again.",
+                variant: "destructive",
+              }),
+            },
+          )
+        } catch (error) {
+          toast({
+            title: "Recording upload failed",
+            description: error instanceof Error ? error.message : "Please try again.",
+            variant: "destructive",
+          })
         }
       }
       
@@ -65,6 +102,7 @@ export function Recorder() {
       setIsRecording(true)
       setTime(0)
       setAudioData(null)
+      setAudioObjectPath(null)
       setTranscript("")
       
       timerRef.current = window.setInterval(() => {
@@ -90,6 +128,7 @@ export function Recorder() {
 
   const handleCancel = () => {
     setAudioData(null)
+    setAudioObjectPath(null)
     setTime(0)
     setTranscript("")
   }
@@ -108,7 +147,7 @@ export function Recorder() {
       {
         data: {
           transcript,
-          audioDataUrl: audioData || undefined,
+          audioObjectPath: audioObjectPath || undefined,
           durationSeconds: time || 1, // Fallback if 0
         }
       },
@@ -141,7 +180,7 @@ export function Recorder() {
           <Textarea 
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
-            placeholder="Edit your transcript..."
+            placeholder={transcribeAudio.isPending ? "Transcribing your voice note…" : "Edit your transcript..."}
             className="min-h-[100px] resize-none pr-4 text-base bg-secondary/20 border-border/40 focus-visible:ring-primary/50"
           />
           <div className="absolute right-3 bottom-3 text-xs text-muted-foreground font-mono">
@@ -155,7 +194,7 @@ export function Recorder() {
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={createPost.isPending || !transcript.trim()}
+            disabled={createPost.isPending || transcribeAudio.isPending || !audioObjectPath || !transcript.trim()}
             className="rounded-full px-6 gap-2"
           >
             {createPost.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

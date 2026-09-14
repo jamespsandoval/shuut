@@ -8,6 +8,8 @@
 
 export * from './askAnswer';
 export * from './askInput';
+export * from './audioTranscript';
+export * from './audioTranscriptionInput';
 export * from './authMessage';
 export * from './authSession';
 export * from './authUser';

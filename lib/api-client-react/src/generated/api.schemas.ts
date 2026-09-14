@@ -186,6 +186,10 @@ export const UploadUrlRequestContentType = {
   'image/jpeg': 'image/jpeg',
   'image/png': 'image/png',
   'image/webp': 'image/webp',
+  'audio/webm': 'audio/webm',
+  'audio/mp4': 'audio/mp4',
+  'audio/mpeg': 'audio/mpeg',
+  'audio/ogg': 'audio/ogg',
 } as const;
 
 export interface UploadUrlRequest {
@@ -196,7 +200,7 @@ export interface UploadUrlRequest {
   name: string;
   /**
      * @minimum 1
-     * @maximum 3000000
+     * @maximum 15000000
      */
   size: number;
   contentType: UploadUrlRequestContentType;
@@ -210,12 +214,22 @@ export interface UploadUrlResponse {
 export interface PostInput {
   /** @minLength 1 */
   transcript: string;
-  audioDataUrl?: string;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  audioObjectPath?: string;
   /**
      * @minimum 1
      * @maximum 90
      */
   durationSeconds: number;
+}
+
+export interface AudioTranscriptionInput {
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  audioObjectPath: string;
+}
+
+export interface AudioTranscript {
+  transcript: string;
 }
 
 export type ReactionInputEmojiType = typeof ReactionInputEmojiType[keyof typeof ReactionInputEmojiType];
