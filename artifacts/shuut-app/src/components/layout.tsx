@@ -1,8 +1,8 @@
 import { type ReactNode } from "react"
 import { Link, useLocation } from "wouter"
 import { Mic, Home, User, Search, Settings, Activity } from "lucide-react"
-import shuutLogoDark from "@assets/shuut-uu-icon-dark-512_1789389210156.png"
-import shuutLogoLight from "@assets/shuut-uu-icon-light-512_1789389210158.png"
+import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
+import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
 import { useHealthCheck } from "@workspace/api-client-react"
 
