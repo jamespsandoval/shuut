@@ -128,7 +128,10 @@ export default function Landing() {
                 </p>
               )}
 
-              <form onSubmit={handleEmailSubmit} className="space-y-4">
+              <form
+                onSubmit={handleEmailSubmit}
+                className={`space-y-2 ${mode === 'sign-up' ? 'pt-4' : ''}`}
+              >
                 <div className="space-y-4">
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -150,7 +153,7 @@ export default function Landing() {
 
                 <Button 
                   type="submit" 
-                  className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md mt-4"
+                  className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md"
                   disabled={isPending || !email}
                 >
                   {isPending ? (
