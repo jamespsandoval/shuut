@@ -220,7 +220,7 @@ export function Recorder() {
             className="rounded-full px-6 gap-2"
           >
             {createPost.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Say it
+            SHÜÜT
           </Button>
         </div>
       </div>
