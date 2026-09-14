@@ -1,6 +1,6 @@
 import { type ReactNode } from "react"
 import { Link, useLocation } from "wouter"
-import { Mic, Home, User, Search, Settings, Activity } from "lucide-react"
+import { Mic, Home, User, Settings, Activity } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
@@ -11,7 +11,6 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/" },
-    { icon: Search, label: "Explore", href: "/explore" },
     { icon: User, label: "Profile", href: "/u/me" }, // Stub for current user
   ]
 
