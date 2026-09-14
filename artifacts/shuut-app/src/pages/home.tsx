@@ -13,7 +13,6 @@ export default function Home() {
   return (
     <Layout>
       <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border/50">
-        <h1 className="px-6 py-4 text-xl font-bold text-foreground">Home</h1>
         <div className="flex border-b border-border/30">
           <button 
             onClick={() => setView("everyone")}

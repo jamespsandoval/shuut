@@ -19,13 +19,18 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background w-full max-w-7xl mx-auto border-x border-border/40 shadow-sm relative">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-[280px] sticky top-0 h-[100dvh] border-r border-border/40 p-6 shrink-0 z-10">
-        <Link href="/" className="mb-10 block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
-          <img 
-            src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
-            alt="SHÜÜT" 
-            className="w-12 h-12 object-contain"
-          />
-        </Link>
+        <div className="mb-10">
+          <Link href="/" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
+            <img 
+              src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
+              alt="SHÜÜT" 
+              className="w-12 h-12 object-contain"
+            />
+          </Link>
+          <p className="mt-3 max-w-[180px] text-sm font-semibold leading-snug text-muted-foreground">
+            Shape the noise to signal.
+          </p>
+        </div>
 
         <nav className="flex flex-col gap-4 flex-1">
           {navItems.map((item) => {
@@ -54,20 +59,6 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 w-full max-w-[600px] min-h-[100dvh] pb-24 md:pb-0 mx-auto relative border-x border-border/20 bg-card/30">
         {children}
       </main>
-
-      {/* Right Sidebar (Desktop Empty Space / Trends placeholder) */}
-      <aside className="hidden lg:block w-[320px] sticky top-0 h-[100dvh] p-6 shrink-0 flex flex-col gap-6">
-        <div className="bg-secondary/50 rounded-2xl p-4 border border-border/50">
-          <h3 className="font-bold text-foreground">Shape the noise to signal.</h3>
-          <div className="flex gap-2 mt-4 text-primary font-bold">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: '150ms' }} />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: '300ms' }} />
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: '450ms' }} />
-          </div>
-        </div>
-
-      </aside>
 
       {/* Mobile Bottom Nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-lg border-t border-border flex items-center justify-around z-50 pb-safe">
