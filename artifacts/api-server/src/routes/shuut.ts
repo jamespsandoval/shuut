@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
-import { ReplitConnectors } from "@replit/connectors-sdk";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import {
   AskFounderBody,
@@ -47,7 +46,6 @@ import {
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
-const connectors = new ReplitConnectors();
 const PENDING_UPLOAD_TTL_MS = 20 * 60 * 1000;
 
 async function cleanupExpiredProfileUploads() {
@@ -424,8 +422,15 @@ router.post("/transcriptions", async (req, res): Promise<void> => {
       new Blob([Uint8Array.from(audio.data)], { type: audio.contentType }),
       "shuut-recording",
     );
-    const response = await connectors.proxy("elevenlabs", "/v1/speech-to-text", {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      req.log.error("ELEVENLABS_API_KEY is not configured");
+      res.status(503).json({ error: "Transcription is temporarily unavailable" });
+      return;
+    }
+    const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
       method: "POST",
+      headers: { "xi-api-key": apiKey },
       body: form,
     });
     if (!response.ok) {
