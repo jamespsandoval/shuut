@@ -88,7 +88,7 @@ export default function Landing() {
       <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[400px] mx-auto relative z-10">
         <div className="w-full flex flex-col items-center justify-center mb-12">
           <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[120px] max-h-[15vh] w-auto" />
-          <p className="mt-4 text-xl font-medium text-gray-600 text-center">Say what's your mind</p>
+          <p className="mt-1 text-xl font-medium text-gray-600 text-center">Say what's your mind</p>
         </div>
 
         <div className="w-full">
