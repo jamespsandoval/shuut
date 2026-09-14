@@ -21,6 +21,7 @@ export const foundersTable = pgTable("shuut_founders", {
   isFollowing: boolean("is_following").notNull().default(false),
   followerCount: integer("follower_count").notNull().default(0),
   followingCount: integer("following_count").notNull().default(0),
+  previewTranscript: boolean("preview_transcript").notNull().default(false),
 });
 
 export const postsTable = pgTable("shuut_posts", {
@@ -29,6 +30,7 @@ export const postsTable = pgTable("shuut_posts", {
     .notNull()
     .references(() => foundersTable.id, { onDelete: "cascade" }),
   transcript: text("transcript").notNull(),
+  transcriptionStatus: text("transcription_status").notNull().default("ready"),
   audioUrl: text("audio_url"),
   durationSeconds: integer("duration_seconds").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

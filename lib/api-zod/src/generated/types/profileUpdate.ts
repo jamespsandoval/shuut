@@ -26,4 +26,5 @@ export interface ProfileUpdate {
   website?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   avatarObjectPath?: string;
+  previewTranscript?: boolean;
 }

@@ -148,6 +148,7 @@ export interface Founder {
   /** @nullable */
   website?: string | null;
   isFollowing: boolean;
+  previewTranscript: boolean;
 }
 
 export interface ReactionSummary {
@@ -186,6 +187,9 @@ export interface Post {
   isReshuuted: boolean;
   /** @nullable */
   reshuutedBy?: string | null;
+  canEdit: boolean;
+  /** @nullable */
+  editableUntil: string | null;
 }
 
 export interface ProfileDetail {
@@ -217,6 +221,7 @@ export interface ProfileUpdate {
   website?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   avatarObjectPath?: string;
+  previewTranscript?: boolean;
 }
 
 export type UploadUrlRequestContentType = typeof UploadUrlRequestContentType[keyof typeof UploadUrlRequestContentType];
@@ -252,8 +257,11 @@ export interface UploadUrlResponse {
 }
 
 export interface PostInput {
-  /** @minLength 1 */
-  transcript: string;
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  transcript?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath: string;
   /**
@@ -261,6 +269,14 @@ export interface PostInput {
      * @maximum 90
      */
   durationSeconds: number;
+}
+
+export interface PostEditInput {
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  transcript: string;
 }
 
 export interface AudioTranscriptionInput {

@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react"
+import { forwardRef, useState, useRef, useEffect, useCallback, useImperativeHandle } from "react"
 import { Mic, Square, Loader2, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatTime } from "@/lib/utils"
-import { useCreatePost, useTranscribeAudio } from "@workspace/api-client-react"
+import { useCreatePost, useGetProfile, useTranscribeAudio } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
 import { useToast } from "@/hooks/use-toast"
@@ -11,6 +11,14 @@ import { AudioPlayer } from "./audio-player"
 
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
+
+export type RecorderHandle = {
+  startRecording: () => void
+}
+
+type RecorderProps = {
+  onExpandedChange?: (isExpanded: boolean) => void
+}
 
 function csrfToken() {
   const entry = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("shu_csrf="))
@@ -21,7 +29,10 @@ function getSupportedRecordingType() {
   return RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
 }
 
-export function Recorder() {
+export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recorder(
+  { onExpandedChange },
+  ref,
+) {
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
   const [isRecording, setIsRecording] = useState(false)
   const [time, setTime] = useState(0)
@@ -35,6 +46,8 @@ export function Recorder() {
   
   const createPost = useCreatePost()
   const transcribeAudio = useTranscribeAudio()
+  const { data: profile } = useGetProfile("me")
+  const previewTranscript = profile?.founder.previewTranscript ?? false
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
@@ -55,7 +68,8 @@ export function Recorder() {
     }
   }, [time, isRecording, stopRecording])
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
+    if (isRecording || audioData) return
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const supportedType = getSupportedRecordingType()
@@ -98,17 +112,19 @@ export function Recorder() {
           })
           if (!putResponse.ok) throw new Error("Recording upload failed")
           setAudioObjectPath(upload.objectPath)
-          transcribeAudio.mutate(
-            { data: { audioObjectPath: upload.objectPath } },
-            {
-              onSuccess: (result) => setTranscript(result.transcript),
-              onError: () => toast({
-                title: "Transcription failed",
-                description: "Please try recording again.",
-                variant: "destructive",
-              }),
-            },
-          )
+          if (previewTranscript) {
+            transcribeAudio.mutate(
+              { data: { audioObjectPath: upload.objectPath } },
+              {
+                onSuccess: (result) => setTranscript(result.transcript),
+                onError: () => toast({
+                  title: "Transcription failed",
+                  description: "Please try recording again.",
+                  variant: "destructive",
+                }),
+              },
+            )
+          }
         } catch (error) {
           toast({
             title: "Recording upload failed",
@@ -136,7 +152,13 @@ export function Recorder() {
         variant: "destructive"
       })
     }
-  }
+  }, [audioData, isRecording, previewTranscript, toast, transcribeAudio])
+
+  useImperativeHandle(ref, () => ({
+    startRecording: () => {
+      void startRecording()
+    },
+  }), [startRecording])
 
   const handleToggle = () => {
     if (isRecording) {
@@ -154,7 +176,7 @@ export function Recorder() {
   }
 
   const handleSubmit = () => {
-    if (!transcript.trim() || !audioObjectPath) {
+    if (!audioObjectPath || (previewTranscript && !transcript.trim())) {
       toast({
         title: !audioObjectPath ? "Missing recording" : "Missing transcript",
         description: !audioObjectPath
@@ -168,7 +190,7 @@ export function Recorder() {
     createPost.mutate(
       {
         data: {
-          transcript,
+          ...(previewTranscript ? { transcript } : {}),
           audioObjectPath,
           durationSeconds: time || 1, // Fallback if 0
         }
@@ -176,10 +198,14 @@ export function Recorder() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          if (!previewTranscript) {
+            window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), 2500)
+            window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), 6000)
+          }
           handleCancel()
           toast({
             title: "Published",
-            description: "Your SHÜÜT is live.",
+            description: previewTranscript ? "Your SHÜÜT is live." : "Your voice note is being prepared.",
           })
         },
         onError: () => {
@@ -194,6 +220,10 @@ export function Recorder() {
   }
 
   const isExpanded = isRecording || audioData !== null;
+
+  useEffect(() => {
+    onExpandedChange?.(isExpanded)
+  }, [isExpanded, onExpandedChange])
 
   return (
     <div
@@ -275,6 +305,7 @@ export function Recorder() {
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
 
+            {previewTranscript ? (
             <div className="relative flex-1 flex flex-col min-h-0 group">
               <Textarea
                 value={transcript}
@@ -287,6 +318,16 @@ export function Recorder() {
                 {transcript.length} chars
               </div>
             </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center rounded-3xl bg-secondary/20 p-8 text-center">
+                <div>
+                  <h3 className="text-xl font-bold">Ready to SHÜÜT</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Your transcript will be created after publishing.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3 md:gap-4 shrink-0 pt-2 border-t border-border/30 mt-auto">
@@ -295,7 +336,7 @@ export function Recorder() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createPost.isPending || transcribeAudio.isPending || !audioObjectPath || !transcript.trim()}
+              disabled={createPost.isPending || !audioObjectPath || (previewTranscript && (transcribeAudio.isPending || !transcript.trim()))}
               className="w-full sm:w-auto rounded-full px-8 md:px-12 h-12 md:h-14 text-base md:text-lg font-bold gap-2 shadow-lg shadow-primary/20 transition-all active:scale-95"
               data-testid="button-submit-recording"
             >
@@ -307,4 +348,4 @@ export function Recorder() {
       </div>
     </div>
   )
-}
+})

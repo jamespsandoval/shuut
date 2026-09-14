@@ -320,6 +320,18 @@ paths:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       responses:
         '204': { description: Deleted }
+    patch:
+      operationId: updatePost
+      tags: [posts]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PostEditInput' } } }
+      responses:
+        '200':
+          description: Updated post
+          content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
   /posts/{postId}/reaction:
     put:
       operationId: setReaction
@@ -477,7 +489,7 @@ components:
       properties: { status: { type: string } }
     Founder:
       type: object
-      required: [id, name, handle, bio, avatarColor, isFollowing]
+      required: [id, name, handle, bio, avatarColor, isFollowing, previewTranscript]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -488,6 +500,7 @@ components:
         location: { type: [string, 'null'] }
         website: { type: [string, 'null'] }
         isFollowing: { type: boolean }
+        previewTranscript: { type: boolean }
     ReactionSummary:
       type: object
       required: [goat, rocket, laughing, confused, thumbsDown]
@@ -499,7 +512,7 @@ components:
         thumbsDown: { type: integer }
     Post:
       type: object
-      required: [id, author, transcript, durationSeconds, createdAt, reactions, isReshuuted]
+      required: [id, author, transcript, durationSeconds, createdAt, reactions, isReshuuted, canEdit, editableUntil]
       properties:
         id: { type: integer }
         author: { $ref: '#/components/schemas/Founder' }
@@ -511,6 +524,8 @@ components:
         viewerReaction: { type: [string, 'null'], enum: [goat, rocket, laughing, confused, thumbsDown, null] }
         isReshuuted: { type: boolean }
         reshuutedBy: { type: [string, 'null'] }
+        canEdit: { type: boolean }
+        editableUntil: { type: [string, 'null'], format: date-time }
     ProfileDetail:
       type: object
       required: [founder, followerCount, followingCount, postCount, posts, suggestedQuestions]
@@ -531,6 +546,7 @@ components:
         location: { type: string, maxLength: 80 }
         website: { type: string, maxLength: 200 }
         avatarObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+        previewTranscript: { type: boolean }
     UploadUrlRequest:
       type: object
       required: [name, size, contentType]
@@ -546,11 +562,16 @@ components:
         objectPath: { type: string }
     PostInput:
       type: object
-      required: [transcript, audioObjectPath, durationSeconds]
+      required: [audioObjectPath, durationSeconds]
       properties:
-        transcript: { type: string, minLength: 1 }
+        transcript: { type: string, minLength: 1, maxLength: 5000 }
         audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
         durationSeconds: { type: integer, minimum: 1, maximum: 90 }
+    PostEditInput:
+      type: object
+      required: [transcript]
+      properties:
+        transcript: { type: string, minLength: 1, maxLength: 5000 }
     AudioTranscriptionInput:
       type: object
       required: [audioObjectPath]

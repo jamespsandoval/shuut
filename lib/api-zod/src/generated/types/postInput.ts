@@ -7,8 +7,11 @@
  */
 
 export interface PostInput {
-  /** @minLength 1 */
-  transcript: string;
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  transcript?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath: string;
   /**

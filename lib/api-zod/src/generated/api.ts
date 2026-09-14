@@ -270,7 +270,8 @@ export const GetFeedResponseItem = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -285,7 +286,9 @@ export const GetFeedResponseItem = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })
 export const GetFeedResponse = zod.array(GetFeedResponseItem)
 
@@ -304,7 +307,8 @@ export const GetProfileResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "followerCount": zod.number().int(),
   "followingCount": zod.number().int(),
@@ -320,7 +324,8 @@ export const GetProfileResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -335,7 +340,9 @@ export const GetProfileResponse = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
@@ -367,7 +374,8 @@ export const UpdateProfileBody = zod.object({
   "bio": zod.string().max(updateProfileBodyBioMax),
   "location": zod.string().max(updateProfileBodyLocationMax).optional(),
   "website": zod.string().max(updateProfileBodyWebsiteMax).optional(),
-  "avatarObjectPath": zod.string().regex(updateProfileBodyAvatarObjectPathRegExp).optional()
+  "avatarObjectPath": zod.string().regex(updateProfileBodyAvatarObjectPathRegExp).optional(),
+  "previewTranscript": zod.boolean().optional()
 })
 
 export const UpdateProfileResponse = zod.object({
@@ -380,7 +388,8 @@ export const UpdateProfileResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "followerCount": zod.number().int(),
   "followingCount": zod.number().int(),
@@ -396,7 +405,8 @@ export const UpdateProfileResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -411,7 +421,9 @@ export const UpdateProfileResponse = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
@@ -454,6 +466,7 @@ export const GetStorageObjectParams = zod.object({
 export const GetStorageObjectResponse = zod.unknown()
 
 
+export const createPostBodyTranscriptMax = 5000;
 
 export const createPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const createPostBodyDurationSecondsMax = 90;
@@ -461,7 +474,7 @@ export const createPostBodyDurationSecondsMax = 90;
 
 
 export const CreatePostBody = zod.object({
-  "transcript": zod.string().min(1),
+  "transcript": zod.string().min(1).max(createPostBodyTranscriptMax).optional(),
   "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp),
   "durationSeconds": zod.number().int().min(1).max(createPostBodyDurationSecondsMax)
 })
@@ -477,7 +490,8 @@ export const CreatePostResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -492,7 +506,9 @@ export const CreatePostResponse = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })
 
 
@@ -511,7 +527,8 @@ export const GetPostResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -526,7 +543,9 @@ export const GetPostResponse = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })
 
 
@@ -535,6 +554,51 @@ export const DeletePostParams = zod.object({
 })
 
 export const DeletePostResponse = zod.void()
+
+
+export const UpdatePostParams = zod.object({
+  "postId": zod.coerce.number().int()
+})
+
+export const updatePostBodyTranscriptMax = 5000;
+
+
+
+export const UpdatePostBody = zod.object({
+  "transcript": zod.string().min(1).max(updatePostBodyTranscriptMax)
+})
+
+export const UpdatePostResponse = zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "audioUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "goat": zod.number().int(),
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "confused": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+})
 
 
 export const SetReactionParams = zod.object({
@@ -556,7 +620,8 @@ export const SetReactionResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -571,7 +636,9 @@ export const SetReactionResponse = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })
 
 
@@ -590,7 +657,8 @@ export const ReshuutPostResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "location": zod.string().nullish(),
   "website": zod.string().nullish(),
-  "isFollowing": zod.boolean()
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
   "audioUrl": zod.string().nullish(),
@@ -605,7 +673,9 @@ export const ReshuutPostResponse = zod.object({
 }),
   "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
-  "reshuutedBy": zod.string().nullish()
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
 })
 
 

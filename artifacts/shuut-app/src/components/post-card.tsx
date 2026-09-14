@@ -1,18 +1,21 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "wouter"
-import { Play, Repeat2, Share, Trash2, MoreHorizontal } from "lucide-react"
+import { Play, Repeat2, Share, Trash2, MoreHorizontal, Pencil, Loader2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { Post, ReactionInputEmojiType } from "@workspace/api-client-react"
 import { 
   useSetReaction, 
   useReshuutPost, 
   useDeletePost,
+  useUpdatePost,
   getGetFeedQueryKey 
 } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { AudioPlayer } from "./audio-player"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
 
 interface PostCardProps {
   post: Post
@@ -32,10 +35,26 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   const setReaction = useSetReaction()
   const reshuutPost = useReshuutPost()
   const deletePost = useDeletePost()
+  const updatePost = useUpdatePost()
   const { toast } = useToast()
   
   const [showShare, setShowShare] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(post.transcript)
+  const [canStillEdit, setCanStillEdit] = useState(post.canEdit)
+  const isAuthor = post.editableUntil !== null
+
+  useEffect(() => {
+    setCanStillEdit(post.canEdit)
+    if (!post.editableUntil || !post.canEdit) return
+    const remaining = new Date(post.editableUntil).getTime() - Date.now()
+    const timeout = window.setTimeout(() => {
+      setCanStillEdit(false)
+      setIsEditing(false)
+    }, Math.max(0, remaining))
+    return () => window.clearTimeout(timeout)
+  }, [post.canEdit, post.editableUntil])
 
   const handleReaction = (type: ReactionInputEmojiType) => {
     setReaction.mutate(
@@ -70,6 +89,27 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
           toast({ title: "Failed to delete", variant: "destructive" })
         }
       }
+    )
+  }
+
+  const handleEdit = () => {
+    if (!editText.trim() || !canStillEdit) return
+    updatePost.mutate(
+      { postId: post.id, data: { transcript: editText.trim() } },
+      {
+        onSuccess: () => {
+          setIsEditing(false)
+          queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          toast({ title: "SHÜÜT updated" })
+        },
+        onError: (error) => {
+          toast({
+            title: "Could not update SHÜÜT",
+            description: error instanceof Error ? error.message : "The editing window may have closed.",
+            variant: "destructive",
+          })
+        },
+      },
     )
   }
 
@@ -114,12 +154,32 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
           </div>
 
           <div className="mb-4">
-            <p className={cn(
+            {isEditing ? (
+              <div className="space-y-3">
+                <Textarea
+                  value={editText}
+                  onChange={(event) => setEditText(event.target.value)}
+                  maxLength={5000}
+                  autoFocus
+                  data-testid={`textarea-edit-post-${post.id}`}
+                  className="min-h-28 resize-none"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
+                  <Button size="sm" onClick={handleEdit} disabled={updatePost.isPending || !editText.trim() || !canStillEdit}>
+                    {updatePost.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className={cn(
               "text-foreground leading-relaxed whitespace-pre-wrap break-words",
               isDetail ? "text-xl font-medium" : "text-base"
             )}>
               {post.transcript}
-            </p>
+              </p>
+            )}
           </div>
 
           {post.audioUrl && (
@@ -215,7 +275,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
             </div>
 
             {/* Options Menu */}
-            <div className="relative ml-2">
+            {isAuthor && <div className="relative ml-2">
               <button
                 onClick={() => setShowMenu(!showMenu)}
                 className="flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground transition-all active:scale-95"
@@ -227,6 +287,19 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
                   <div className="absolute right-0 bottom-full mb-2 bg-popover border border-border shadow-lg rounded-xl p-2 z-50 flex flex-col min-w-[140px] animate-in fade-in zoom-in-95">
+                    {canStillEdit && (
+                      <button
+                        onClick={() => {
+                          setShowMenu(false)
+                          setEditText(post.transcript)
+                          setIsEditing(true)
+                        }}
+                        className="px-3 py-2 text-sm hover:bg-secondary rounded-md flex items-center gap-2 text-left"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit SHÜÜT
+                      </button>
+                    )}
                     <button 
                       onClick={() => {
                         setShowMenu(false)
@@ -240,7 +313,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
                   </div>
                 </>
               )}
-            </div>
+            </div>}
           </div>
         </div>
       </div>

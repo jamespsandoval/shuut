@@ -37,7 +37,8 @@ A voice-note-first social feed where people publish short recordings, readable t
 - Voice recordings remain private in storage and are streamed only through authenticated, post-scoped API routes.
 - Unsafe cookie-authenticated requests require matching Origin and CSRF proof; security-sensitive endpoints use database-backed rate limits and append-only audit events.
 - Everyone is the default launch feed; Following is available but secondary during the community cold start.
-- Recording uses the browser MediaRecorder API with a hard 90-second limit and an editable transcript before publish.
+- Recording uses the browser MediaRecorder API with a hard 90-second limit. Transcript preview is off by default and can be enabled per profile; otherwise transcription runs after submission and the complete text-and-audio post appears when ready.
+- Authors can edit a published transcript from the post menu for 30 seconds after publication; the API enforces the ownership and time limit.
 
 ## Product
 

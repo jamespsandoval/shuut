@@ -32,6 +32,7 @@ export * from './passkeyDevice';
 export * from './passkeyDeviceList';
 export * from './passkeyRecoveryStatus';
 export * from './post';
+export * from './postEditInput';
 export * from './postInput';
 export * from './postViewerReaction';
 export * from './profileDetail';

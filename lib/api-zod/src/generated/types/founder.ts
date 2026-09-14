@@ -19,4 +19,5 @@ export interface Founder {
   /** @nullable */
   website?: string | null;
   isFollowing: boolean;
+  previewTranscript: boolean;
 }

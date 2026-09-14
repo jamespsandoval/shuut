@@ -1,14 +1,38 @@
-import { useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useGetFeed, type GetFeedView } from "@workspace/api-client-react"
 import { Layout } from "@/components/layout"
-import { Recorder } from "@/components/recorder"
+import { Recorder, type RecorderHandle } from "@/components/recorder"
 import { PostCard } from "@/components/post-card"
-import { Loader2 } from "lucide-react"
+import { Loader2, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export default function Home() {
   const [view, setView] = useState<GetFeedView>("everyone")
+  const [isRecorderTriggerVisible, setIsRecorderTriggerVisible] = useState(true)
+  const [isRecorderExpanded, setIsRecorderExpanded] = useState(false)
+  const recorderRef = useRef<RecorderHandle>(null)
+  const recorderContainerRef = useRef<HTMLDivElement>(null)
   const { data: posts, isLoading, error } = useGetFeed({ view })
+
+  useEffect(() => {
+    const trigger = recorderContainerRef.current?.querySelector('[data-testid="button-start-recording"]')
+    if (!trigger) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsRecorderTriggerVisible(entry.intersectionRatio >= 0.99),
+      {
+        rootMargin: "-54px 0px 0px 0px",
+        threshold: [0, 0.99, 1],
+      },
+    )
+    observer.observe(trigger)
+    return () => observer.disconnect()
+  }, [])
+
+  const handleFloatingRecord = useCallback(() => {
+    recorderContainerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    recorderRef.current?.startRecording()
+  }, [])
 
   return (
     <Layout>
@@ -39,7 +63,21 @@ export default function Home() {
         </div>
       </div>
 
-      <Recorder />
+      <div ref={recorderContainerRef}>
+        <Recorder ref={recorderRef} onExpandedChange={setIsRecorderExpanded} />
+      </div>
+
+      {!isRecorderTriggerVisible && !isRecorderExpanded && (
+        <button
+          type="button"
+          onClick={handleFloatingRecord}
+          aria-label="Record a SHÜÜT"
+          data-testid="button-floating-recording"
+          className="fixed right-4 bottom-20 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:hidden animate-in fade-in zoom-in-75 duration-200"
+        >
+          <Mic className="h-8 w-8" />
+        </button>
+      )}
 
       <div className="min-h-screen">
         {isLoading && (

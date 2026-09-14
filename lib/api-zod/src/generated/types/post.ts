@@ -23,4 +23,7 @@ export interface Post {
   isReshuuted: boolean;
   /** @nullable */
   reshuutedBy?: string | null;
+  canEdit: boolean;
+  /** @nullable */
+  editableUntil: Date | null;
 }
