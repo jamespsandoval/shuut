@@ -38,7 +38,6 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   const updatePost = useUpdatePost()
   const { toast } = useToast()
   
-  const [showShare, setShowShare] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.transcript)
@@ -114,7 +113,26 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   }
 
   const shareUrl = `${window.location.origin}/p/${post.id}`
-  const shareText = `Listen to ${post.author.name} on SHÜÜT:`
+  const shareText = `Listen to ${post.author.name} on SHÜÜT`
+
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${post.author.name} on SHÜÜT`,
+          text: shareText,
+          url: shareUrl,
+        })
+        return
+      }
+
+      await navigator.clipboard.writeText(shareUrl)
+      toast({ title: "Link copied" })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return
+      toast({ title: "Could not share this post", variant: "destructive" })
+    }
+  }
 
   return (
     <article className={cn(
@@ -240,39 +258,13 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
               <span className="hidden sm:inline">Reshüüt</span>
             </button>
 
-            {/* Share Menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowShare(!showShare)}
-                className="flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground transition-all active:scale-95"
-              >
-                <Share className="w-4 h-4" />
-              </button>
-              
-              {showShare && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowShare(false)} />
-                  <div className="absolute right-0 bottom-full mb-2 bg-popover border border-border shadow-lg rounded-xl p-2 z-50 flex flex-col min-w-[140px] animate-in fade-in zoom-in-95">
-                    <a 
-                      href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="px-3 py-2 text-sm hover:bg-secondary rounded-md text-foreground flex items-center gap-2"
-                      onClick={() => setShowShare(false)}
-                    >
-                      X (Twitter)
-                    </a>
-                    <a 
-                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="px-3 py-2 text-sm hover:bg-secondary rounded-md text-foreground flex items-center gap-2"
-                      onClick={() => setShowShare(false)}
-                    >
-                      WhatsApp
-                    </a>
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              onClick={handleShare}
+              aria-label="Share post"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground active:scale-95"
+            >
+              <Share className="h-4 w-4" />
+            </button>
 
             {/* Options Menu */}
             {isAuthor && <div className="relative ml-2">
