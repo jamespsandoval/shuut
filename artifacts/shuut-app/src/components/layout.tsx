@@ -1,18 +1,29 @@
-import { type ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import { Link, useLocation } from "wouter"
-import { Mic, Home, User, Settings, Activity } from "lucide-react"
+import { Home, User, MoreHorizontal } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
+import { useGetProfile } from "@workspace/api-client-react"
+import * as Dialog from "@radix-ui/react-dialog"
+import { Button } from "./ui/button"
 
 export function Layout({ children }: { children: ReactNode }) {
-  const [location] = useLocation()
+  const [location, setLocation] = useLocation()
   const { theme } = useTheme()
+  const { data: profile } = useGetProfile('maya')
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/" },
     { icon: User, label: "Profile", href: "/u/me" }, // Stub for current user
   ]
+
+  const handleLogout = () => {
+    // TODO: Call auth sign-out endpoint when implemented
+    setLogoutDialogOpen(false)
+    setLocation("/")
+  }
 
   return (
     <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background w-full max-w-7xl mx-auto border-x border-border/40 shadow-sm relative">
@@ -26,9 +37,6 @@ export function Layout({ children }: { children: ReactNode }) {
               className="w-12 h-12 object-contain"
             />
           </Link>
-          <p className="mt-3 max-w-[180px] text-sm font-semibold leading-snug text-muted-foreground">
-            Shape the noise to signal.
-          </p>
         </div>
 
         <nav className="flex flex-col gap-4 flex-1">
@@ -47,15 +55,64 @@ export function Layout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <Link href="/" className="mt-auto w-full">
-          <div className="w-full bg-primary text-primary-foreground py-4 rounded-full text-center font-bold text-lg hover:brightness-110 active:scale-95 transition-all shadow-md shadow-primary/20">
-            SHÜÜT it
+        {profile && (
+          <div className="mt-auto pt-4 flex items-center justify-between gap-3 w-full border-t border-border/20">
+            <Link href="/u/me" className="flex items-center gap-3 flex-1 min-w-0 hover:bg-secondary/50 p-2 rounded-xl transition-colors cursor-pointer">
+              <div 
+                className="w-10 h-10 rounded-full border border-border/50 flex items-center justify-center text-white font-bold text-sm shrink-0 overflow-hidden"
+                style={{ backgroundColor: profile.founder.avatarColor || '#3B82F6' }}
+              >
+                {profile.founder.avatarUrl ? (
+                  <img src={profile.founder.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  profile.founder.name.charAt(0).toUpperCase()
+                )}
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="font-bold text-sm truncate">{profile.founder.name}</span>
+                <span className="text-muted-foreground text-xs truncate">@{profile.founder.handle}</span>
+              </div>
+            </Link>
+
+            <Dialog.Root open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+              <Dialog.Trigger asChild>
+                <Button variant="ghost" size="icon" className="shrink-0 rounded-full hover:bg-secondary">
+                  <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
+                  <span className="sr-only">More options</span>
+                </Button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 animate-in fade-in" />
+                <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl bg-card border border-border shadow-xl p-6 animate-in fade-in zoom-in-95 slide-in-from-left-1/2 slide-in-from-top-[48%]">
+                  <Dialog.Title className="text-xl font-bold text-foreground mb-4">
+                    Log out of SHÜÜT?
+                  </Dialog.Title>
+                  <Dialog.Description className="text-sm text-muted-foreground mb-6">
+                    You can always log back in as @{profile.founder.handle} later.
+                  </Dialog.Description>
+                  <div className="flex flex-col gap-3">
+                    <Button 
+                      variant="destructive" 
+                      className="w-full rounded-full font-bold h-12 text-lg"
+                      onClick={handleLogout}
+                    >
+                      Log out
+                    </Button>
+                    <Dialog.Close asChild>
+                      <Button variant="outline" className="w-full rounded-full font-bold h-12 text-lg">
+                        Cancel
+                      </Button>
+                    </Dialog.Close>
+                  </div>
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
           </div>
-        </Link>
+        )}
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 w-full max-w-[600px] min-h-[100dvh] pb-24 md:pb-0 mx-auto relative border-x border-border/20 bg-card/30">
+      <main className="flex-1 w-full max-w-[600px] min-h-[100dvh] pb-24 md:pb-0 mx-auto md:mx-0 relative border-x border-border/20 bg-card/30">
         {children}
       </main>
 
