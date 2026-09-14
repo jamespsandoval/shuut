@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SHÜÜT"
+description = "A voice-note-first social feed for London startup founders, combining short recordings, clean transcripts, chronological discovery, and cited per-founder Ask Me agents."
+version = "1.0.0"
+id = "artifacts/shuut-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20749
+
+[services.development]
+run = "pnpm --filter @workspace/shuut-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/shuut-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/shuut-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20749"
+BASE_PATH = "/"

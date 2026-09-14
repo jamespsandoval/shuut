@@ -1,36 +1,203 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SHUUT founder voice feed API
 servers:
   - url: /api
     description: Base API path
 tags:
-  - name: health
-    description: Health operations
+  - { name: health, description: Health operations }
+  - { name: feed, description: Social feed }
+  - { name: profiles, description: Founder profiles }
+  - { name: posts, description: Voice posts }
+  - { name: social, description: Social actions }
+  - { name: agent, description: Founder Ask Me agent }
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
-      summary: Health check
-      description: Returns server health status
       responses:
-        "200":
+        '200':
           description: Healthy
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
+          content: { application/json: { schema: { $ref: '#/components/schemas/HealthStatus' } } }
+  /feed:
+    get:
+      operationId: getFeed
+      tags: [feed]
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [everyone, following], default: everyone } }
+      responses:
+        '200':
+          description: Feed
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Post' } } } }
+  /profiles/{handle}:
+    get:
+      operationId: getProfile
+      tags: [profiles]
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Founder profile
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProfileDetail' } } }
+  /posts:
+    post:
+      operationId: createPost
+      tags: [posts]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PostInput' } } }
+      responses:
+        '201':
+          description: Published post
+          content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+  /posts/{postId}:
+    get:
+      operationId: getPost
+      tags: [posts]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Post
+          content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+    delete:
+      operationId: deletePost
+      tags: [posts]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: Deleted }
+  /posts/{postId}/reaction:
+    put:
+      operationId: setReaction
+      tags: [social]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReactionInput' } } }
+      responses:
+        '200':
+          description: Updated post
+          content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+  /posts/{postId}/reshuut:
+    post:
+      operationId: reshuutPost
+      tags: [social]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Reshuuted post
+          content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+  /profiles/{handle}/follow:
+    put:
+      operationId: toggleFollow
+      tags: [social]
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Follow state
+          content: { application/json: { schema: { $ref: '#/components/schemas/FollowState' } } }
+  /profiles/{handle}/ask:
+    post:
+      operationId: askFounder
+      tags: [agent]
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AskInput' } } }
+      responses:
+        '200':
+          description: Grounded answer
+          content: { application/json: { schema: { $ref: '#/components/schemas/AskAnswer' } } }
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
+      properties: { status: { type: string } }
+    Founder:
+      type: object
+      required: [id, name, handle, bio, avatarColor, isFollowing]
       properties:
-        status:
-          type: string
-      required:
-        - status
-
+        id: { type: integer }
+        name: { type: string }
+        handle: { type: string }
+        bio: { type: string }
+        avatarColor: { type: string }
+        isFollowing: { type: boolean }
+    ReactionSummary:
+      type: object
+      required: [goat, rocket, laughing, confused, thumbsDown]
+      properties:
+        goat: { type: integer }
+        rocket: { type: integer }
+        laughing: { type: integer }
+        confused: { type: integer }
+        thumbsDown: { type: integer }
+    Post:
+      type: object
+      required: [id, author, transcript, durationSeconds, createdAt, reactions, isReshuuted]
+      properties:
+        id: { type: integer }
+        author: { $ref: '#/components/schemas/Founder' }
+        transcript: { type: string }
+        audioUrl: { type: [string, 'null'] }
+        durationSeconds: { type: integer }
+        createdAt: { type: string, format: date-time }
+        reactions: { $ref: '#/components/schemas/ReactionSummary' }
+        viewerReaction: { type: [string, 'null'], enum: [goat, rocket, laughing, confused, thumbsDown, null] }
+        isReshuuted: { type: boolean }
+        reshuutedBy: { type: [string, 'null'] }
+    ProfileDetail:
+      type: object
+      required: [founder, followerCount, followingCount, postCount, posts, suggestedQuestions]
+      properties:
+        founder: { $ref: '#/components/schemas/Founder' }
+        followerCount: { type: integer }
+        followingCount: { type: integer }
+        postCount: { type: integer }
+        posts: { type: array, items: { $ref: '#/components/schemas/Post' } }
+        suggestedQuestions: { type: array, items: { type: string } }
+    PostInput:
+      type: object
+      required: [transcript, durationSeconds]
+      properties:
+        transcript: { type: string, minLength: 1 }
+        audioDataUrl: { type: string }
+        durationSeconds: { type: integer, minimum: 1, maximum: 90 }
+    ReactionInput:
+      type: object
+      required: [emojiType]
+      properties:
+        emojiType: { type: string, enum: [goat, rocket, laughing, confused, thumbsDown] }
+    FollowState:
+      type: object
+      required: [isFollowing, followerCount]
+      properties:
+        isFollowing: { type: boolean }
+        followerCount: { type: integer }
+    AskInput:
+      type: object
+      required: [question]
+      properties: { question: { type: string, minLength: 2 } }
+    SourcePost:
+      type: object
+      required: [postId, excerpt, createdAt]
+      properties:
+        postId: { type: integer }
+        excerpt: { type: string }
+        createdAt: { type: string, format: date-time }
+    AskAnswer:
+      type: object
+      required: [answer, sources, hasEnoughContext]
+      properties:
+        answer: { type: string }
+        sources: { type: array, items: { $ref: '#/components/schemas/SourcePost' } }
+        hasEnoughContext: { type: boolean }

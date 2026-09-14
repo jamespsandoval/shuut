@@ -1,6 +1,6 @@
-# [Project name]
+# SHÜÜT
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A voice-note-first social feed where London founders publish short recordings, readable transcripts, and a growing cited record of how they think.
 
 ## Run & Operate
 
@@ -22,15 +22,21 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/shuut-app` — React web app and SHÜÜT visual system
+- `artifacts/api-server/src/routes/shuut.ts` — feed, profile, post, reaction, follow, reshüüt, and Ask Me API
+- `lib/api-spec/openapi.yaml` — source of truth for the API contract
+- `lib/db/src/schema/shuut.ts` — persistent founder and post data
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Web first, mobile-first responsive UI; business data is exposed through a platform-neutral JSON API.
+- The initial experience uses a seeded current founder so the social loop can be evaluated before full account onboarding is connected.
+- Everyone is the default launch feed; Following is available but secondary during the community cold start.
+- Recording uses the browser MediaRecorder API with a hard 90-second limit and an editable transcript before publish.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Founders can record and publish voice posts, scan a chronological transcript-first feed, react with the SHÜÜT reaction set, reshüüt, follow profiles, share direct post links, and ask a profile-scoped agent questions with source-post citations.
 
 ## User preferences
 
