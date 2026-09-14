@@ -10,6 +10,8 @@ export interface AuthUser {
   email: string;
   emailVerified: boolean;
   onboardingComplete: boolean;
+  passkeyEnrolled: boolean;
+  passkeyVerified: boolean;
 }
 
 export interface AuthSession {
@@ -213,7 +215,7 @@ export interface PostInput {
   /** @minLength 1 */
   transcript: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
-  audioObjectPath?: string;
+  audioObjectPath: string;
   /**
      * @minimum 1
      * @maximum 90

@@ -91,6 +91,15 @@ function mergeHeaders(...sources: Array<HeadersInit | undefined>): Headers {
   return headers;
 }
 
+function csrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const entry = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("shu_csrf="));
+  return entry ? decodeURIComponent(entry.slice("shu_csrf=".length)) : null;
+}
+
 function getMediaType(headers: Headers): string | null {
   const value = headers.get("content-type");
   return value ? value.split(";", 1)[0].trim().toLowerCase() : null;
@@ -336,6 +345,11 @@ export async function customFetch<T = unknown>(
   }
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
+
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && !headers.has("x-csrf-token")) {
+    const token = csrfToken();
+    if (token) headers.set("x-csrf-token", token);
+  }
 
   if (
     typeof init.body === "string" &&

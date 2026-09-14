@@ -87,7 +87,9 @@ export class ObjectStorageService {
   async publishAudio(objectPath: string, owner: string) {
     const file = await this.getFile(objectPath);
     await this.readAudio(objectPath);
-    await setObjectAclPolicy(file, { owner, visibility: "public" });
+    // Audio is always private. Playback is authorized by the post-scoped API
+    // route rather than by exposing a public storage ACL.
+    await setObjectAclPolicy(file, { owner, visibility: "private" });
   }
 
   async deleteObject(objectPath: string) {
@@ -101,6 +103,15 @@ export class ObjectStorageService {
     const file = await this.getFile(objectPath);
     const policy = await getObjectAclPolicy(file);
     if (policy?.visibility !== "public") throw new Error("Object not found");
+    return this.streamFile(file, range);
+  }
+
+  async streamPrivate(objectPath: string, range?: { start: number; end: number }) {
+    const file = await this.getFile(objectPath);
+    return this.streamFile(file, range);
+  }
+
+  private async streamFile(file: File, range?: { start: number; end: number }) {
     const [metadata] = await file.getMetadata();
     const size = Number(metadata.size || 0);
     return {

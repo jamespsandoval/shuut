@@ -78,6 +78,40 @@ paths:
         '200':
           description: Current authenticated user
           content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/passkey/register/options:
+    post:
+      operationId: beginPasskeyRegistration
+      tags: [auth]
+      responses:
+        '200':
+          description: WebAuthn registration options
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+  /auth/passkey/register/verify:
+    post:
+      operationId: completePasskeyRegistration
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '200': { description: Passkey registered }
+  /auth/passkey/assertion/options:
+    post:
+      operationId: beginPasskeyAssertion
+      tags: [auth]
+      responses:
+        '200':
+          description: WebAuthn assertion options
+          content: { application/json: { schema: { type: object, additionalProperties: true } } }
+  /auth/passkey/assertion/verify:
+    post:
+      operationId: completePasskeyAssertion
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: true } } }
+      responses:
+        '200': { description: Passkey verified }
   /auth/logout:
     post:
       operationId: logout
@@ -279,12 +313,14 @@ components:
   schemas:
     AuthUser:
       type: object
-      required: [id, email, emailVerified, onboardingComplete]
+      required: [id, email, emailVerified, onboardingComplete, passkeyEnrolled, passkeyVerified]
       properties:
         id: { type: string }
         email: { type: string, format: email }
         emailVerified: { type: boolean }
         onboardingComplete: { type: boolean }
+        passkeyEnrolled: { type: boolean }
+        passkeyVerified: { type: boolean }
     AuthSession:
       type: object
       required: [user]
@@ -414,7 +450,7 @@ components:
         objectPath: { type: string }
     PostInput:
       type: object
-      required: [transcript, durationSeconds]
+      required: [transcript, audioObjectPath, durationSeconds]
       properties:
         transcript: { type: string, minLength: 1 }
         audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }

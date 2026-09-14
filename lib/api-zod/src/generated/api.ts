@@ -41,7 +41,9 @@ export const VerifyEmailResponse = zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
-  "onboardingComplete": zod.boolean()
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
 })
 })
 
@@ -74,7 +76,9 @@ export const VerifyLoginResponse = zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
-  "onboardingComplete": zod.boolean()
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
 })
 })
 
@@ -84,7 +88,9 @@ export const GetCurrentUserResponse = zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
-  "onboardingComplete": zod.boolean()
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
 })
 })
 
@@ -114,7 +120,9 @@ export const CompleteOnboardingResponse = zod.object({
   "id": zod.string(),
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
-  "onboardingComplete": zod.boolean()
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
 })
 })
 
@@ -374,7 +382,7 @@ export const createPostBodyDurationSecondsMax = 90;
 
 export const CreatePostBody = zod.object({
   "transcript": zod.string().min(1),
-  "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp).optional(),
+  "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp),
   "durationSeconds": zod.number().int().min(1).max(createPostBodyDurationSecondsMax)
 })
 

@@ -43,6 +43,7 @@ import {
   clearSessionCookie,
   getAuthenticatedUserId,
 } from "../middlewares/sessionAuth";
+import { auditSecurityEvent } from "../lib/security";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -196,8 +197,8 @@ function founderJson(founder: FounderRow) {
 function postJson(post: PostRow, author: FounderRow) {
   const storedAudio = post.audioUrl;
   const audioUrl = storedAudio?.startsWith("/objects/uploads/")
-    ? `/api/storage${storedAudio}`
-    : storedAudio;
+    ? `/api/posts/${post.id}/audio`
+    : null;
   return {
     id: post.id,
     author: founderJson(author),
@@ -410,6 +411,63 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
   }
 });
 
+router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
+  const params = GetPostParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [post] = await db.select({ audioUrl: postsTable.audioUrl })
+    .from(postsTable)
+    .where(eq(postsTable.id, params.data.postId))
+    .limit(1);
+  if (!post?.audioUrl?.startsWith("/objects/uploads/")) {
+    await auditSecurityEvent(req, "audio_denial", getAuthenticatedUserId(req));
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
+  try {
+    const metadata = await objectStorage.streamPrivate(post.audioUrl);
+    const rangeHeader = req.headers.range;
+    let range: { start: number; end: number } | undefined;
+    if (rangeHeader && metadata.size > 0) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+      if (!match) {
+        res.setHeader("Content-Range", `bytes */${metadata.size}`);
+        res.sendStatus(416);
+        return;
+      }
+      const requestedStart = match[1] ? Number(match[1]) : undefined;
+      const requestedEnd = match[2] ? Number(match[2]) : undefined;
+      const start = requestedStart ?? Math.max(0, metadata.size - (requestedEnd ?? 0));
+      const end = Math.min(requestedEnd ?? metadata.size - 1, metadata.size - 1);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= metadata.size) {
+        res.setHeader("Content-Range", `bytes */${metadata.size}`);
+        res.sendStatus(416);
+        return;
+      }
+      range = { start, end };
+    }
+    const object = range
+      ? await objectStorage.streamPrivate(post.audioUrl, range)
+      : metadata;
+    res.setHeader("Content-Type", object.contentType);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Accept-Ranges", "bytes");
+    if (range) {
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${object.size}`);
+      res.setHeader("Content-Length", range.end - range.start + 1);
+    } else if (object.size) {
+      res.setHeader("Content-Length", object.size);
+    }
+    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+  } catch {
+    await auditSecurityEvent(req, "audio_denial", getAuthenticatedUserId(req), { postId: params.data.postId });
+    res.status(404).json({ error: "Audio not found" });
+  }
+});
+
 router.post("/transcriptions", async (req, res): Promise<void> => {
   const userId = getAuthenticatedUserId(req);
   const body = TranscribeAudioBody.safeParse(req.body);
@@ -427,6 +485,7 @@ router.post("/transcriptions", async (req, res): Promise<void> => {
     ))
     .limit(1);
   if (!pendingUpload) {
+    await auditSecurityEvent(req, "audio_denial", userId);
     res.status(403).json({ error: "This voice recording does not belong to you" });
     return;
   }
@@ -534,6 +593,7 @@ router.post("/posts", async (req, res): Promise<void> => {
       ))
       .limit(1);
     if (!pendingUpload) {
+      await auditSecurityEvent(req, "audio_denial", userId, { reason: "upload_not_owned" });
       res.status(403).json({ error: "This voice recording does not belong to you" });
       return;
     }
@@ -544,6 +604,11 @@ router.post("/posts", async (req, res): Promise<void> => {
       res.status(400).json({ error: "The voice recording could not be verified" });
       return;
     }
+  }
+  if (!body.data.audioObjectPath) {
+    await auditSecurityEvent(req, "publish_denied", userId, { reason: "missing_audio" });
+    res.status(400).json({ error: "An audio recording is required to publish." });
+    return;
   }
   const [created] = await db
     .insert(postsTable)
@@ -560,6 +625,7 @@ router.post("/posts", async (req, res): Promise<void> => {
       eq(profileImageUploadsTable.userId, userId),
     ));
   }
+  await auditSecurityEvent(req, "publish", userId, { postId: created.id });
   res.status(201).json(CreatePostResponse.parse(postJson(created, author)));
 });
 

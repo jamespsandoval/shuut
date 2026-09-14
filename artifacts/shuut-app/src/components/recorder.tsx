@@ -12,6 +12,11 @@ import { AudioPlayer } from "./audio-player"
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
 
+function csrfToken() {
+  const entry = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("shu_csrf="))
+  return entry ? decodeURIComponent(entry.slice("shu_csrf=".length)) : null
+}
+
 function getSupportedRecordingType() {
   return RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
 }
@@ -70,10 +75,14 @@ export function Recorder() {
         const blob = new Blob(chunksRef.current, { type: contentType })
         setAudioData(URL.createObjectURL(blob))
         try {
+          const csrf = csrfToken()
           const uploadResponse = await fetch("/api/storage/uploads/request-url", {
             method: "POST",
             credentials: "include",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+            },
             body: JSON.stringify({
               name: "shuut-recording",
               size: blob.size,
@@ -145,10 +154,12 @@ export function Recorder() {
   }
 
   const handleSubmit = () => {
-    if (!transcript.trim()) {
+    if (!transcript.trim() || !audioObjectPath) {
       toast({
-        title: "Missing transcript",
-        description: "Please provide a transcript before publishing.",
+        title: !audioObjectPath ? "Missing recording" : "Missing transcript",
+        description: !audioObjectPath
+          ? "Please record a voice note before publishing."
+          : "Please provide a transcript before publishing.",
         variant: "destructive"
       })
       return
@@ -158,7 +169,7 @@ export function Recorder() {
       {
         data: {
           transcript,
-          audioObjectPath: audioObjectPath || undefined,
+          audioObjectPath,
           durationSeconds: time || 1, // Fallback if 0
         }
       },

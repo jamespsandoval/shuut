@@ -1,5 +1,5 @@
 import { randomBytes, randomInt, randomUUID, createHmac } from "crypto";
-import { Router, type IRouter, type Response } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import {
   LoginBody,
@@ -11,38 +11,25 @@ import {
   VerifyEmailBody,
   VerifyLoginBody,
 } from "@workspace/api-zod";
-import { authCodesTable, db, foundersTable, sessionsTable, usersTable } from "@workspace/db";
+import { authCodesTable, db, foundersTable, passkeysTable, sessionsTable, usersTable } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
 import {
   clearSessionCookie,
+  DEVICE_COOKIE,
   getAuthenticatedUserId,
   hashSessionToken,
+  isPasskeyVerified,
   SESSION_COOKIE,
 } from "../middlewares/sessionAuth";
+import { CSRF_COOKIE, issueCsrfCookie } from "../middlewares/csrf";
+import { ipPrefix, auditSecurityEvent, privacyHash } from "../lib/security";
+import passkeyRouter from "./passkey";
 
 const router: IRouter = Router();
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_MS = 15 * 60 * 1000;
-const attempts = new Map<string, { count: number; resetsAt: number }>();
 
-router.use((req, res, next) => {
-  const now = Date.now();
-  const key = `${req.ip}:${req.path}`;
-  const current = attempts.get(key);
-  if (!current || current.resetsAt <= now) {
-    attempts.set(key, { count: 1, resetsAt: now + 15 * 60 * 1000 });
-    next();
-    return;
-  }
-  if (current.count >= 12) {
-    res.setHeader("Retry-After", String(Math.ceil((current.resetsAt - now) / 1000)));
-    res.status(429).json({ error: "Too many attempts. Please wait and try again." });
-    return;
-  }
-  current.count += 1;
-  next();
-});
-
+router.use(passkeyRouter);
 function normalizedEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -121,13 +108,16 @@ async function consumeCode(userId: string, purpose: CodePurpose, code: string) {
   return consumed.length === 1;
 }
 
-async function createSession(res: Response, userId: string) {
+async function createSession(req: Request, res: Response, userId: string) {
   const token = randomBytes(32).toString("base64url");
+  const deviceToken = randomBytes(32).toString("base64url");
   await db.delete(sessionsTable).where(eq(sessionsTable.userId, userId));
   await db.insert(sessionsTable).values({
     tokenHash: hashSessionToken(token),
     userId,
     expiresAt: new Date(Date.now() + SESSION_MS),
+    deviceHash: privacyHash(`${deviceToken}:${String(req.headers["user-agent"] || "unknown")}`),
+    ipPrefix: ipPrefix(req),
   });
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -136,13 +126,26 @@ async function createSession(res: Response, userId: string) {
     path: "/",
     maxAge: SESSION_MS,
   });
+  res.cookie(DEVICE_COOKIE, deviceToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MS,
+  });
+  issueCsrfCookie(res);
 }
 
-async function sessionJson(user: typeof usersTable.$inferSelect) {
+async function sessionJson(user: typeof usersTable.$inferSelect, req?: Request) {
   const [profile] = await db
     .select({ id: foundersTable.id })
     .from(foundersTable)
     .where(eq(foundersTable.userId, user.id))
+    .limit(1);
+  const [passkey] = await db
+    .select({ credentialId: passkeysTable.credentialId })
+    .from(passkeysTable)
+    .where(eq(passkeysTable.userId, user.id))
     .limit(1);
   return {
     user: {
@@ -150,6 +153,8 @@ async function sessionJson(user: typeof usersTable.$inferSelect) {
       email: user.email,
       emailVerified: Boolean(user.emailVerifiedAt),
       onboardingComplete: Boolean(profile),
+      passkeyEnrolled: Boolean(passkey),
+      passkeyVerified: req ? isPasskeyVerified(req) : false,
     },
   };
 }
@@ -212,8 +217,9 @@ router.post("/verify-email", async (req, res): Promise<void> => {
     .set({ emailVerifiedAt: new Date() })
     .where(eq(usersTable.id, user.id))
     .returning();
-  await createSession(res, user.id);
-  res.json(await sessionJson(verified));
+  await createSession(req, res, user.id);
+  await auditSecurityEvent(req, "email_verified", user.id);
+  res.json(await sessionJson(verified, req));
 });
 
 router.post("/login", async (req, res): Promise<void> => {
@@ -257,8 +263,9 @@ router.post("/login/verify", async (req, res): Promise<void> => {
     res.status(400).json({ error: "That sign-in code is invalid or has expired." });
     return;
   }
-  await createSession(res, user.id);
-  res.json(await sessionJson(user));
+  await createSession(req, res, user.id);
+  await auditSecurityEvent(req, "email_login", user.id);
+  res.json(await sessionJson(user, req));
 });
 
 router.get("/me", async (req, res): Promise<void> => {
@@ -272,7 +279,10 @@ router.get("/me", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  res.json(await sessionJson(user));
+  if (!req.headers.cookie?.split(";").some((part) => part.trim().startsWith(`${CSRF_COOKIE}=`))) {
+    issueCsrfCookie(res);
+  }
+  res.json(await sessionJson(user, req));
 });
 
 router.post("/onboarding", async (req, res): Promise<void> => {
@@ -297,7 +307,7 @@ router.post("/onboarding", async (req, res): Promise<void> => {
     .where(eq(foundersTable.userId, userId))
     .limit(1);
   if (existingProfile) {
-    res.json(CompleteOnboardingResponse.parse(await sessionJson(user)));
+    res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
     return;
   }
   const handle = body.data.handle.trim().toLowerCase();
@@ -320,7 +330,7 @@ router.post("/onboarding", async (req, res): Promise<void> => {
     followerCount: 0,
     followingCount: 0,
   });
-  res.json(CompleteOnboardingResponse.parse(await sessionJson(user)));
+  res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
 });
 
 router.get("/usernames/:handle/availability", async (req, res): Promise<void> => {
@@ -355,6 +365,12 @@ router.post("/logout", async (req, res): Promise<void> => {
     ?.slice(SESSION_COOKIE.length + 1);
   if (token) await db.delete(sessionsTable).where(eq(sessionsTable.tokenHash, hashSessionToken(decodeURIComponent(token))));
   clearSessionCookie(res);
+  res.clearCookie(CSRF_COOKIE, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
   res.sendStatus(204);
 });
 

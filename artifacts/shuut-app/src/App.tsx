@@ -27,6 +27,7 @@ import Terms from '@/pages/terms';
 import Privacy from '@/pages/privacy';
 import Cookies from '@/pages/cookies';
 import Contact from '@/pages/contact';
+import PasskeyGate from '@/pages/passkey-gate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +55,9 @@ function HomeRedirect() {
     if (!user?.onboardingComplete) {
       return <Onboarding />;
     }
+    if (!user.passkeyVerified) {
+      return <PasskeyGate />;
+    }
     return <Redirect to="/feed" />;
   }
 
@@ -78,6 +82,9 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
           if (!user?.onboardingComplete) {
             return <Redirect to="/" />;
           }
+          if (!user.passkeyVerified) {
+            return <Redirect to="/passkey" />;
+          }
           return <Component params={params} />;
         }
         
@@ -98,6 +105,7 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/cookies" component={Cookies} />
         <Route path="/contact" component={Contact} />
+        <Route path="/passkey" component={PasskeyGate} />
         <ProtectedRoute path="/feed" component={Home} />
         <ProtectedRoute path="/explore" component={Explore} />
         <ProtectedRoute path="/p/:postId" component={PostDetail} />

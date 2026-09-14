@@ -11,4 +11,6 @@ export interface AuthUser {
   email: string;
   emailVerified: boolean;
   onboardingComplete: boolean;
+  passkeyEnrolled: boolean;
+  passkeyVerified: boolean;
 }

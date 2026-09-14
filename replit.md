@@ -31,6 +31,10 @@ A voice-note-first social feed where people publish short recordings, readable t
 
 - Web first, mobile-first responsive UI; business data is exposed through a platform-neutral JSON API.
 - New accounts complete a two-step name and lowercase-username onboarding before any in-app navigation or feed content appears.
+- Email codes establish account identity; every new session must then enroll or verify a passkey before any product API, feed, posting, or audio access.
+- Publishing requires an owned voice recording but does not trigger an additional passkey prompt after the session has been verified.
+- Voice recordings remain private in storage and are streamed only through authenticated, post-scoped API routes.
+- Unsafe cookie-authenticated requests require matching Origin and CSRF proof; security-sensitive endpoints use database-backed rate limits and append-only audit events.
 - Everyone is the default launch feed; Following is available but secondary during the community cold start.
 - Recording uses the browser MediaRecorder API with a hard 90-second limit and an editable transcript before publish.
 

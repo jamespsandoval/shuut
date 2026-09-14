@@ -68,6 +68,9 @@ export const sessionsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deviceHash: text("device_hash"),
+    ipPrefix: text("ip_prefix"),
+    passkeyVerifiedAt: timestamp("passkey_verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("shuut_sessions_user_idx").on(table.userId)],
@@ -87,6 +90,66 @@ export const authCodesTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("shuut_auth_codes_user_purpose_idx").on(table.userId, table.purpose)],
+);
+
+export const passkeysTable = pgTable(
+  "shuut_passkeys",
+  {
+    credentialId: text("credential_id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    publicKey: text("public_key").notNull(),
+    counter: integer("counter").notNull().default(0),
+    transports: text("transports"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (table) => [index("shuut_passkeys_user_idx").on(table.userId)],
+);
+
+export const webauthnChallengesTable = pgTable(
+  "shuut_webauthn_challenges",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    sessionTokenHash: text("session_token_hash")
+      .notNull()
+      .references(() => sessionsTable.tokenHash, { onDelete: "cascade" }),
+    challenge: text("challenge").notNull(),
+    purpose: text("purpose").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("shuut_webauthn_challenges_user_idx").on(table.userId)],
+);
+
+export const securityRateLimitsTable = pgTable(
+  "shuut_security_rate_limits",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull().default(0),
+    resetsAt: timestamp("resets_at", { withTimezone: true }).notNull(),
+  },
+);
+
+export const securityAuditEventsTable = pgTable(
+  "shuut_security_audit_events",
+  {
+    id: serial("id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    userId: text("user_id").references(() => usersTable.id, { onDelete: "set null" }),
+    ipPrefix: text("ip_prefix"),
+    deviceHash: text("device_hash"),
+    metadata: text("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("shuut_security_audit_events_user_idx").on(table.userId),
+    index("shuut_security_audit_events_type_idx").on(table.eventType),
+  ],
 );
 
 export type FounderRow = typeof foundersTable.$inferSelect;
