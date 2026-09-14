@@ -122,13 +122,11 @@ export default function Landing() {
                   Welcome back
                 </h1>
               )}
-              <p className="text-muted-foreground text-center text-[15px] font-medium mb-8">
-                {mode === 'sign-up' 
-                  ? 'Join the voice-first founder community.'
-                  : mode === 'sign-in'
-                   ? 'Enter your email to receive a sign-in code.'
-                   : null}
-              </p>
+              {mode === 'sign-in' && (
+                <p className="text-muted-foreground text-center text-[15px] font-medium mb-8">
+                  Enter your email to receive a sign-in code.
+                </p>
+              )}
 
               <form onSubmit={handleEmailSubmit} className="space-y-4">
                 <div className="space-y-4">
