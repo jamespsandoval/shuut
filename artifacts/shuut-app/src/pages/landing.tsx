@@ -6,32 +6,31 @@ import { Loader2, ArrowRight, ArrowLeft, Mail, KeyRound } from 'lucide-react';
 import { Footer } from '@/components/footer';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
-  useRegister, 
+  useStartAuth,
   useVerifyEmail, 
-  useLogin, 
   useVerifyLogin,
   getGetCurrentUserQueryKey
 } from '@workspace/api-client-react';
 
-type AuthMode = 'sign-in' | 'sign-up' | 'verify-email' | 'verify-login';
+type AuthMode = 'email' | 'verify';
+type AuthFlow = 'login' | 'register';
 
 export default function Landing() {
-  const [mode, setMode] = useState<AuthMode>('sign-up');
+  const [mode, setMode] = useState<AuthMode>('email');
+  const [flow, setFlow] = useState<AuthFlow | null>(null);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
   
-  const registerMutation = useRegister();
+  const startAuthMutation = useStartAuth();
   const verifyEmailMutation = useVerifyEmail();
-  const loginMutation = useLogin();
   const verifyLoginMutation = useVerifyLogin();
 
   const isPending = 
-    registerMutation.isPending || 
+    startAuthMutation.isPending ||
     verifyEmailMutation.isPending || 
-    loginMutation.isPending || 
     verifyLoginMutation.isPending;
 
   const extractError = (err: any) => {
@@ -42,25 +41,15 @@ export default function Landing() {
     e.preventDefault();
     setError(null);
     
-    if (mode === 'sign-up') {
-      registerMutation.mutate({ data: { email } }, {
-        onSuccess: () => {
-          setMode('verify-email');
-        },
-        onError: (err) => {
-          setError(extractError(err));
-        }
-      });
-    } else if (mode === 'sign-in') {
-      loginMutation.mutate({ data: { email } }, {
-        onSuccess: () => {
-          setMode('verify-login');
-        },
-        onError: (err) => {
-          setError(extractError(err));
-        }
-      });
-    }
+    startAuthMutation.mutate({ data: { email } }, {
+      onSuccess: (result) => {
+        setFlow(result.flow);
+        setMode('verify');
+      },
+      onError: (err) => {
+        setError(extractError(err));
+      }
+    });
   };
 
   const submitCode = (codeToVerify: string) => {
@@ -69,7 +58,7 @@ export default function Landing() {
     }
     setError(null);
     
-    if (mode === 'verify-email') {
+    if (flow === 'register') {
       verifyEmailMutation.mutate({ data: { email, code: codeToVerify } }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
@@ -78,7 +67,7 @@ export default function Landing() {
           setError(extractError(err));
         }
       });
-    } else if (mode === 'verify-login') {
+    } else if (flow === 'login') {
       verifyLoginMutation.mutate({ data: { email, code: codeToVerify } }, {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
@@ -96,9 +85,8 @@ export default function Landing() {
   };
   
   const resetFlow = () => {
-    if (mode === 'verify-email') setMode('sign-up');
-    else if (mode === 'verify-login') setMode('sign-in');
-    
+    setMode('email');
+    setFlow(null);
     setCode('');
     setError(null);
   };
@@ -122,22 +110,11 @@ export default function Landing() {
             </Alert>
           )}
 
-          {(mode === 'sign-up' || mode === 'sign-in') ? (
+          {mode === 'email' ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {mode === 'sign-in' && (
-                <h1 className="text-3xl font-extrabold tracking-tight text-center mb-2 leading-tight text-foreground">
-                  Welcome back
-                </h1>
-              )}
-              {mode === 'sign-in' && (
-                <p className="text-muted-foreground text-center text-[15px] font-medium mb-8">
-                  Enter your email to receive a sign-in code.
-                </p>
-              )}
-
               <form
                 onSubmit={handleEmailSubmit}
-                className={`space-y-2 ${mode === 'sign-up' ? 'pt-4' : ''}`}
+                className="space-y-2 pt-4"
               >
                 <div className="space-y-4">
                   <div className="relative">
@@ -154,6 +131,7 @@ export default function Landing() {
                       disabled={isPending}
                       className="h-14 text-[15px] pl-11 rounded-xl bg-white border-slate-300 shadow-sm hover:border-slate-400 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground font-medium"
                       autoFocus
+                      data-testid="input-auth-email"
                     />
                   </div>
                 </div>
@@ -162,32 +140,19 @@ export default function Landing() {
                   type="submit" 
                   className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md"
                   disabled={isPending || !email}
+                  data-testid="button-auth-continue"
                 >
                   {isPending ? (
                      <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
                      <>
-                       {mode === 'sign-up' ? 'Continue' : 'Send sign-in code'} 
+                       Continue
                        <ArrowRight className="w-5 h-5 ml-2 opacity-80" />
                      </>
                   )}
                 </Button>
               </form>
 
-              <div className="mt-8 text-center text-[15px] text-muted-foreground font-medium">
-                {mode === 'sign-up' ? 'Already have an account?' : 'New to SHÜÜT?'}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode(mode === 'sign-up' ? 'sign-in' : 'sign-up');
-                    setError(null);
-                  }}
-                  className="ml-2 font-bold text-foreground hover:text-primary transition-colors"
-                  disabled={isPending}
-                >
-                  {mode === 'sign-up' ? 'Sign in' : 'Create account'}
-                </button>
-              </div>
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
@@ -195,16 +160,20 @@ export default function Landing() {
                 onClick={resetFlow}
                 type="button"
                 className="mb-8 flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="button-auth-back"
               >
                 <ArrowLeft className="w-4 h-4 mr-1.5" />
                 Back
               </button>
               
-              <h1 className="text-3xl font-extrabold tracking-tight mb-2 leading-tight">
-                Check your email
+              <h1 className="text-3xl font-extrabold tracking-tight mb-2 leading-tight" data-testid="heading-auth-code">
+                {flow === 'register' ? 'Create your account' : 'Check your email'}
               </h1>
               <p className="text-muted-foreground text-[15px] font-medium mb-8 leading-relaxed">
-                We sent a 6-digit code to <br/>
+                {flow === 'register'
+                  ? "We didn't find an account for this email. Enter the code we sent to continue registration."
+                  : 'We sent a 6-digit sign-in code to'}
+                <br/>
                 <span className="font-bold text-foreground">{email}</span>
               </p>
 
@@ -234,6 +203,7 @@ export default function Landing() {
                         disabled={isPending}
                         className="h-16 text-center text-2xl tracking-[0.5em] font-mono font-bold rounded-xl bg-secondary/50 border-transparent focus-visible:bg-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary transition-all placeholder:text-muted-foreground/30"
                         autoFocus
+                        data-testid="input-auth-code"
                       />
                     </div>
                   </div>
@@ -244,11 +214,12 @@ export default function Landing() {
                   type="submit" 
                   className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md mt-2"
                   disabled={isPending || code.length !== 6}
+                  data-testid="button-auth-verify"
                 >
                   {isPending ? (
                      <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                     "Verify & Sign in"
+                     flow === 'register' ? "Verify & continue" : "Verify & sign in"
                   )}
                 </Button>
               </form>

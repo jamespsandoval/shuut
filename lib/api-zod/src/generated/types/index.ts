@@ -12,6 +12,8 @@ export * from './audioTranscript';
 export * from './audioTranscriptionInput';
 export * from './authMessage';
 export * from './authSession';
+export * from './authStartResult';
+export * from './authStartResultFlow';
 export * from './authUser';
 export * from './beginPasskeyAssertion200';
 export * from './beginPasskeyRegistration200';

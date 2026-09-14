@@ -235,6 +235,34 @@ test("passwordless login resists enumeration and replay, logout invalidates the 
   })).status, 401);
 });
 
+test("unified auth start chooses sign-in for members and registration for new emails", async () => {
+  const memberEmail = `${prefix}-unified-member@example.test`;
+  await register(memberEmail);
+
+  const memberStart = await request("/api/auth/start", {
+    method: "POST",
+    json: { email: memberEmail },
+  });
+  assert.equal(memberStart.status, 202);
+  assert.deepEqual(await memberStart.json(), {
+    flow: "login",
+    message: "Check your email for a sign-in code.",
+  });
+  codeFor(memberEmail, "Your SHÜÜT sign-in code");
+
+  const newEmail = `${prefix}-unified-new@example.test`;
+  const registrationStart = await request("/api/auth/start", {
+    method: "POST",
+    json: { email: newEmail },
+  });
+  assert.equal(registrationStart.status, 202);
+  assert.deepEqual(await registrationStart.json(), {
+    flow: "register",
+    message: "Check your email to continue registration.",
+  });
+  codeFor(newEmail, "Verify your SHÜÜT account");
+});
+
 test("registration is bound to RP ID, origin, challenge, and session, then cannot be replayed", async () => {
   const email = `${prefix}-passkey@example.test`;
   const session = await register(email);

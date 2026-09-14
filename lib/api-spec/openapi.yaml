@@ -37,6 +37,17 @@ paths:
         '202':
           description: Verification email sent
           content: { application/json: { schema: { $ref: '#/components/schemas/AuthMessage' } } }
+  /auth/start:
+    post:
+      operationId: startAuth
+      tags: [auth]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoginInput' } } }
+      responses:
+        '202':
+          description: The appropriate sign-in or registration code was sent
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthStartResult' } } }
   /auth/verify-email:
     post:
       operationId: verifyEmail
@@ -426,6 +437,12 @@ components:
       required: [email]
       properties:
         email: { type: string, format: email, maxLength: 254 }
+    AuthStartResult:
+      type: object
+      required: [flow, message]
+      properties:
+        flow: { type: string, enum: [login, register] }
+        message: { type: string }
     OnboardingInput:
       type: object
       required: [firstName, lastName, handle]

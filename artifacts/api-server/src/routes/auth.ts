@@ -136,6 +136,52 @@ async function createSession(req: Request, res: Response, userId: string) {
   issueCsrfCookie(res);
 }
 
+async function sendRegistrationCode(req: Request, email: string) {
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  const user = existing
+    ? existing
+    : (
+        await db
+          .insert(usersTable)
+          .values({
+            id: randomUUID(),
+            email,
+            // Retained for schema compatibility; password authentication is disabled.
+            passwordHash: `disabled:${randomBytes(32).toString("hex")}`,
+          })
+          .returning()
+      )[0];
+  const challenge = await issueCode(user.id, "verify");
+  try {
+    await sendPostmarkEmail({
+      to: email,
+      subject: "Verify your SHÜÜT account",
+      textBody: `Your SHÜÜT verification code is ${challenge.code}. It expires in 15 minutes.`,
+    });
+    await retireOtherCodes(user.id, "verify", challenge.hashedCode);
+  } catch (error) {
+    await discardCode(user.id, "verify", challenge.hashedCode);
+    req.log.error({ err: error }, "Failed to send verification email");
+    throw error;
+  }
+}
+
+async function sendLoginCode(req: Request, user: typeof usersTable.$inferSelect) {
+  const challenge = await issueCode(user.id, "login");
+  try {
+    await sendPostmarkEmail({
+      to: user.email,
+      subject: "Your SHÜÜT sign-in code",
+      textBody: `Your SHÜÜT sign-in code is ${challenge.code}. It expires in 15 minutes. If you did not request this, ignore this email.`,
+    });
+    await retireOtherCodes(user.id, "login", challenge.hashedCode);
+  } catch (error) {
+    await discardCode(user.id, "login", challenge.hashedCode);
+    req.log.error({ err: error }, "Failed to send sign-in code");
+    throw error;
+  }
+}
+
 async function sessionJson(user: typeof usersTable.$inferSelect, req?: Request) {
   const [profile] = await db
     .select({ id: foundersTable.id })
@@ -171,34 +217,34 @@ router.post("/register", async (req, res): Promise<void> => {
     res.status(409).json({ error: "An account with this email already exists." });
     return;
   }
-  const user = existing
-    ? existing
-    : (
-        await db
-          .insert(usersTable)
-          .values({
-            id: randomUUID(),
-            email,
-            // Retained for schema compatibility; password authentication is disabled.
-            passwordHash: `disabled:${randomBytes(32).toString("hex")}`,
-          })
-          .returning()
-      )[0];
-  const challenge = await issueCode(user.id, "verify");
   try {
-    await sendPostmarkEmail({
-      to: email,
-      subject: "Verify your SHÜÜT account",
-      textBody: `Your SHÜÜT verification code is ${challenge.code}. It expires in 15 minutes.`,
-    });
-    await retireOtherCodes(user.id, "verify", challenge.hashedCode);
+    await sendRegistrationCode(req, email);
   } catch (error) {
-    await discardCode(user.id, "verify", challenge.hashedCode);
-    req.log.error({ err: error }, "Failed to send verification email");
     res.status(502).json({ error: "We could not send your verification email. Please try again." });
     return;
   }
   res.status(202).json({ message: "Check your email for a verification code." });
+});
+
+router.post("/start", async (req, res): Promise<void> => {
+  const body = LoginBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Enter a valid email address." });
+    return;
+  }
+  const email = normalizedEmail(body.data.email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  try {
+    if (user?.emailVerifiedAt) {
+      await sendLoginCode(req, user);
+      res.status(202).json({ flow: "login", message: "Check your email for a sign-in code." });
+      return;
+    }
+    await sendRegistrationCode(req, email);
+    res.status(202).json({ flow: "register", message: "Check your email to continue registration." });
+  } catch {
+    res.status(502).json({ error: "We could not send your code. Please try again." });
+  }
 });
 
 router.post("/verify-email", async (req, res): Promise<void> => {
@@ -230,17 +276,9 @@ router.post("/login", async (req, res): Promise<void> => {
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail(body.data.email))).limit(1);
   if (user?.emailVerifiedAt) {
-    const challenge = await issueCode(user.id, "login");
     try {
-      await sendPostmarkEmail({
-        to: user.email,
-        subject: "Your SHÜÜT sign-in code",
-        textBody: `Your SHÜÜT sign-in code is ${challenge.code}. It expires in 15 minutes. If you did not request this, ignore this email.`,
-      });
-      await retireOtherCodes(user.id, "login", challenge.hashedCode);
+      await sendLoginCode(req, user);
     } catch (error) {
-      await discardCode(user.id, "login", challenge.hashedCode);
-      req.log.error({ err: error }, "Failed to send sign-in code");
       res.status(502).json({ error: "We could not send your sign-in code. Please try again." });
       return;
     }

@@ -26,6 +26,7 @@ import type {
   AudioTranscriptionInput,
   AuthMessage,
   AuthSession,
+  AuthStartResult,
   BeginPasskeyAssertion200,
   BeginPasskeyRegistration200,
   ConfirmPasskeyRecovery200,
@@ -230,6 +231,88 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getRegisterMutationOptions(options));
+    }
+
+export const getStartAuthUrl = () => {
+
+
+
+
+  return `/api/auth/start`
+}
+
+export const startAuth = async (loginInput: LoginInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthStartResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AuthStartResult>(getStartAuthUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(loginInput)
+  }
+);}
+
+
+
+
+
+export const getStartAuthMutationKey = () => ['startAuth'] as const;
+
+export const getStartAuthMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startAuth>>, TError,StartAuthMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startAuth>>, TError,StartAuthMutationVariables, TContext> => {
+
+const mutationKey = getStartAuthMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startAuth>>, StartAuthMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  startAuth(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartAuthMutationResult = NonNullable<Awaited<ReturnType<typeof startAuth>>>
+    export type StartAuthMutationBody = BodyType<LoginInput>
+    export type StartAuthMutationError = ErrorType<unknown>
+    export type StartAuthMutationVariables = {data: BodyType<LoginInput>}
+
+    export const useStartAuth = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startAuth>>, TError,StartAuthMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startAuth>>,
+        TError,
+        StartAuthMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartAuthMutationOptions(options));
     }
 
 export const getVerifyEmailUrl = () => {

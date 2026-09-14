@@ -26,6 +26,20 @@ export const RegisterResponse = zod.object({
 })
 
 
+export const startAuthBodyEmailMax = 254;
+
+
+
+export const StartAuthBody = zod.object({
+  "email": zod.string().email().max(startAuthBodyEmailMax)
+})
+
+export const StartAuthResponse = zod.object({
+  "flow": zod.enum(['login', 'register']),
+  "message": zod.string()
+})
+
+
 export const verifyEmailBodyEmailMax = 254;
 
 export const verifyEmailBodyCodeRegExp = new RegExp('^[0-9]{6}$');

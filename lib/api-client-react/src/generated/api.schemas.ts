@@ -66,6 +66,19 @@ export interface LoginInput {
   email: string;
 }
 
+export type AuthStartResultFlow = typeof AuthStartResultFlow[keyof typeof AuthStartResultFlow];
+
+
+export const AuthStartResultFlow = {
+  login: 'login',
+  register: 'register',
+} as const;
+
+export interface AuthStartResult {
+  flow: AuthStartResultFlow;
+  message: string;
+}
+
 export interface OnboardingInput {
   /**
      * @minLength 1

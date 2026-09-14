@@ -193,79 +193,118 @@ export function Recorder() {
     )
   }
 
-  if (audioData) {
-    return (
-      <div className="bg-card border-b border-border/50 p-4 shadow-sm animate-in fade-in slide-in-from-top-4 flex flex-col gap-4">
-        <AudioPlayer audioUrl={audioData} durationSeconds={time} />
-        
-        <div className="relative">
-          <Textarea 
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            placeholder={transcribeAudio.isPending ? "Transcribing your voice note…" : "Edit your transcript..."}
-            className="min-h-[100px] resize-none pr-4 text-base bg-secondary/20 border-border/40 focus-visible:ring-primary/50"
-          />
-          <div className="absolute right-3 bottom-3 text-xs text-muted-foreground font-mono">
-            {transcript.length} chars
-          </div>
-        </div>
-        
-        <div className="flex justify-between items-center">
-          <Button variant="ghost" onClick={handleCancel} className="text-muted-foreground">
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={createPost.isPending || transcribeAudio.isPending || !audioObjectPath || !transcript.trim()}
-            className="rounded-full px-6 gap-2"
-          >
-            {createPost.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            SHÜÜT
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  const isExpanded = isRecording || audioData !== null;
 
   return (
-    <div className="bg-card border-b border-border/50 p-6 flex flex-col items-center justify-center min-h-[140px] transition-all">
-      <div className="flex h-14 items-center justify-center mb-4">
-        {isRecording ? (
-          <div className="text-center">
-            <h3 className="font-semibold text-lg text-foreground">Recording...</h3>
-            <p className="text-sm text-muted-foreground font-mono tabular-nums h-5">
-              {formatTime(time)} / 1:30
-            </p>
-          </div>
-        ) : (
+    <div
+      className={cn(
+        "bg-card border-b border-border/50 transition-[height,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden",
+        isExpanded ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]" : "h-[140px]"
+      )}
+      data-testid="container-recorder"
+    >
+      {/* State 1: Idle */}
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center transition-[opacity,transform] duration-200 absolute inset-0",
+          !isExpanded ? "opacity-100 translate-y-0 z-10" : "opacity-0 -translate-y-8 pointer-events-none"
+        )}
+      >
+        <div className="flex h-14 items-center justify-center mb-4">
           <img
             src={`${basePath}/shuut-logo.png`}
             alt="SHÜÜT"
             className="h-14 w-auto object-contain"
           />
-        )}
+        </div>
+        <button
+          onClick={handleToggle}
+          data-testid="button-start-recording"
+          className="w-16 h-16 rounded-full flex items-center justify-center transition-transform duration-300 shadow-md bg-primary text-primary-foreground hover:scale-105 active:scale-95 shadow-primary/20"
+        >
+          <Mic className="w-8 h-8" />
+        </button>
       </div>
 
-      <button
-        onClick={handleToggle}
+      {/* State 2: Recording */}
+      <div
         className={cn(
-          "w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-md",
-          isRecording 
-            ? "bg-destructive text-destructive-foreground animate-pulse scale-110 shadow-destructive/20" 
-            : "bg-primary text-primary-foreground hover:scale-105 active:scale-95 shadow-primary/20"
+          "flex flex-col items-center justify-center transition-[opacity,transform] duration-200 absolute inset-0 p-6 pb-20 md:pb-6",
+          (isRecording && !audioData) ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
         )}
       >
-        {isRecording ? <Square className="w-6 h-6 fill-current" /> : <Mic className="w-8 h-8" />}
-      </button>
+        <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto gap-8 md:gap-12">
+          <div className="text-center space-y-2">
+            <h3 className="font-bold text-xl md:text-2xl text-destructive uppercase tracking-widest animate-pulse" data-testid="text-recording-status">
+              Recording
+            </h3>
+            <div className="text-6xl md:text-8xl font-mono tabular-nums tracking-tighter font-light text-foreground" data-testid="text-elapsed-time">
+              {formatTime(time)}
+            </div>
+            <div className="text-muted-foreground font-mono md:text-lg">/ 1:30</div>
+          </div>
 
-      {isRecording && (
-        <div className="flex gap-2 mt-6">
-          <div className="w-2 h-2 rounded-full bg-destructive animate-bounce" />
-          <div className="w-2 h-2 rounded-full bg-destructive animate-bounce" style={{ animationDelay: '150ms' }} />
-          <div className="w-2 h-2 rounded-full bg-destructive animate-bounce" style={{ animationDelay: '300ms' }} />
-          <div className="w-2 h-2 rounded-full bg-destructive animate-bounce" style={{ animationDelay: '450ms' }} />
+          <button
+            onClick={stopRecording}
+            data-testid="button-stop-recording"
+            className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-xl shadow-destructive/20 hover:scale-105 active:scale-95 transition-all"
+          >
+            <Square className="w-8 h-8 md:w-10 md:h-10 fill-current animate-pulse" />
+          </button>
+
+          <div className="flex gap-2 items-center h-12 justify-center" data-testid="recording-visualizer">
+            <div className="w-2 h-6 bg-destructive rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+            <div className="w-2 h-10 bg-destructive rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+            <div className="w-2 h-12 bg-destructive rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+            <div className="w-2 h-8 bg-destructive rounded-full animate-pulse" style={{ animationDelay: '450ms' }} />
+            <div className="w-2 h-6 bg-destructive rounded-full animate-pulse" style={{ animationDelay: '600ms' }} />
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* State 3: Review / Edit */}
+      <div
+        className={cn(
+          "flex flex-col transition-[opacity,transform] duration-200 absolute inset-0 p-4 pb-20 md:p-8",
+          audioData ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
+        )}
+      >
+        <div className="flex-1 flex flex-col w-full max-w-2xl mx-auto h-full justify-between gap-4 md:gap-6">
+          <div className="space-y-4 md:space-y-6 flex-1 flex flex-col min-h-0">
+            <div className="shrink-0 bg-card rounded-2xl border border-border/50 p-2 shadow-sm" data-testid="wrapper-audio-preview">
+              <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
+            </div>
+
+            <div className="relative flex-1 flex flex-col min-h-0 group">
+              <Textarea
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder={transcribeAudio.isPending ? "Transcribing your voice note…" : "Edit your transcript..."}
+                className="flex-1 resize-none text-lg md:text-xl p-4 md:p-6 pb-12 bg-secondary/10 border-border/40 focus-visible:ring-primary/50 focus-visible:bg-background rounded-2xl md:rounded-3xl shadow-inner transition-colors"
+                data-testid="textarea-transcript"
+              />
+              <div className="absolute right-4 bottom-4 text-xs md:text-sm text-muted-foreground font-mono bg-background/80 px-2 py-1 rounded-md backdrop-blur-sm shadow-sm border border-border/50 transition-opacity">
+                {transcript.length} chars
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 md:gap-4 shrink-0 pt-2 border-t border-border/30 mt-auto">
+            <Button variant="ghost" onClick={handleCancel} className="text-muted-foreground w-full sm:w-auto text-base md:text-lg h-12 md:h-14 rounded-full px-6 md:px-8 hover:bg-secondary/80" data-testid="button-cancel-recording">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={createPost.isPending || transcribeAudio.isPending || !audioObjectPath || !transcript.trim()}
+              className="w-full sm:w-auto rounded-full px-8 md:px-12 h-12 md:h-14 text-base md:text-lg font-bold gap-2 shadow-lg shadow-primary/20 transition-all active:scale-95"
+              data-testid="button-submit-recording"
+            >
+              {createPost.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              SHÜÜT
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
