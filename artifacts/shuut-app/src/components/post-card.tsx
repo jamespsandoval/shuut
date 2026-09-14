@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "wouter"
-import { Repeat2, Share, Trash2, MoreHorizontal } from "lucide-react"
+import { Play, Repeat2, Share, Trash2, MoreHorizontal } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { Post, ReactionInputEmojiType } from "@workspace/api-client-react"
 import { 
@@ -84,7 +84,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
       {post.isReshuuted && post.reshuutedBy && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold mb-3 px-4 uppercase tracking-wider">
           <Repeat2 className="w-3 h-3" />
-          <span>{post.reshuutedBy} reshuuted</span>
+          <span>{post.reshuutedBy} reshüüted</span>
         </div>
       )}
 
@@ -128,6 +128,18 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
             </div>
           )}
 
+          {!post.audioUrl && (
+            <div
+              className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground"
+              aria-label={`Recording length: ${post.durationSeconds} seconds`}
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+              </span>
+              <span>{post.durationSeconds} sec</span>
+            </div>
+          )}
+
           {/* Action Bar */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-6 mt-4 pt-3 border-t border-border/30">
             {/* Reactions */}
@@ -156,7 +168,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
 
             <div className="flex-1" />
 
-            {/* Reshuut */}
+            {/* Reshüüt */}
             <button
               onClick={handleReshuut}
               className={cn(
@@ -165,7 +177,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
               )}
             >
               <Repeat2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Reshuut</span>
+              <span className="hidden sm:inline">Reshüüt</span>
             </button>
 
             {/* Share Menu */}

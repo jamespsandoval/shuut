@@ -70,6 +70,7 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
       
       <button
         onClick={togglePlay}
+        aria-label={isPlaying ? "Pause recording" : "Play recording"}
         className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 hover:scale-105 active:scale-95 transition-transform shadow-sm"
       >
         {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
@@ -99,7 +100,7 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
       </div>
 
       <div className="text-xs font-mono font-medium text-muted-foreground shrink-0 tabular-nums">
-        {formatTime(Math.floor((progress / 100) * durationSeconds || 0))} / {formatTime(durationSeconds)}
+        {durationSeconds} sec
       </div>
     </div>
   )
