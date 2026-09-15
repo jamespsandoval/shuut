@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   topSection: {
-    marginTop: '15%',
+    marginTop: '25%',
   },
   headerBranding: {
     alignItems: 'center',
