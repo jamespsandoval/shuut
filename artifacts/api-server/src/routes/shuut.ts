@@ -31,6 +31,8 @@ import {
   UpdatePostBody,
   UpdatePostParams,
   UpdatePostResponse,
+  CreatePostShareLinkParams,
+  CreatePostShareLinkResponse,
 } from "@workspace/api-zod";
 import {
   db,
@@ -47,6 +49,7 @@ import {
   getAuthenticatedUserId,
 } from "../middlewares/sessionAuth";
 import { auditSecurityEvent } from "../lib/security";
+import { createPostShareToken } from "../lib/postShareToken";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -682,6 +685,29 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId));
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   res.json(GetPostResponse.parse(postJson(post, author, viewer?.id)));
+});
+
+router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
+  const params = CreatePostShareLinkParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [post] = await db
+    .select({ id: postsTable.id, transcriptionStatus: postsTable.transcriptionStatus })
+    .from(postsTable)
+    .where(eq(postsTable.id, params.data.postId))
+    .limit(1);
+  if (!post || post.transcriptionStatus !== "ready") {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+  const token = createPostShareToken(post.id);
+  res.json(
+    CreatePostShareLinkResponse.parse({
+      url: `https://shuut.me/p/${post.id}?t=${encodeURIComponent(token)}`,
+    }),
+  );
 });
 
 router.patch("/posts/:postId", async (req, res): Promise<void> => {

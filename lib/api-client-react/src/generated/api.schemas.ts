@@ -279,6 +279,10 @@ export interface PostEditInput {
   transcript: string;
 }
 
+export interface PostShareLink {
+  url: string;
+}
+
 export interface AudioTranscriptionInput {
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath: string;

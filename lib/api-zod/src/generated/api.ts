@@ -679,6 +679,15 @@ export const ReshuutPostResponse = zod.object({
 })
 
 
+export const CreatePostShareLinkParams = zod.object({
+  "postId": zod.coerce.number().int()
+})
+
+export const CreatePostShareLinkResponse = zod.object({
+  "url": zod.string().url()
+})
+
+
 export const ToggleFollowParams = zod.object({
   "handle": zod.coerce.string()
 })

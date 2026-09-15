@@ -34,6 +34,7 @@ export * from './passkeyRecoveryStatus';
 export * from './post';
 export * from './postEditInput';
 export * from './postInput';
+export * from './postShareLink';
 export * from './postViewerReaction';
 export * from './profileDetail';
 export * from './profileUpdate';

@@ -43,6 +43,7 @@ import type {
   Post,
   PostEditInput,
   PostInput,
+  PostShareLink,
   ProfileDetail,
   ProfileUpdate,
   ReactionInput,
@@ -2652,6 +2653,74 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getReshuutPostMutationOptions(options));
+    }
+
+export const getCreatePostShareLinkUrl = (postId: number,) => {
+
+
+
+
+  return `/api/posts/${postId}/share-link`
+}
+
+export const createPostShareLink = async (postId: number, options?: Parameters<typeof customFetch>[1]): Promise<PostShareLink> => {
+
+  return customFetch<PostShareLink>(getCreatePostShareLinkUrl(postId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreatePostShareLinkMutationKey = () => ['createPostShareLink'] as const;
+
+export const getCreatePostShareLinkMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostShareLink>>, TError,CreatePostShareLinkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPostShareLink>>, TError,CreatePostShareLinkMutationVariables, TContext> => {
+
+const mutationKey = getCreatePostShareLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPostShareLink>>, CreatePostShareLinkMutationVariables> = (props) => {
+          const {postId} = props ?? {};
+
+          return  createPostShareLink(postId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePostShareLinkMutationResult = NonNullable<Awaited<ReturnType<typeof createPostShareLink>>>
+
+    export type CreatePostShareLinkMutationError = ErrorType<unknown>
+    export type CreatePostShareLinkMutationVariables = {postId: number}
+
+    export const useCreatePostShareLink = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostShareLink>>, TError,CreatePostShareLinkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPostShareLink>>,
+        TError,
+        CreatePostShareLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePostShareLinkMutationOptions(options));
     }
 
 export const getToggleFollowUrl = (handle: string,) => {

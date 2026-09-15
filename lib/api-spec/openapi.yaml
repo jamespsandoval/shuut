@@ -355,6 +355,16 @@ paths:
         '200':
           description: Reshuuted post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+  /posts/{postId}/share-link:
+    post:
+      operationId: createPostShareLink
+      tags: [social]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Time-limited signed share link
+          content: { application/json: { schema: { $ref: '#/components/schemas/PostShareLink' } } }
   /profiles/{handle}/follow:
     put:
       operationId: toggleFollow
@@ -572,6 +582,11 @@ components:
       required: [transcript]
       properties:
         transcript: { type: string, minLength: 1, maxLength: 5000 }
+    PostShareLink:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
     AudioTranscriptionInput:
       type: object
       required: [audioObjectPath]

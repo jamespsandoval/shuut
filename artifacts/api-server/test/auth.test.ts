@@ -446,3 +446,55 @@ test("publishing requires owned audio and responses never expose private object 
     headers: { cookie: session.cookie },
   })).status, 401);
 });
+
+test("rich preview metadata requires an authenticated share action and signed token", async () => {
+  const email = `${prefix}-share-preview@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, user.id));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: 'Preview <Author>',
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}preview`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const [post] = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: 'A private-by-default thought with "quotes" & markup <here>.',
+    durationSeconds: 8,
+  }).returning();
+
+  const unsigned = await request(`/p/${post.id}`);
+  assert.equal(unsigned.status, 200);
+  const unsignedHtml = await unsigned.text();
+  assert.ok(!unsignedHtml.includes("private-by-default"));
+  assert.ok(!unsignedHtml.includes("Preview &lt;Author&gt;"));
+  assert.ok(unsignedHtml.includes('content="noindex, nofollow"'));
+
+  const anonymousShareAttempt = await request(`/api/posts/${post.id}/share-link`, {
+    method: "POST",
+  });
+  assert.equal(anonymousShareAttempt.status, 401);
+
+  const shareResponse = await request(`/api/posts/${post.id}/share-link`, {
+    method: "POST",
+    session,
+  });
+  assert.equal(shareResponse.status, 200);
+  const { url } = await shareResponse.json() as { url: string };
+  const shareUrl = new URL(url);
+  const signed = await request(`${shareUrl.pathname}${shareUrl.search}`);
+  assert.equal(signed.status, 200);
+  const signedHtml = await signed.text();
+  assert.ok(signedHtml.includes("Preview &lt;Author&gt; on SHÜÜT"));
+  assert.ok(signedHtml.includes("&quot;quotes&quot; &amp; markup &lt;here&gt;"));
+  assert.ok(signedHtml.includes('content="noindex, nofollow"'));
+  assert.equal(signed.headers.get("cache-control"), "no-store");
+
+  const tampered = await request(`${shareUrl.pathname}?t=${shareUrl.searchParams.get("t")}x`);
+  const tamperedHtml = await tampered.text();
+  assert.ok(!tamperedHtml.includes("private-by-default"));
+  assert.ok(!tamperedHtml.includes("Preview &lt;Author&gt;"));
+});

@@ -4,6 +4,7 @@ import router from "./routes";
 import contactRouter from "./routes/contact";
 import authRouter from "./routes/auth";
 import healthRouter from "./routes/health";
+import socialPreviewRouter from "./routes/socialPreview";
 import { logger } from "./lib/logger";
 import { requireAuth, sessionAuth } from "./middlewares/sessionAuth";
 import { csrfProtection } from "./middlewares/csrf";
@@ -69,6 +70,7 @@ app.use(async (req, res, next) => {
 app.use("/api/contact", contactRouter);
 app.use("/api/auth", authRouter);
 app.use("/api", healthRouter);
+app.use(socialPreviewRouter);
 app.use("/api", requireAuth, router);
 
 export default app;

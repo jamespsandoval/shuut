@@ -8,6 +8,7 @@ import {
   useReshuutPost, 
   useDeletePost,
   useUpdatePost,
+  useCreatePostShareLink,
   getGetFeedQueryKey 
 } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -36,6 +37,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   const reshuutPost = useReshuutPost()
   const deletePost = useDeletePost()
   const updatePost = useUpdatePost()
+  const createShareLink = useCreatePostShareLink()
   const { toast } = useToast()
   
   const [showMenu, setShowMenu] = useState(false)
@@ -112,11 +114,11 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
     )
   }
 
-  const shareUrl = `${window.location.origin}/p/${post.id}`
   const shareText = `Listen to ${post.author.name} on SHÜÜT`
 
   const handleShare = async () => {
     try {
+      const { url: shareUrl } = await createShareLink.mutateAsync({ postId: post.id })
       if (navigator.share) {
         await navigator.share({
           title: `${post.author.name} on SHÜÜT`,
