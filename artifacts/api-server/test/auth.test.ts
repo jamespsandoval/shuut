@@ -7,6 +7,7 @@ import app from "../src/app";
 import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
 import { hashSessionToken } from "../src/middlewares/sessionAuth";
+import { authCodeEmail } from "../src/lib/authCodeEmail";
 import {
   db,
   foundersTable,
@@ -21,7 +22,7 @@ import {
 
 const prefix = `auth-security-${Date.now()}`;
 const userAgent = "SHUUT security regression test";
-const sentEmails: Array<{ To: string; Subject: string; TextBody: string }> = [];
+const sentEmails: Array<{ To: string; Subject: string; TextBody: string; HtmlBody?: string }> = [];
 let baseUrl = "";
 let appOrigin = "";
 let server: ReturnType<typeof app.listen>;
@@ -47,6 +48,41 @@ function codeFor(email: string, subject: string): string {
   assert.ok(code, "Expected a six-digit code");
   return code;
 }
+
+function assertCodeEmail(email: string, subject: string, expectedPhrase: string) {
+  const message = sentEmails.findLast(
+    (entry) => entry.To === email && entry.Subject === subject,
+  );
+  assert.ok(message, `Expected captured email "${subject}" for ${email}`);
+  const code = message.TextBody.match(/\b\d{6}\b/)?.[0];
+  assert.ok(code);
+  assert.ok(message.HtmlBody);
+  assert.match(message.HtmlBody, new RegExp(`>${code}<`));
+  assert.match(message.HtmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
+  assert.match(message.HtmlBody, /expires in <strong[^>]*>15 minutes<\/strong>/);
+  assert.match(message.HtmlBody, new RegExp(expectedPhrase, "i"));
+  assert.ok(!message.HtmlBody.includes("<img"));
+}
+
+test("authentication code templates are readable, branded, and safely escaped", () => {
+  const expectations = {
+    verification: ["Confirm your email", "finish creating your account", "safely ignore"],
+    "sign-in": ["Your sign-in code", "continue signing in", "safely ignore"],
+    "passkey-recovery": ["Confirm passkey recovery", "complete passkey recovery", "removes all passkeys"],
+  } as const;
+  for (const kind of ["verification", "sign-in", "passkey-recovery"] as const) {
+    const message = authCodeEmail({ code: '12<3&"456', kind });
+    assert.match(message.htmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
+    assert.match(message.htmlBody, /12&lt;3&amp;&quot;456/);
+    assert.ok(!message.htmlBody.includes('12<3&"456'));
+    assert.match(message.textBody, /This code expires in 15 minutes/);
+    assert.match(message.textBody, /This inbox isn’t monitored/);
+    for (const phrase of expectations[kind]) {
+      assert.ok(message.htmlBody.includes(phrase));
+      assert.ok(message.textBody.includes(phrase));
+    }
+  }
+});
 
 function parseSession(response: Response): BrowserSession {
   const setCookies =
@@ -170,7 +206,9 @@ after(async () => {
 });
 
 test("email verification creates a pending session blocked from protected data and audio actions", async () => {
-  const session = await register(`${prefix}-pending@example.test`);
+  const email = `${prefix}-pending@example.test`;
+  const session = await register(email);
+  assertCodeEmail(email, "Verify your SHÜÜT account", "safely ignore");
   for (const [path, method, json] of [
     ["/api/feed", "GET", undefined],
     ["/api/posts/1/audio", "GET", undefined],
@@ -215,6 +253,7 @@ test("passwordless login resists enumeration and replay, logout invalidates the 
   assert.deepEqual(await known.json(), await unknown.json());
 
   const code = codeFor(email, "Your SHÜÜT sign-in code");
+  assertCodeEmail(email, "Your SHÜÜT sign-in code", "safely ignore");
   const verified = await request("/api/auth/login/verify", {
     method: "POST",
     json: { email, code },

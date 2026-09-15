@@ -26,6 +26,7 @@ import {
 } from "../middlewares/sessionAuth";
 import { auditSecurityEvent, consumeRateLimit, deviceHash, ipPrefix, privacyHash } from "../lib/security";
 import { sendPostmarkEmail } from "../lib/postmark";
+import { authCodeEmail } from "../lib/authCodeEmail";
 import { issueCsrfCookie } from "../middlewares/csrf";
 import { webauthnVerifier } from "../lib/webauthn";
 
@@ -332,6 +333,7 @@ router.post("/passkey/recovery/code", async (req, res): Promise<void> => {
   }
   const code = String(randomInt(100000, 1000000));
   const expiresAt = new Date(Date.now() + RECOVERY_CODE_MS);
+  const emailContent = authCodeEmail({ code, kind: "passkey-recovery" });
   await db.update(passkeyRecoveriesTable).set({
     confirmationCodeHash: recoveryCodeHash(current.id, code),
     confirmationCodeExpiresAt: expiresAt,
@@ -340,7 +342,7 @@ router.post("/passkey/recovery/code", async (req, res): Promise<void> => {
     await sendPostmarkEmail({
       to: current.email,
       subject: "Confirm your SHÜÜT passkey recovery",
-      textBody: `Your passkey recovery confirmation code is ${code}. It expires in 15 minutes. Completing recovery removes all passkeys and signs out every existing session.`,
+      ...emailContent,
     });
   } catch (error) {
     await db.update(passkeyRecoveriesTable).set({

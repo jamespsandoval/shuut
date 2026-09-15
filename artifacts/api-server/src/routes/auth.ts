@@ -13,6 +13,7 @@ import {
 } from "@workspace/api-zod";
 import { authCodesTable, db, foundersTable, passkeysTable, sessionsTable, usersTable } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
+import { authCodeEmail } from "../lib/authCodeEmail";
 import {
   clearSessionCookie,
   DEVICE_COOKIE,
@@ -152,11 +153,12 @@ async function sendRegistrationCode(req: Request, email: string) {
           .returning()
       )[0];
   const challenge = await issueCode(user.id, "verify");
+  const emailContent = authCodeEmail({ code: challenge.code, kind: "verification" });
   try {
     await sendPostmarkEmail({
       to: email,
       subject: "Verify your SHÜÜT account",
-      textBody: `Your SHÜÜT verification code is ${challenge.code}. It expires in 15 minutes.`,
+      ...emailContent,
     });
     await retireOtherCodes(user.id, "verify", challenge.hashedCode);
   } catch (error) {
@@ -168,11 +170,12 @@ async function sendRegistrationCode(req: Request, email: string) {
 
 async function sendLoginCode(req: Request, user: typeof usersTable.$inferSelect) {
   const challenge = await issueCode(user.id, "login");
+  const emailContent = authCodeEmail({ code: challenge.code, kind: "sign-in" });
   try {
     await sendPostmarkEmail({
       to: user.email,
       subject: "Your SHÜÜT sign-in code",
-      textBody: `Your SHÜÜT sign-in code is ${challenge.code}. It expires in 15 minutes. If you did not request this, ignore this email.`,
+      ...emailContent,
     });
     await retireOtherCodes(user.id, "login", challenge.hashedCode);
   } catch (error) {

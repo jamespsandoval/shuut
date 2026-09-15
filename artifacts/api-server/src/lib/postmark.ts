@@ -2,6 +2,7 @@ export async function sendPostmarkEmail(input: {
   to: string;
   subject: string;
   textBody: string;
+  htmlBody?: string;
 }): Promise<void> {
   const token = process.env.POSTMARK_API_KEY ?? process.env.POSTMARK_SERVER_TOKEN;
   if (!token) throw new Error("Postmark is not configured");
@@ -19,6 +20,7 @@ export async function sendPostmarkEmail(input: {
       To: input.to,
       Subject: input.subject,
       TextBody: input.textBody,
+      ...(input.htmlBody ? { HtmlBody: input.htmlBody } : {}),
       MessageStream: "outbound",
     }),
   });
