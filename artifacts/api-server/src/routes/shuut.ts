@@ -264,6 +264,7 @@ function postJson(post: PostRow, author: FounderRow, viewerFounderId?: number | 
       post.transcriptionStatus === "ready" &&
       viewerFounderId === post.authorId &&
       Date.now() <= post.createdAt.getTime() + POST_EDIT_WINDOW_MS,
+    canDelete: viewerFounderId === post.authorId,
     editableUntil:
       viewerFounderId === post.authorId
         ? new Date(post.createdAt.getTime() + POST_EDIT_WINDOW_MS)
@@ -1095,6 +1096,11 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid reaction" });
     return;
   }
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (!viewer) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const [current] = await db.select().from(postsTable).where(eq(postsTable.id, params.data.postId));
   if (!current) {
     res.status(404).json({ error: "Post not found" });
@@ -1118,7 +1124,7 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     .where(eq(postsTable.id, current.id))
     .returning();
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
-  res.json(SetReactionResponse.parse(postJson(updated, author)));
+  res.json(SetReactionResponse.parse(postJson(updated, author, viewer.id)));
 });
 
 router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
@@ -1142,7 +1148,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     return;
   }
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
-  res.json(ReshuutPostResponse.parse(postJson(updated, author)));
+  res.json(ReshuutPostResponse.parse(postJson(updated, author, viewer.id)));
 });
 
 router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {

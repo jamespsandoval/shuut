@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { PostComments } from "./post-comments"
+import { canShowPostDeleteAction } from "@/lib/post-permissions"
 
 interface PostCardProps {
   post: Post
@@ -45,7 +46,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   const [editText, setEditText] = useState(post.transcript)
   const [canStillEdit, setCanStillEdit] = useState(post.canEdit)
   const [showComments, setShowComments] = useState(isDetail || isFocused)
-  const isAuthor = post.editableUntil !== null
 
   useEffect(() => {
     if (isDetail || isFocused) setShowComments(true)
@@ -305,7 +305,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               <Share className="w-[18px] h-[18px]" />
             </button>
 
-            {isAuthor && canStillEdit && (
+            {canShowPostDeleteAction(post) && canStillEdit && (
               <button
                 onClick={() => {
                   setEditText(post.transcript)
@@ -318,9 +318,10 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               </button>
             )}
 
-            {isAuthor && (
+            {canShowPostDeleteAction(post) && (
               <button
                 onClick={handleDelete}
+                aria-label="Delete SHÜÜT"
                 className="flex w-9 h-9 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive active:scale-95 shrink-0 ml-0.5"
                 title="Delete SHÜÜT"
               >

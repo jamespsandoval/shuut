@@ -10,6 +10,7 @@ import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
 import { hashSessionToken } from "../src/middlewares/sessionAuth";
 import { authCodeEmail } from "../src/lib/authCodeEmail";
+import { canShowPostDeleteAction } from "../../shuut-app/src/lib/post-permissions";
 import {
   sendSecurityNotificationEmail,
   type SecurityNotificationKind,
@@ -76,6 +77,11 @@ test("authentication code templates are readable, branded, and safely escaped", 
       assert.ok(message.textBody.includes(phrase));
     }
   }
+});
+
+test("post delete controls follow the explicit server permission", () => {
+  assert.equal(canShowPostDeleteAction({ canDelete: true }), true);
+  assert.equal(canShowPostDeleteAction({ canDelete: false }), false);
 });
 
 test("Postmark payloads include branded HTML and text for every security notification", async () => {
@@ -501,9 +507,58 @@ test("publishing requires owned audio and responses never expose private object 
     .where(eq(profileImageUploadsTable.objectPath, objectPath));
   const feed = await request("/api/feed", { session });
   assert.equal(feed.status, 200);
-  const feedText = await feed.text();
+  const feedBody = await feed.json() as Array<{ id: number; canDelete: boolean }>;
+  const ownPost = feedBody.find((entry) => entry.id === post.id);
+  assert.equal(ownPost?.canDelete, true);
+  const feedText = JSON.stringify(feedBody);
   assert.ok(!feedText.includes(objectPath));
   assert.ok(feedText.includes(`/api/posts/${post.id}/audio`));
+
+  const otherEmail = `${prefix}-non-owner@example.test`;
+  const otherSession = await register(otherEmail);
+  const [otherUser] = await db.select().from(usersTable).where(eq(usersTable.email, otherEmail));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, otherUser.id));
+  await db.insert(foundersTable).values({
+    userId: otherUser.id,
+    name: "Other Viewer",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-17)}viewer`,
+    bio: "",
+    avatarColor: "#111111",
+  });
+  const otherFeed = await request("/api/feed", { session: otherSession });
+  const otherFeedBody = await otherFeed.json() as Array<{ id: number; canDelete: boolean }>;
+  assert.equal(otherFeedBody.find((entry) => entry.id === post.id)?.canDelete, false);
+
+  const ownerReaction = await request(`/api/posts/${post.id}/reaction`, {
+    method: "PUT",
+    session,
+    json: { emojiType: "rocket" },
+  });
+  assert.equal((await ownerReaction.json() as { canDelete: boolean }).canDelete, true);
+  const otherReaction = await request(`/api/posts/${post.id}/reaction`, {
+    method: "PUT",
+    session: otherSession,
+    json: { emojiType: "laughing" },
+  });
+  assert.equal((await otherReaction.json() as { canDelete: boolean }).canDelete, false);
+
+  const ownerReshuut = await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST",
+    session,
+  });
+  assert.equal((await ownerReshuut.json() as { canDelete: boolean }).canDelete, true);
+  const otherReshuut = await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST",
+    session: otherSession,
+  });
+  assert.equal((await otherReshuut.json() as { canDelete: boolean }).canDelete, false);
+
+  const forbiddenDelete = await request(`/api/posts/${post.id}`, {
+    method: "DELETE",
+    session: otherSession,
+  });
+  assert.equal(forbiddenDelete.status, 403);
 
   ObjectStorageService.prototype.streamPrivate = async () => ({
     body: Readable.toWeb(Readable.from([Buffer.from("private audio")])),

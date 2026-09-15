@@ -562,7 +562,7 @@ components:
         thumbsDown: { type: integer }
     Post:
       type: object
-      required: [id, author, transcript, durationSeconds, createdAt, reactions, isReshuuted, canEdit, editableUntil]
+      required: [id, author, transcript, durationSeconds, createdAt, reactions, isReshuuted, canEdit, canDelete, editableUntil]
       properties:
         id: { type: integer }
         author: { $ref: '#/components/schemas/Founder' }
@@ -575,6 +575,7 @@ components:
         isReshuuted: { type: boolean }
         reshuutedBy: { type: [string, 'null'] }
         canEdit: { type: boolean }
+        canDelete: { type: boolean }
         editableUntil: { type: [string, 'null'], format: date-time }
     ProfileDetail:
       type: object

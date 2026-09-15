@@ -16,6 +16,7 @@ export const HealthCheckResponse = zod.object({
 export const registerBodyEmailMax = 254;
 
 
+
 export const RegisterBody = zod.object({
   "email": zod.string().email().max(registerBodyEmailMax)
 })
@@ -26,6 +27,7 @@ export const RegisterResponse = zod.object({
 
 
 export const startAuthBodyEmailMax = 254;
+
 
 
 export const StartAuthBody = zod.object({
@@ -61,6 +63,7 @@ export const VerifyEmailResponse = zod.object({
 
 
 export const loginBodyEmailMax = 254;
+
 
 
 export const LoginBody = zod.object({
@@ -237,6 +240,7 @@ export const sendContactMessageBodyMessageMax = 1000;
 export const sendContactMessageBodyWebsiteMax = 0;
 
 
+
 export const SendContactMessageBody = zod.object({
   "firstName": zod.string().min(1).max(sendContactMessageBodyFirstNameMax),
   "lastName": zod.string().min(1).max(sendContactMessageBodyLastNameMax),
@@ -284,6 +288,7 @@ export const GetFeedResponseItem = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
 export const GetFeedResponse = zod.array(GetFeedResponseItem)
@@ -336,6 +341,7 @@ export const GetProfileResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })),
   "suggestedQuestions": zod.array(zod.string())
@@ -415,6 +421,7 @@ export const UpdateProfileResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })),
   "suggestedQuestions": zod.array(zod.string())
@@ -424,6 +431,7 @@ export const UpdateProfileResponse = zod.object({
 export const requestUploadUrlBodyNameMax = 255;
 
 export const requestUploadUrlBodySizeMax = 15000000;
+
 
 
 export const RequestUploadUrlBody = zod.object({
@@ -463,6 +471,7 @@ export const createPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads
 export const createPostBodyDurationSecondsMax = 90;
 
 
+
 export const CreatePostBody = zod.object({
   "transcript": zod.string().min(1).max(createPostBodyTranscriptMax).optional(),
   "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp),
@@ -496,6 +505,7 @@ export const CreatePostResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
 
@@ -531,6 +541,7 @@ export const GetPostResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
 
@@ -549,6 +560,7 @@ export const UpdatePostParams = zod.object({
 })
 
 export const updatePostBodyTranscriptMax = 5000;
+
 
 
 export const UpdatePostBody = zod.object({
@@ -582,6 +594,7 @@ export const UpdatePostResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
 
@@ -621,6 +634,7 @@ export const SetReactionResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
 
@@ -657,6 +671,7 @@ export const CreatePostCommentParams = zod.object({
 
 export const createPostCommentBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const createPostCommentBodyDurationSecondsMax = 90;
+
 
 
 export const CreatePostCommentBody = zod.object({
@@ -708,6 +723,7 @@ export const ReshuutPostResponse = zod.object({
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
 
@@ -738,6 +754,7 @@ export const AskFounderParams = zod.object({
 export const askFounderBodyQuestionMin = 2;
 
 
+
 export const AskFounderBody = zod.object({
   "question": zod.string().min(askFounderBodyQuestionMin)
 })
@@ -751,4 +768,5 @@ export const AskFounderResponse = zod.object({
 })),
   "hasEnoughContext": zod.boolean()
 })
+
 

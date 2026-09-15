@@ -24,6 +24,7 @@ export interface Post {
   /** @nullable */
   reshuutedBy?: string | null;
   canEdit: boolean;
+  canDelete: boolean;
   /** @nullable */
   editableUntil: Date | null;
 }

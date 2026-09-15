@@ -136,6 +136,18 @@ export interface HealthStatus {
 }
 
 export type DeletionResultStatus = typeof DeletionResultStatus[keyof typeof DeletionResultStatus];
+
+
+export const DeletionResultStatus = {
+  completed: 'completed',
+  pending: 'pending',
+  failed: 'failed',
+} as const;
+
+export interface DeletionResult {
+  status: DeletionResultStatus;
+}
+
 export interface Founder {
   id: number;
   name: string;
@@ -185,6 +197,7 @@ export interface Post {
   /** @nullable */
   reshuutedBy?: string | null;
   canEdit: boolean;
+  canDelete: boolean;
   /** @nullable */
   editableUntil: string | null;
 }
@@ -375,13 +388,3 @@ export const GetFeedView = {
   following: 'following',
 } as const;
 
-
-export interface DeletionResult {
-  status: DeletionResultStatus;
-}
-
-export const DeletionResultStatus = {
-  completed: 'completed',
-  pending: 'pending',
-  failed: 'failed',
-} as const;
