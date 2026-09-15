@@ -13,6 +13,20 @@ import { auditSecurityEvent, consumeRateLimit, ipPrefix, privacyHash } from "./l
 const app: Express = express();
 app.set("trust proxy", 1);
 
+function isAllowedExpoPreviewOrigin(origin: string): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === "https:" &&
+      /^[-a-z0-9]+\.expo\.[-a-z0-9]+\.replit\.dev$/i.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 app.use(
   pinoHttp({
     logger,
@@ -32,6 +46,26 @@ app.use(
     },
   }),
 );
+app.use((req, res, next) => {
+  const origin = req.header("Origin");
+  if (!origin || !isAllowedExpoPreviewOrigin(origin)) {
+    next();
+    return;
+  }
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type,X-CSRF-Token");
+
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+
+  next();
+});
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 app.use(sessionAuth);

@@ -145,6 +145,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 16,
     height: '100%',
+    paddingLeft: 6,
+    outlineWidth: 0,
   },
   button: {
     height: 56,
