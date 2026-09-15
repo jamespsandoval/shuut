@@ -9,6 +9,11 @@ import { webauthnVerifier } from "../src/lib/webauthn";
 import { hashSessionToken } from "../src/middlewares/sessionAuth";
 import { authCodeEmail } from "../src/lib/authCodeEmail";
 import {
+  securityNotificationEmail,
+  sendSecurityNotificationEmail,
+  type SecurityNotificationKind,
+} from "../src/lib/postmark";
+import {
   db,
   foundersTable,
   passkeysTable,
@@ -82,6 +87,63 @@ test("authentication code templates are readable, branded, and safely escaped", 
       assert.ok(message.textBody.includes(phrase));
     }
   }
+});
+
+test("Postmark payloads include branded HTML and text for every security notification", async () => {
+  const cases: Array<{
+    kind: SecurityNotificationKind;
+    subject: string;
+    phrase: string;
+  }> = [
+    {
+      kind: "passkey-removed",
+      subject: "A passkey was removed from your SHÜÜT account",
+      phrase: "start lost-passkey recovery immediately",
+    },
+    {
+      kind: "recovery-requested",
+      subject: "Passkey recovery requested for your SHÜÜT account",
+      phrase: "your existing passkeys remain active",
+    },
+    {
+      kind: "recovery-completed",
+      subject: "Your SHÜÜT passkey recovery is complete",
+      phrase: "add a new passkey",
+    },
+    {
+      kind: "recovery-cancelled",
+      subject: "SHÜÜT passkey recovery was cancelled",
+      phrase: "No further action is needed",
+    },
+  ];
+  const availableAt = '2026-09-16T12:00:00.000Z<&"';
+
+  for (const item of cases) {
+    const to = `${prefix}-${item.kind}@example.test`;
+    await sendSecurityNotificationEmail({
+      to,
+      kind: item.kind,
+      ...(item.kind === "recovery-requested" ? { availableAt } : {}),
+    });
+    const payload = sentEmails.findLast(
+      (entry) => entry.To === to && entry.Subject === item.subject,
+    );
+    assert.ok(payload, `Expected Postmark payload for ${item.kind}`);
+    assert.ok(payload.HtmlBody);
+    assert.match(payload.HtmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
+    assert.ok(payload.HtmlBody.includes(item.phrase));
+    assert.ok(payload.TextBody.includes(item.phrase));
+    assert.ok(!payload.HtmlBody.includes("<img"));
+    assert.ok(!/https?:\/\//i.test(payload.HtmlBody));
+  }
+
+  const recovery = securityNotificationEmail({
+    kind: "recovery-requested",
+    availableAt,
+  });
+  assert.ok(recovery.textBody.includes(availableAt));
+  assert.ok(recovery.htmlBody.includes("2026-09-16T12:00:00.000Z&lt;&amp;&quot;"));
+  assert.ok(!recovery.htmlBody.includes(availableAt));
 });
 
 function parseSession(response: Response): BrowserSession {

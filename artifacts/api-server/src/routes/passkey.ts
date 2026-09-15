@@ -25,7 +25,7 @@ import {
   DEVICE_COOKIE,
 } from "../middlewares/sessionAuth";
 import { auditSecurityEvent, consumeRateLimit, deviceHash, ipPrefix, privacyHash } from "../lib/security";
-import { sendPostmarkEmail } from "../lib/postmark";
+import { sendPostmarkEmail, sendSecurityNotificationEmail } from "../lib/postmark";
 import { authCodeEmail } from "../lib/authCodeEmail";
 import { issueCsrfCookie } from "../middlewares/csrf";
 import { webauthnVerifier } from "../lib/webauthn";
@@ -246,10 +246,9 @@ router.delete("/passkey/devices/:credentialId", async (req, res): Promise<void> 
     return;
   }
   await auditSecurityEvent(req, "passkey_removed", current.id);
-  await sendPostmarkEmail({
+  await sendSecurityNotificationEmail({
     to: current.email,
-    subject: "A passkey was removed from your SHÜÜT account",
-    textBody: "A passkey device was removed from your SHÜÜT account. If this was not you, start lost-passkey recovery immediately.",
+    kind: "passkey-removed",
   }).catch((error) => req.log.error({ err: error }, "Failed to send passkey removal notice"));
   res.sendStatus(204);
 });
@@ -298,10 +297,10 @@ router.post("/passkey/recovery/request", async (req, res): Promise<void> => {
       },
     });
   try {
-    await sendPostmarkEmail({
+    await sendSecurityNotificationEmail({
       to: current.email,
-      subject: "Passkey recovery requested for your SHÜÜT account",
-      textBody: `Passkey recovery was requested for your SHÜÜT account. It cannot be completed before ${availableAt.toISOString()}. If this was not you, sign in with your passkey; your existing passkeys remain active.`,
+      kind: "recovery-requested",
+      availableAt: availableAt.toISOString(),
     });
   } catch (error) {
     await db.delete(passkeyRecoveriesTable).where(eq(passkeyRecoveriesTable.userId, current.id));
@@ -427,10 +426,9 @@ router.post("/passkey/recovery/confirm", async (req, res): Promise<void> => {
     maxAge: SESSION_MS,
   });
   issueCsrfCookie(res);
-  await sendPostmarkEmail({
+  await sendSecurityNotificationEmail({
     to: current.email,
-    subject: "Your SHÜÜT passkey recovery is complete",
-    textBody: "Passkey recovery is complete. All previous passkeys were removed and all sessions were signed out. You must now add a new passkey before using SHÜÜT.",
+    kind: "recovery-completed",
   }).catch((error) => req.log.error({ err: error }, "Failed to send recovery completion notice"));
   res.json({ recovered: true });
 });
@@ -541,10 +539,9 @@ router.post("/passkey/assertion/verify", async (req, res): Promise<void> => {
     await auditSecurityEvent(req, "passkey_assertion", current.id);
     if (cancelledRecovery.length) {
       await auditSecurityEvent(req, "passkey_recovery_cancelled", current.id, { reason: "passkey_verified" });
-      await sendPostmarkEmail({
+      await sendSecurityNotificationEmail({
         to: current.email,
-        subject: "SHÜÜT passkey recovery was cancelled",
-        textBody: "A successful passkey verification cancelled the pending recovery request for your SHÜÜT account.",
+        kind: "recovery-cancelled",
       }).catch((error) => req.log.error({ err: error }, "Failed to send recovery cancellation notice"));
     }
     res.json({ verified: true });
