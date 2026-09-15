@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView, Platform } from 'react-native';
 import { useColors } from '../../hooks/useColors';
 import { useGetFeed, Post } from '@workspace/api-client-react';
 import { useRouter } from 'expo-router';
@@ -25,7 +25,15 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerContainer, { borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.headerContainer,
+          {
+            borderBottomColor: colors.border,
+            paddingTop: Platform.OS === 'web' ? 44 : 0,
+          },
+        ]}
+      >
         <View style={styles.headerTabs}>
           <TouchableOpacity onPress={() => setView('everyone')} style={[styles.headerTab, view === 'everyone' && { borderBottomColor: colors.primary }]}>
             <Text style={[styles.headerTabText, view === 'everyone' ? { color: colors.foreground, fontFamily: 'Inter_700Bold' } : { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>For you</Text>

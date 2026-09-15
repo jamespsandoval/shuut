@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Play, Pause } from 'lucide-react-native';
 import { useAudioPlayer } from 'expo-audio';
-import { File, Paths } from 'expo-file-system';
 import { useAuth } from '../hooks/useAuthStore';
 import { useColors } from '../hooks/useColors';
 
@@ -22,6 +21,7 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
     if (!url || !token) return;
 
     let isMounted = true;
+    let objectUrl: string | null = null;
     
     const downloadAudio = async () => {
       try {
@@ -30,7 +30,24 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
 
         const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
         const fullUrl = url.startsWith('http') ? url : `https://${domain}${url}`;
-        
+
+        if (Platform.OS === 'web') {
+          const response = await fetch(fullUrl, {
+            credentials: 'omit',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Audio request failed with status ${response.status}`);
+          }
+
+          objectUrl = URL.createObjectURL(await response.blob());
+          if (isMounted) setLocalUri(objectUrl);
+          return;
+        }
+
+        const { File, Paths } = await import('expo-file-system');
         const filename = encodeURIComponent(url) + '.m4a';
         const fileObj = new File(Paths.cache, filename);
 
@@ -48,7 +65,6 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
 
         if (isMounted) setLocalUri(downloadedFile.uri);
       } catch (err) {
-        console.error('Audio download error:', err);
         if (isMounted) setError(true);
       } finally {
         if (isMounted) setIsDownloading(false);
@@ -59,6 +75,7 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
 
     return () => {
       isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [url, token]);
 
