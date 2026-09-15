@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView, Platform, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useColors } from '../../hooks/useColors';
 import { useGetFeed, Post } from '@workspace/api-client-react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic } from 'lucide-react-native';
 import { PostCard } from '../../components/PostCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,9 @@ export default function FeedScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ newPostId?: string }>();
+  const [showFloatingMic, setShowFloatingMic] = useState(false);
+  const largeMicBottom = useRef(0);
 
   const { data: posts, isLoading, refetch, isRefetching } = useGetFeed(
     { view },
@@ -23,12 +26,26 @@ export default function FeedScreen() {
     <PostCard post={item} refetchFeed={refetch} />
   );
 
+  useEffect(() => {
+    if (params.newPostId) {
+      void refetch();
+    }
+  }, [params.newPostId, refetch]);
+
+  const openRecorder = () => router.push('/(main)/record');
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const shouldFloat = event.nativeEvent.contentOffset.y >= largeMicBottom.current;
+    setShowFloatingMic((current) => current === shouldFloat ? current : shouldFloat);
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View
         style={[
-          styles.headerContainer,
+          styles.fixedTabsContainer,
           {
+            backgroundColor: colors.background,
             borderBottomColor: colors.border,
             paddingTop: Platform.OS === 'web' ? 44 : 0,
           },
@@ -42,28 +59,46 @@ export default function FeedScreen() {
             <Text style={[styles.headerTabText, view === 'following' ? { color: colors.foreground, fontFamily: 'Inter_700Bold' } : { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>Following</Text>
           </TouchableOpacity>
         </View>
-
-        <View style={styles.brandRow}>
-          <Image
-            source={require('../../assets/brand/shuut-wordmark.png')}
-            style={styles.logo}
-            contentFit="contain"
-            accessibilityLabel="SHÜÜT"
-          />
-        </View>
-
-        <View style={styles.recordActionRow}>
-          <TouchableOpacity style={[styles.largeMicButton, { backgroundColor: colors.primary }]} onPress={() => router.push('/(main)/record')}>
-            <Mic color="#fff" size={28} />
-          </TouchableOpacity>
-        </View>
       </View>
 
       <FlatList
         data={posts || []}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderPost}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 80 }]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
+        ListHeaderComponent={
+          <View
+            style={[
+              styles.headerContainer,
+              {
+                borderBottomColor: colors.border,
+              },
+            ]}
+          >
+            <View style={styles.brandRow}>
+              <Image
+                source={require('../../assets/brand/shuut-wordmark.png')}
+                style={styles.logo}
+                contentFit="contain"
+                accessibilityLabel="SHÜÜT"
+              />
+            </View>
+
+            <View
+              style={styles.recordActionRow}
+              onLayout={(event) => {
+                const { y, height } = event.nativeEvent.layout;
+                largeMicBottom.current = y + height;
+              }}
+            >
+              <TouchableOpacity style={[styles.largeMicButton, { backgroundColor: colors.primary }]} onPress={openRecorder}>
+                <Mic color="#fff" size={28} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        }
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
         }
@@ -75,6 +110,21 @@ export default function FeedScreen() {
           ) : null
         }
       />
+      {showFloatingMic && (
+        <TouchableOpacity
+          style={[
+            styles.floatingMicButton,
+            {
+              backgroundColor: colors.primary,
+              bottom: insets.bottom + 72,
+            },
+          ]}
+          onPress={openRecorder}
+          accessibilityLabel="Record a SHÜÜT"
+        >
+          <Mic color="#fff" size={24} />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -85,6 +135,13 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     borderBottomWidth: 1,
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 16,
+  },
+  fixedTabsContainer: {
+    borderBottomWidth: 1,
+    zIndex: 30,
   },
   headerTabs: {
     flexDirection: 'row',
@@ -129,6 +186,21 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
+  },
+  floatingMicButton: {
+    position: 'absolute',
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 20,
   },
   empty: {
     padding: 48,

@@ -200,6 +200,15 @@ export interface ReactionSummary {
   thumbsDown: number;
 }
 
+export type PostTranscriptionStatus = typeof PostTranscriptionStatus[keyof typeof PostTranscriptionStatus];
+
+
+export const PostTranscriptionStatus = {
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
 /**
  * @nullable
  */
@@ -216,6 +225,7 @@ export interface Post {
   id: number;
   author: Founder;
   transcript: string;
+  transcriptionStatus: PostTranscriptionStatus;
   /** @nullable */
   audioUrl?: string | null;
   durationSeconds: number;

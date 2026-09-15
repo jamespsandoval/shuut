@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
 import { Trash2, LogOut } from 'lucide-react-native';
-import { useMobileLogout, useDeleteAccount } from '@workspace/api-client-react';
+import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile } from '@workspace/api-client-react';
+import { createEditableProfileUpdate } from '../../lib/profileUpdate';
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -14,12 +15,22 @@ export default function SettingsScreen() {
 
   const logout = useMobileLogout();
   const deleteAccount = useDeleteAccount();
+  const updateProfile = useUpdateProfile();
+  const { data: profileData, refetch: refetchProfile } = useGetProfile('me', {
+    query: { queryKey: ['profile', 'me'] },
+  });
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [previewTranscript, setPreviewTranscript] = useState(false);
 
-  const openUrl = async (path: string) => {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-    await WebBrowser.openBrowserAsync(`https://${domain}${path}`);
+  useEffect(() => {
+    if (profileData?.founder) {
+      setPreviewTranscript(profileData.founder.previewTranscript || false);
+    }
+  }, [profileData]);
+
+  const openPublicPage = (slug: string) => {
+    router.push({ pathname: '/public/[slug]', params: { slug } });
   };
 
   const handleLogout = async () => {
@@ -58,6 +69,31 @@ export default function SettingsScreen() {
     setDeleteConfirmation('');
   };
 
+  const handlePreviewTranscriptChange = async (value: boolean) => {
+    if (!profileData?.founder) return;
+
+    const previousValue = previewTranscript;
+    setPreviewTranscript(value);
+
+    try {
+      await updateProfile.mutateAsync({
+        handle: 'me',
+        data: createEditableProfileUpdate(
+          profileData.founder.name,
+          profileData.founder.handle,
+          profileData.founder.bio || '',
+          profileData.founder.location || '',
+          profileData.founder.website || '',
+          value,
+        ),
+      });
+      void refetchProfile();
+    } catch {
+      setPreviewTranscript(previousValue);
+      Alert.alert('Setting not saved', 'Please try changing the transcript preview setting again.');
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -65,6 +101,21 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={[styles.preferenceCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={styles.preferenceCopy}>
+            <Text style={[styles.preferenceTitle, { color: colors.foreground }]}>Preview transcript before publishing</Text>
+            <Text style={[styles.preferenceDesc, { color: colors.mutedForeground }]}>
+              Review and edit generated text before your SHÜÜT goes live.
+            </Text>
+          </View>
+          <Switch
+            value={previewTranscript}
+            onValueChange={handlePreviewTranscriptChange}
+            disabled={!profileData?.founder || updateProfile.isPending}
+            trackColor={{ false: colors.border, true: colors.primary }}
+          />
+        </View>
+
         <View style={[styles.card, { borderColor: colors.destructive + '40', backgroundColor: colors.destructive + '05' }]}>
           <View style={styles.cardHeader}>
             <View style={[styles.iconContainer, { backgroundColor: colors.destructive + '1A' }]}>
@@ -89,18 +140,18 @@ export default function SettingsScreen() {
 
         <View style={styles.legalLinks}>
           <View style={styles.linksRow}>
-            <TouchableOpacity onPress={() => openUrl('/about')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>About</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => openPublicPage('about')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>About</Text></TouchableOpacity>
             <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openUrl('/community')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Community Guidelines</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => openPublicPage('community')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Community Guidelines</Text></TouchableOpacity>
             <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openUrl('/contact')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Contact</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => openPublicPage('contact')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Contact</Text></TouchableOpacity>
           </View>
           <View style={[styles.linksRow, { marginTop: 12 }]}>
-            <TouchableOpacity onPress={() => openUrl('/terms')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Terms of Service</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => openPublicPage('terms')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Terms of Service</Text></TouchableOpacity>
             <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openUrl('/privacy')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Privacy Policy</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => openPublicPage('privacy')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Privacy Policy</Text></TouchableOpacity>
             <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openUrl('/cookies')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Cookie Policy</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => openPublicPage('cookies')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Cookie Policy</Text></TouchableOpacity>
           </View>
           <View style={styles.copyright}>
             <Text style={[styles.copyrightText, { color: colors.mutedForeground }]}>
@@ -163,6 +214,28 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   content: { padding: 16, gap: 16 },
+  preferenceCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  preferenceCopy: {
+    flex: 1,
+  },
+  preferenceTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    lineHeight: 21,
+    marginBottom: 4,
+  },
+  preferenceDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   card: {
     padding: 20,
     borderRadius: 16,

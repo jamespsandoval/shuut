@@ -247,6 +247,7 @@ function postJson(post: PostRow, author: FounderRow, viewerFounderId?: number | 
     id: post.id,
     author: founderJson(author),
     transcript: post.transcript,
+    transcriptionStatus: post.transcriptionStatus,
     audioUrl,
     durationSeconds: post.durationSeconds,
     createdAt: post.createdAt,

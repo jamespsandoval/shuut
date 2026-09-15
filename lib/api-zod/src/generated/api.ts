@@ -432,6 +432,7 @@ export const GetFeedResponseItem = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -485,6 +486,7 @@ export const GetProfileResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -565,6 +567,7 @@ export const UpdateProfileResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -649,6 +652,7 @@ export const CreatePostResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -685,6 +689,7 @@ export const GetPostResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -738,6 +743,7 @@ export const UpdatePostResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -778,6 +784,7 @@ export const SetReactionResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -867,6 +874,7 @@ export const ReshuutPostResponse = zod.object({
   "previewTranscript": zod.boolean()
 }),
   "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),

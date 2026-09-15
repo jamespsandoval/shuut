@@ -28,10 +28,11 @@ function RootLayoutNav() {
     if (authState === 'loading') return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inPublicContent = segments[0] === 'public';
     const currentRoute = segments.join('/');
 
     if (authState === 'unauthenticated') {
-      if (!inAuthGroup) {
+      if (!inAuthGroup && !inPublicContent) {
         router.replace('/(auth)/login');
       }
     } else if (authState === 'passkeyPending') {
@@ -58,6 +59,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(main)" options={{ headerShown: false }} />
+        <Stack.Screen name="public/[slug]" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

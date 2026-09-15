@@ -44,6 +44,7 @@ export * from './post';
 export * from './postEditInput';
 export * from './postInput';
 export * from './postShareLink';
+export * from './postTranscriptionStatus';
 export * from './postViewerReaction';
 export * from './profileDetail';
 export * from './profileUpdate';

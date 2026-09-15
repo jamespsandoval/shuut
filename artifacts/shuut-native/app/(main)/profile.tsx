@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useGetProfile, useUpdateProfile, useRequestUploadUrl, Post } from '@workspace/api-client-react';
@@ -27,7 +27,6 @@ export default function MyProfileScreen() {
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState('');
   const [website, setWebsite] = useState('');
-  const [previewTranscript, setPreviewTranscript] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -41,14 +40,12 @@ export default function MyProfileScreen() {
       setBio(profileData.founder.bio || '');
       setLocation(profileData.founder.location || '');
       setWebsite(profileData.founder.website || '');
-      setPreviewTranscript(profileData.founder.previewTranscript || false);
       lastSavedSignature.current = JSON.stringify({
         name: profileData.founder.name,
         handle: profileData.founder.handle,
         bio: profileData.founder.bio || '',
         location: profileData.founder.location || '',
         website: profileData.founder.website || '',
-        previewTranscript: profileData.founder.previewTranscript || false,
       });
     }
   }, [profileData, isEditing]);
@@ -142,7 +139,6 @@ export default function MyProfileScreen() {
     bio,
     location,
     website,
-    previewTranscript,
   });
 
   const persistProfile = async (): Promise<boolean> => {
@@ -164,7 +160,14 @@ export default function MyProfileScreen() {
       await updateProfile.mutateAsync({
         handle: 'me',
         data: {
-          ...createEditableProfileUpdate(name.trim(), handle.trim(), bio, location, website, previewTranscript),
+          ...createEditableProfileUpdate(
+            name.trim(),
+            handle.trim(),
+            bio,
+            location,
+            website,
+            profileData?.founder?.previewTranscript || false,
+          ),
           ...(avatarObjectPath ? { avatarObjectPath } : {}),
         },
       });
@@ -195,7 +198,7 @@ export default function MyProfileScreen() {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
-  }, [name, handle, bio, location, website, previewTranscript, selectedAvatar, isEditing, isSaving]);
+  }, [name, handle, bio, location, website, selectedAvatar, isEditing, isSaving]);
 
   const closeEditor = async () => {
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -390,17 +393,6 @@ export default function MyProfileScreen() {
                 keyboardType="url"
               />
 
-              <View style={[styles.toggleContainer, { borderColor: colors.border }]}>
-                <View style={{ flex: 1, paddingRight: 16 }}>
-                  <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Preview transcript before publishing</Text>
-                  <Text style={[styles.toggleDesc, { color: colors.mutedForeground }]}>Review and edit generated text before your SHÜÜT goes live.</Text>
-                </View>
-                <Switch
-                  value={previewTranscript}
-                  onValueChange={setPreviewTranscript}
-                  trackColor={{ false: colors.border, true: colors.primary }}
-                />
-              </View>
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -544,25 +536,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
     marginBottom: 24,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-  },
-  toggleTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-    marginBottom: 4,
-  },
-  toggleDesc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    lineHeight: 18,
   },
   charCount: {
     fontFamily: 'Inter_400Regular',

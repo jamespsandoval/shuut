@@ -1,31 +1,32 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import { useColors } from '../hooks/useColors';
 
 export function LegalFooter() {
   const colors = useColors();
+  const router = useRouter();
 
-  const openUrl = async (path: string) => {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-    await WebBrowser.openBrowserAsync(`https://${domain}${path}`);
+  const openPublicPage = (slug: string) => {
+    router.push({ pathname: '/public/[slug]', params: { slug } });
   };
 
   return (
     <View style={[styles.container, { borderTopColor: colors.border }]}>
       <View style={styles.linksRow}>
-        <TouchableOpacity onPress={() => openUrl('/about')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>About</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => openPublicPage('about')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>About</Text></TouchableOpacity>
         <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-        <TouchableOpacity onPress={() => openUrl('/community')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Community Guidelines</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => openPublicPage('community')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Community Guidelines</Text></TouchableOpacity>
         <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-        <TouchableOpacity onPress={() => openUrl('/contact')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Contact</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => openPublicPage('contact')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Contact</Text></TouchableOpacity>
       </View>
       <View style={[styles.linksRow, { marginTop: 12 }]}>
-        <TouchableOpacity onPress={() => openUrl('/terms')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Terms of Service</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => openPublicPage('terms')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Terms of Service</Text></TouchableOpacity>
         <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-        <TouchableOpacity onPress={() => openUrl('/privacy')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Privacy Policy</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => openPublicPage('privacy')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Privacy Policy</Text></TouchableOpacity>
         <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-        <TouchableOpacity onPress={() => openUrl('/cookies')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Cookie Policy</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => openPublicPage('cookies')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Cookie Policy</Text></TouchableOpacity>
       </View>
       <View style={styles.copyright}>
         <Text style={[styles.copyrightText, { color: colors.mutedForeground }]}>

@@ -708,11 +708,12 @@ components:
         thumbsDown: { type: integer }
     Post:
       type: object
-      required: [id, author, transcript, durationSeconds, createdAt, reactions, isReshuuted, canEdit, canDelete, editableUntil]
+      required: [id, author, transcript, transcriptionStatus, durationSeconds, createdAt, reactions, isReshuuted, canEdit, canDelete, editableUntil]
       properties:
         id: { type: integer }
         author: { $ref: '#/components/schemas/Founder' }
         transcript: { type: string }
+        transcriptionStatus: { type: string, enum: [processing, ready, failed] }
         audioUrl: { type: [string, 'null'] }
         durationSeconds: { type: integer }
         createdAt: { type: string, format: date-time }

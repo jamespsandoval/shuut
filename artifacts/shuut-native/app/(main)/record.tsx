@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
-import { useAudioRecorder, useAudioRecorderState, useAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, PermissionResponse } from 'expo-audio';
+import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
-import { useRequestUploadUrl, useCreatePost } from '@workspace/api-client-react';
-import { Mic, Square, Play, Pause, Send } from 'lucide-react-native';
+import { getPost, useRequestUploadUrl, useCreatePost } from '@workspace/api-client-react';
+import { Mic, Square } from 'lucide-react-native';
 import { useAuth } from '../../hooks/useAuthStore';
 
 export default function RecordScreen() {
@@ -15,18 +15,14 @@ export default function RecordScreen() {
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
-  const [recordedUri, setRecordedUri] = useState<string | null>(null);
-  const [duration, setDuration] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isStarting, setIsStarting] = useState(true);
   const [permissionResponse, setPermissionResponse] = useState<PermissionResponse | null>(null);
   const hasAttemptedAutoStart = useRef(false);
+  const spinnerRotation = useRef(new Animated.Value(0)).current;
 
   const requestUploadUrl = useRequestUploadUrl();
   const createPost = useCreatePost();
-
-  // Create a player if we have a recorded file
-  const player = useAudioPlayer(recordedUri ? { uri: recordedUri } : null);
 
   const startRecording = async (knownPermission?: PermissionResponse | null) => {
     try {
@@ -48,7 +44,6 @@ export default function RecordScreen() {
         }
       }
 
-      setRecordedUri(null);
       await recorder.prepareToRecordAsync();
       recorder.record();
     } catch (err) {
@@ -71,34 +66,42 @@ export default function RecordScreen() {
     void beginRecording();
   }, []);
 
+  useEffect(() => {
+    if (!isProcessing) {
+      spinnerRotation.setValue(0);
+      return;
+    }
+
+    const animation = Animated.loop(
+      Animated.timing(spinnerRotation, {
+        toValue: 1,
+        duration: 950,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [isProcessing, spinnerRotation]);
+
   const stopRecording = async () => {
     try {
-      recorder.stop();
+      setIsProcessing(true);
+      const finalDuration = Math.max(1, Math.round((recorderState?.durationMillis || 0) / 1000));
+      await recorder.stop();
       const uri = recorder.uri;
-      if (uri) {
-        setRecordedUri(uri);
-        const finalDuration = Math.round((recorderState?.durationMillis ? recorderState.durationMillis / 1000 : 0) || 1);
-        setDuration(finalDuration); 
-      }
+      if (!uri) throw new Error('The recording file was not created.');
+      await publishPost(uri, finalDuration);
     } catch (err) {
       console.error('Failed to stop recording', err);
+      setIsProcessing(false);
+      Alert.alert('Could not publish', 'Your SHÜÜT could not be processed. Please try again.');
     }
   };
 
-  const togglePlayback = () => {
-    if (!player) return;
-    if (player.playing) {
-      player.pause();
-    } else {
-      player.play();
-    }
-  };
-
-  const publishPost = async () => {
-    if (!recordedUri) return;
+  const publishPost = async (recordingUri: string, recordingDuration: number) => {
     try {
-      setIsUploading(true);
-      const fileObj = new File(recordedUri);
+      const fileObj = new File(recordingUri);
       
       if (!fileObj.exists) {
         throw new Error('Recorded file does not exist');
@@ -129,19 +132,31 @@ export default function RecordScreen() {
       }
 
       // 3. Create Post
-      await createPost.mutateAsync({
+      const createdPost = await createPost.mutateAsync({
         data: {
           audioObjectPath: objectPath,
-          durationSeconds: duration
+          durationSeconds: recordingDuration,
         }
       });
 
-      setRecordedUri(null);
-      router.replace('/(main)/feed');
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        const post = await getPost(createdPost.id);
+        if (post.transcriptionStatus === 'ready') {
+          router.replace({
+            pathname: '/(main)/feed',
+            params: { newPostId: String(post.id) },
+          });
+          return;
+        }
+        if (post.transcriptionStatus === 'failed') {
+          throw new Error('Transcription failed');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      throw new Error('Transcription timed out');
     } catch (err) {
       console.error('Failed to publish', err);
-    } finally {
-      setIsUploading(false);
+      throw err;
     }
   };
 
@@ -151,28 +166,24 @@ export default function RecordScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
         <View style={styles.recordingArea}>
-          {recordedUri ? (
-            <View style={styles.previewCard}>
-              <Text style={[styles.previewText, { color: colors.foreground }]}>Review your SHÜÜT</Text>
-              
-              <TouchableOpacity 
-                style={[styles.playButton, { backgroundColor: colors.primary }]}
-                onPress={togglePlayback}
-              >
-                {player?.playing ? (
-                  <Pause color={colors.primaryForeground} size={32} />
-                ) : (
-                  <Play color={colors.primaryForeground} size={32} style={{ marginLeft: 4 }} />
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.retakeButton}
-                onPress={() => setRecordedUri(null)}
-                disabled={isUploading}
-              >
-                <Text style={[styles.retakeText, { color: colors.mutedForeground }]}>Discard</Text>
-              </TouchableOpacity>
+          {isProcessing ? (
+            <View style={styles.processingState}>
+              <Animated.Image
+                source={require('../../assets/images/icon.png')}
+                style={[
+                  styles.processingLogo,
+                  {
+                    transform: [{
+                      rotate: spinnerRotation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '360deg'],
+                      }),
+                    }],
+                  },
+                ]}
+                resizeMode="contain"
+              />
+              <Text style={[styles.processingText, { color: colors.foreground }]}>Transcribing your SHÜÜT…</Text>
             </View>
           ) : (
             <View style={styles.recordCard}>
@@ -203,23 +214,6 @@ export default function RecordScreen() {
             </View>
           )}
         </View>
-
-        {recordedUri && (
-          <TouchableOpacity
-            style={[styles.publishButton, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-            onPress={publishPost}
-            disabled={isUploading}
-          >
-            {isUploading ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <>
-                <Send color={colors.primaryForeground} size={20} />
-                <Text style={[styles.publishText, { color: colors.primaryForeground }]}>Publish</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
       </View>
     </SafeAreaView>
   );
@@ -243,6 +237,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  processingState: {
+    alignItems: 'center',
+    gap: 20,
+  },
+  processingLogo: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+  },
+  processingText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 17,
   },
   recordCard: {
     alignItems: 'center',

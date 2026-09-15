@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Founder } from './founder';
+import type { PostTranscriptionStatus } from './postTranscriptionStatus';
 import type { PostViewerReaction } from './postViewerReaction';
 import type { ReactionSummary } from './reactionSummary';
 
@@ -13,6 +14,7 @@ export interface Post {
   id: number;
   author: Founder;
   transcript: string;
+  transcriptionStatus: PostTranscriptionStatus;
   /** @nullable */
   audioUrl?: string | null;
   durationSeconds: number;
