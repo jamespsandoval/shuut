@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, Switch } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, Switch, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
-import { useGetProfile, useUpdateProfile, Post } from '@workspace/api-client-react';
-import { Settings, User, X, MapPin, Link as LinkIcon, Camera } from 'lucide-react-native';
+import { useGetProfile, useUpdateProfile, useRequestUploadUrl, Post } from '@workspace/api-client-react';
+import { X, MapPin, Link as LinkIcon, Camera } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
 import { PostCard } from '../../components/PostCard';
+import * as ImagePicker from 'expo-image-picker';
+import { authenticatedImageSource, resolveApiUrl } from '../../lib/apiUrl';
+import { useAuth } from '../../hooks/useAuthStore';
 
 export default function MyProfileScreen() {
   const colors = useColors();
   const router = useRouter();
+  const { token } = useAuth();
 
   const { data: profileData, isLoading: isProfileLoading, refetch } = useGetProfile("me", { query: { queryKey: ['profile', 'me'] } });
 
   const updateProfile = useUpdateProfile();
+  const requestUploadUrl = useRequestUploadUrl();
 
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState('');
@@ -23,30 +28,181 @@ export default function MyProfileScreen() {
   const [location, setLocation] = useState('');
   const [website, setWebsite] = useState('');
   const [previewTranscript, setPreviewTranscript] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const lastSavedSignature = useRef('');
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (profileData?.founder) {
+    if (profileData?.founder && !isEditing) {
       setName(profileData.founder.name);
       setHandle(profileData.founder.handle);
       setBio(profileData.founder.bio || '');
       setLocation(profileData.founder.location || '');
       setWebsite(profileData.founder.website || '');
       setPreviewTranscript(profileData.founder.previewTranscript || false);
+      lastSavedSignature.current = JSON.stringify({
+        name: profileData.founder.name,
+        handle: profileData.founder.handle,
+        bio: profileData.founder.bio || '',
+        location: profileData.founder.location || '',
+        website: profileData.founder.website || '',
+        previewTranscript: profileData.founder.previewTranscript || false,
+      });
     }
   }, [profileData, isEditing]);
 
-  const handleSave = () => {
-    if (!name || !handle) return;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
 
-    updateProfile.mutate(
-      { handle: "me", data: createEditableProfileUpdate(name, handle, bio, location, website, previewTranscript) },
-      {
-        onSuccess: () => {
-          setIsEditing(false);
-          refetch();
-        }
+    const styleId = 'shuut-profile-input-focus-reset';
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      input[id^="shuut-profile-"],
+      textarea[id^="shuut-profile-"],
+      input[id^="shuut-profile-"]:focus,
+      textarea[id^="shuut-profile-"]:focus,
+      input[id^="shuut-profile-"]:focus-visible,
+      textarea[id^="shuut-profile-"]:focus-visible {
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        outline: none !important;
+        box-shadow: none !important;
       }
-    );
+    `;
+    document.head.appendChild(style);
+
+    return () => style.remove();
+  }, []);
+
+  const pickAvatar = async () => {
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Photo access needed', 'Allow photo access to choose a profile picture.');
+        return;
+      }
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    const contentType = asset.mimeType || 'image/jpeg';
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+      Alert.alert('Unsupported image', 'Choose a JPEG, PNG, or WebP image.');
+      return;
+    }
+    if (asset.fileSize && asset.fileSize > 3_000_000) {
+      Alert.alert('Image too large', 'Choose an image smaller than 3MB.');
+      return;
+    }
+    setSelectedAvatar(asset);
+  };
+
+  const uploadAvatar = async (asset: ImagePicker.ImagePickerAsset): Promise<string> => {
+    const contentType = (asset.mimeType || 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp';
+    const imageResponse = await fetch(asset.uri);
+    const imageBlob = await imageResponse.blob();
+    if (imageBlob.size > 3_000_000) {
+      throw new Error('Choose an image smaller than 3MB.');
+    }
+
+    const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
+      data: {
+        name: asset.fileName || `profile-${Date.now()}.jpg`,
+        size: imageBlob.size,
+        contentType,
+      },
+    });
+    const uploadResponse = await fetch(resolveApiUrl(uploadURL)!, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: imageBlob,
+      credentials: 'omit',
+    });
+    if (!uploadResponse.ok) {
+      throw new Error('The profile photo upload failed. Please try again.');
+    }
+    return objectPath;
+  };
+
+  const currentProfileSignature = () => JSON.stringify({
+    name: name.trim(),
+    handle: handle.trim(),
+    bio,
+    location,
+    website,
+    previewTranscript,
+  });
+
+  const persistProfile = async (): Promise<boolean> => {
+    if (!name.trim() || !handle.trim()) {
+      setSaveStatus('error');
+      return false;
+    }
+    if (isSaving) return false;
+
+    const signature = currentProfileSignature();
+    if (signature === lastSavedSignature.current && !selectedAvatar) {
+      return true;
+    }
+
+    try {
+      setIsSaving(true);
+      setSaveStatus('saving');
+      const avatarObjectPath = selectedAvatar ? await uploadAvatar(selectedAvatar) : undefined;
+      await updateProfile.mutateAsync({
+        handle: 'me',
+        data: {
+          ...createEditableProfileUpdate(name.trim(), handle.trim(), bio, location, website, previewTranscript),
+          ...(avatarObjectPath ? { avatarObjectPath } : {}),
+        },
+      });
+      lastSavedSignature.current = signature;
+      setSelectedAvatar(null);
+      setSaveStatus('saved');
+      void refetch();
+      return true;
+    } catch (error) {
+      setSaveStatus('error');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isEditing || !profileData?.founder) return;
+
+    const hasChanges = currentProfileSignature() !== lastSavedSignature.current || Boolean(selectedAvatar);
+    if (!hasChanges || !name.trim() || !handle.trim()) return;
+
+    setSaveStatus('idle');
+    autoSaveTimer.current = setTimeout(() => {
+      void persistProfile();
+    }, selectedAvatar ? 150 : 700);
+
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  }, [name, handle, bio, location, website, previewTranscript, selectedAvatar, isEditing, isSaving]);
+
+  const closeEditor = async () => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    const saved = await persistProfile();
+    if (!saved) return;
+    setIsEditing(false);
+    setSaveStatus('idle');
   };
 
   if (isProfileLoading) {
@@ -59,7 +215,7 @@ export default function MyProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border, paddingTop: Platform.OS === 'web' ? 52 : 8 }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>{profileData?.founder?.name}</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{profileData?.postCount || 0} SHÜÜTs</Text>
       </View>
@@ -68,14 +224,20 @@ export default function MyProfileScreen() {
         <View style={styles.profileTop}>
           <View style={styles.avatarContainer}>
             {profileData?.founder?.avatarUrl ? (
-              <Image source={{ uri: profileData.founder.avatarUrl }} style={styles.avatarLarge} />
+              <Image source={authenticatedImageSource(profileData.founder.avatarUrl, token)} style={styles.avatarLarge} />
             ) : (
               <View style={[styles.avatarLarge, { backgroundColor: profileData?.founder?.avatarColor || colors.primary }]}>
                 <Text style={{color: '#fff', fontSize: 32, fontFamily: 'Inter_700Bold'}}>{profileData?.founder?.name?.charAt(0).toUpperCase()}</Text>
               </View>
             )}
           </View>
-          <TouchableOpacity style={[styles.editProfileBtn, { borderColor: colors.border }]} onPress={() => setIsEditing(true)}>
+          <TouchableOpacity
+            style={[styles.editProfileBtn, { borderColor: colors.border }]}
+            onPress={() => {
+              setSaveStatus('idle');
+              setIsEditing(true);
+            }}
+          >
             <Text style={[styles.editProfileText, { color: colors.foreground }]}>Edit profile</Text>
           </TouchableOpacity>
         </View>
@@ -121,25 +283,46 @@ export default function MyProfileScreen() {
 
       <Modal visible={isEditing} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.iconButton}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: Platform.OS === 'web' ? 52 : 16 }]}>
+            <TouchableOpacity
+              onPress={closeEditor}
+              disabled={isSaving}
+              style={styles.iconButton}
+            >
               <X color={colors.foreground} size={24} />
             </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>Edit profile</Text>
-            <TouchableOpacity
-              style={[styles.saveBtn, { backgroundColor: colors.primary + '40' }]}
-              onPress={handleSave}
-              disabled={updateProfile.isPending}
-            >
-              {updateProfile.isPending ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveBtnText, { color: colors.primary }]}>Save</Text>}
-            </TouchableOpacity>
+            <View style={styles.saveStatus}>
+              {saveStatus === 'saving' && <ActivityIndicator color={colors.primary} size="small" />}
+              <Text
+                style={[
+                  styles.saveStatusText,
+                  { color: saveStatus === 'error' ? colors.destructive : colors.mutedForeground },
+                ]}
+              >
+                {saveStatus === 'saving'
+                  ? 'Saving…'
+                  : saveStatus === 'saved'
+                    ? 'Saved'
+                    : saveStatus === 'error'
+                      ? 'Not saved'
+                      : ''}
+              </Text>
+            </View>
           </View>
 
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={styles.modalContent}>
-              <View style={styles.editAvatarContainer}>
-                {profileData?.founder?.avatarUrl ? (
-                  <Image source={{ uri: profileData.founder.avatarUrl }} style={styles.avatarEdit} />
+              <TouchableOpacity style={styles.editAvatarContainer} onPress={pickAvatar} activeOpacity={0.8}>
+                {selectedAvatar?.uri || profileData?.founder?.avatarUrl ? (
+                  <Image
+                    source={
+                      selectedAvatar?.uri
+                        ? { uri: selectedAvatar.uri }
+                        : authenticatedImageSource(profileData!.founder.avatarUrl!, token)
+                    }
+                    style={styles.avatarEdit}
+                  />
                 ) : (
                   <View style={[styles.avatarEdit, { backgroundColor: profileData?.founder?.avatarColor || colors.primary }]}>
                     <Text style={{color: '#fff', fontSize: 32, fontFamily: 'Inter_700Bold'}}>{profileData?.founder?.name?.charAt(0).toUpperCase()}</Text>
@@ -148,10 +331,12 @@ export default function MyProfileScreen() {
                 <View style={styles.cameraIconOverlay}>
                   <Camera color="#fff" size={20} />
                 </View>
-              </View>
+                <Text style={[styles.changePhotoText, { color: colors.primary }]}>Change profile photo</Text>
+              </TouchableOpacity>
 
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>NAME</Text>
               <TextInput
+                nativeID="shuut-profile-name"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
                 value={name}
                 onChangeText={setName}
@@ -159,20 +344,9 @@ export default function MyProfileScreen() {
                 placeholderTextColor={colors.mutedForeground}
               />
 
-              <View style={[styles.toggleContainer, { borderColor: colors.border }]}>
-                <View style={{ flex: 1, paddingRight: 16 }}>
-                  <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Preview transcript before publishing</Text>
-                  <Text style={[styles.toggleDesc, { color: colors.mutedForeground }]}>Review and edit the generated text before your SHÜÜT goes live.</Text>
-                </View>
-                <Switch
-                  value={previewTranscript}
-                  onValueChange={setPreviewTranscript}
-                  trackColor={{ false: colors.border, true: colors.primary }}
-                />
-              </View>
-
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>HANDLE</Text>
               <TextInput
+                nativeID="shuut-profile-handle"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
                 value={handle}
                 onChangeText={setHandle}
@@ -183,6 +357,7 @@ export default function MyProfileScreen() {
 
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>BIO</Text>
               <TextInput
+                nativeID="shuut-profile-bio"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground, minHeight: 80, textAlignVertical: 'top' }]}
                 value={bio}
                 onChangeText={setBio}
@@ -195,6 +370,7 @@ export default function MyProfileScreen() {
 
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>LOCATION</Text>
               <TextInput
+                nativeID="shuut-profile-location"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
                 value={location}
                 onChangeText={setLocation}
@@ -204,6 +380,7 @@ export default function MyProfileScreen() {
 
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>WEBSITE</Text>
               <TextInput
+                nativeID="shuut-profile-website"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
                 value={website}
                 onChangeText={setWebsite}
@@ -212,6 +389,18 @@ export default function MyProfileScreen() {
                 autoCapitalize="none"
                 keyboardType="url"
               />
+
+              <View style={[styles.toggleContainer, { borderColor: colors.border }]}>
+                <View style={{ flex: 1, paddingRight: 16 }}>
+                  <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Preview transcript before publishing</Text>
+                  <Text style={[styles.toggleDesc, { color: colors.mutedForeground }]}>Review and edit generated text before your SHÜÜT goes live.</Text>
+                </View>
+                <Switch
+                  value={previewTranscript}
+                  onValueChange={setPreviewTranscript}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                />
+              </View>
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -304,14 +493,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     fontSize: 18,
   },
-  saveBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
+  saveStatus: {
+    minWidth: 72,
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
   },
-  saveBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
+  saveStatusText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
   },
   modalContent: { padding: 24 },
   editAvatarContainer: {
@@ -332,6 +524,12 @@ const styles = StyleSheet.create({
     top: '50%',
     left: '50%',
     transform: [{ translateX: -10 }, { translateY: -10 }],
+  },
+  changePhotoText: {
+    marginTop: 10,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    textAlign: 'center',
   },
   inputLabel: {
     fontFamily: 'Inter_600SemiBold',

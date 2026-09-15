@@ -5,12 +5,15 @@ import { useColors } from '../../hooks/useColors';
 import { useGetProfile, useToggleFollow, Post } from '@workspace/api-client-react';
 import { ChevronLeft, MapPin, Link as LinkIcon } from 'lucide-react-native';
 import { Image } from 'expo-image';
+import { authenticatedImageSource } from '../../lib/apiUrl';
+import { useAuth } from '../../hooks/useAuthStore';
 import { PostCard } from '../../components/PostCard';
 
 export default function ProfileScreen() {
   const { handle } = useLocalSearchParams<{ handle: string }>();
   const colors = useColors();
   const router = useRouter();
+  const { token } = useAuth();
 
   const { data: profileData, isLoading, refetch } = useGetProfile(handle, { query: { queryKey: ['profile', handle] } });
   const toggleFollow = useToggleFollow();
@@ -46,7 +49,7 @@ export default function ProfileScreen() {
         <View style={styles.profileTop}>
           <View style={styles.avatarContainer}>
             {profileData?.founder?.avatarUrl ? (
-              <Image source={{ uri: profileData.founder.avatarUrl }} style={styles.avatarLarge} />
+              <Image source={authenticatedImageSource(profileData.founder.avatarUrl, token)} style={styles.avatarLarge} />
             ) : (
               <View style={[styles.avatarLarge, { backgroundColor: profileData?.founder?.avatarColor || colors.primary }]}>
                 <Text style={{color: '#fff', fontSize: 32, fontFamily: 'Inter_700Bold'}}>{profileData?.founder?.name?.charAt(0).toUpperCase()}</Text>

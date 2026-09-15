@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
@@ -18,11 +18,9 @@ export default function RecordScreen() {
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isStarting, setIsStarting] = useState(true);
   const [permissionResponse, setPermissionResponse] = useState<PermissionResponse | null>(null);
-
-  useEffect(() => {
-    getRecordingPermissionsAsync().then(setPermissionResponse);
-  }, []);
+  const hasAttemptedAutoStart = useRef(false);
 
   const requestUploadUrl = useRequestUploadUrl();
   const createPost = useCreatePost();
@@ -30,9 +28,10 @@ export default function RecordScreen() {
   // Create a player if we have a recorded file
   const player = useAudioPlayer(recordedUri ? { uri: recordedUri } : null);
 
-  const startRecording = async () => {
+  const startRecording = async (knownPermission?: PermissionResponse | null) => {
     try {
-      let perm = permissionResponse;
+      setIsStarting(true);
+      let perm = knownPermission ?? permissionResponse;
       if (!perm || perm.status !== 'granted') {
         perm = await requestRecordingPermissionsAsync();
         setPermissionResponse(perm);
@@ -54,8 +53,23 @@ export default function RecordScreen() {
       recorder.record();
     } catch (err) {
       console.error('Failed to start recording', err);
+    } finally {
+      setIsStarting(false);
     }
   };
+
+  useEffect(() => {
+    if (hasAttemptedAutoStart.current) return;
+    hasAttemptedAutoStart.current = true;
+
+    const beginRecording = async () => {
+      const permission = await getRecordingPermissionsAsync();
+      setPermissionResponse(permission);
+      await startRecording(permission);
+    };
+
+    void beginRecording();
+  }, []);
 
   const stopRecording = async () => {
     try {
@@ -135,10 +149,6 @@ export default function RecordScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Record</Text>
-      </View>
-
       <View style={styles.content}>
         <View style={styles.recordingArea}>
           {recordedUri ? (
@@ -166,26 +176,23 @@ export default function RecordScreen() {
             </View>
           ) : (
             <View style={styles.recordCard}>
-              {isRecording ? (
-                <View style={styles.recordingState}>
-                  <Text style={[styles.recordingTitle, { color: colors.destructive }]}>RECORDING</Text>
-                  <Text style={[styles.timerText, { color: colors.foreground }]}>
-                    {Math.floor((recorderState?.durationMillis || 0) / 1000 / 60)}:{Math.floor(((recorderState?.durationMillis || 0) / 1000) % 60).toString().padStart(2, '0')}
-                  </Text>
-                  <Text style={[styles.timerLimit, { color: colors.mutedForeground }]}>/ 1:30</Text>
-                </View>
-              ) : (
-                <Text style={[styles.instructionText, { color: colors.foreground }]}>
-                  Ready, Set...
+              <View style={styles.recordingState}>
+                <Text style={[styles.recordingTitle, { color: isRecording ? colors.destructive : colors.mutedForeground }]}>
+                  {isRecording ? 'RECORDING' : isStarting ? 'STARTING…' : 'READY'}
                 </Text>
-              )}
+                <Text style={[styles.timerText, { color: colors.foreground }]}>
+                  {Math.floor((recorderState?.durationMillis || 0) / 1000 / 60)}:{Math.floor(((recorderState?.durationMillis || 0) / 1000) % 60).toString().padStart(2, '0')}
+                </Text>
+                <Text style={[styles.timerLimit, { color: colors.mutedForeground }]}>/ 1:30</Text>
+              </View>
               
               <TouchableOpacity 
                 style={[
                   styles.recordButton, 
                   { backgroundColor: isRecording ? colors.destructive : colors.primary }
                 ]}
-                onPress={isRecording ? stopRecording : startRecording}
+                onPress={isRecording ? stopRecording : () => void startRecording()}
+                disabled={isStarting}
               >
                 {isRecording ? (
                   <Square color={colors.primaryForeground} size={32} />

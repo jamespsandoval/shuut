@@ -9,10 +9,13 @@ import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
 import { File } from 'expo-file-system';
 import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync } from 'expo-audio';
+import { authenticatedImageSource } from '../lib/apiUrl';
+import { useAuth } from '../hooks/useAuthStore';
 
 export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, refetchFeed: () => void, isDetail?: boolean }) {
   const colors = useColors();
   const router = useRouter();
+  const { token } = useAuth();
 
   const deletePost = useDeletePost();
   const setReaction = useSetReaction();
@@ -164,7 +167,7 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
           onPress={() => router.push(`/profile/${post.author.handle}`)}
         >
           {post.author.avatarUrl ? (
-            <Image source={{ uri: post.author.avatarUrl }} style={styles.avatar} />
+            <Image source={authenticatedImageSource(post.author.avatarUrl, token)} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, { backgroundColor: post.author.avatarColor || colors.primary }]}>
               <Text style={{color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 18}}>{post.author.name.charAt(0).toUpperCase()}</Text>
