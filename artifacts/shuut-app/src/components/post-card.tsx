@@ -153,9 +153,9 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     <article
       id={`post-${post.id}`}
       className={cn(
-        "bg-card border-b border-border/40 p-4 transition-colors hover:bg-card/50 scroll-m-20",
-        (isDetail || isFocused) ? "border-b-0 pb-6" : "",
-        isFocused && "ring-2 ring-primary/20 bg-card/80 rounded-xl my-2 shadow-sm"
+        "bg-card border border-border rounded-xl p-4 transition-colors hover:bg-card/70 scroll-m-20",
+        isDetail ? "pb-6" : "mx-3 my-3",
+        isFocused && "ring-2 ring-primary/20 bg-card/80 shadow-sm"
       )}
     >
       {post.isReshuuted && post.reshuutedBy && (

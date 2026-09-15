@@ -5,7 +5,8 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+import type { MobileRecoverySession } from './mobileRecoverySession';
 
 export type ConfirmPasskeyRecovery200 = {
   recovered: boolean;
-};
+} | MobileRecoverySession;

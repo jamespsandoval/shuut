@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/shuut-native/"
+title = "SHÜÜT Native"
+description = "The native iPhone and Android SHÜÜT client for securely recording, publishing, listening to, and responding to voice notes using the existing SHÜÜT service."
+version = "1.0.0"
+id = "artifacts/shuut-native"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/shuut-native/" ]
+localPort = 23563
+
+[services.development]
+run = "pnpm --filter @workspace/shuut-native run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/shuut-native", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/shuut-native", "run", "serve" ]
+
+[services.env]
+PORT = "23563"
+BASE_PATH = "/shuut-native/"

@@ -7,6 +7,7 @@ import {
 import { and, eq, gt, lte, sql } from "drizzle-orm";
 import {
   db,
+  foundersTable,
   passkeyRecoveriesTable,
   passkeysTable,
   securityAuditEventsTable,
@@ -18,6 +19,7 @@ import {
   getAuthenticatedUserId,
   deviceBindingHash,
   getSessionTokenHash,
+  isBearerRequest,
   isPasskeyVerified,
   clearSessionCookie,
   hashSessionToken,
@@ -375,6 +377,7 @@ router.post("/passkey/recovery/confirm", async (req, res): Promise<void> => {
   }
   const token = randomBytes(32).toString("base64url");
   const deviceToken = randomBytes(32).toString("base64url");
+  const mobileRecovery = isBearerRequest(req);
   try {
     await db.transaction(async (tx) => {
       await lockPasskeyState(tx, current.id);
@@ -394,7 +397,14 @@ router.post("/passkey/recovery/confirm", async (req, res): Promise<void> => {
         tokenHash: hashSessionToken(token),
         userId: current.id,
         expiresAt: new Date(Date.now() + SESSION_MS),
-        deviceHash: privacyHash(`${deviceToken}:${String(req.headers["user-agent"] || "unknown")}`),
+        transport: mobileRecovery ? "mobile" : "browser",
+        // Recovery removes every passkey. A mobile replacement is therefore
+        // immediately usable, while browser recovery retains the existing
+        // passkey-gated web semantics until a new passkey is enrolled.
+        passkeyVerifiedAt: mobileRecovery ? new Date() : null,
+        deviceHash: mobileRecovery
+          ? null
+          : privacyHash(`${deviceToken}:${String(req.headers["user-agent"] || "unknown")}`),
         ipPrefix: ipPrefix(req),
       });
       await tx.insert(securityAuditEventsTable).values({
@@ -410,26 +420,51 @@ router.post("/passkey/recovery/confirm", async (req, res): Promise<void> => {
     res.status(400).json({ error: "That confirmation code is invalid or has expired." });
     return;
   }
-  clearSessionCookie(res);
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MS,
-  });
-  res.cookie(DEVICE_COOKIE, deviceToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MS,
-  });
-  issueCsrfCookie(res);
+  if (!mobileRecovery) {
+    clearSessionCookie(res);
+    res.cookie(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MS,
+    });
+    res.cookie(DEVICE_COOKIE, deviceToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MS,
+    });
+    issueCsrfCookie(res);
+  }
   await sendSecurityNotificationEmail({
     to: current.email,
     kind: "recovery-completed",
   }).catch((error) => req.log.error({ err: error }, "Failed to send recovery completion notice"));
+  if (mobileRecovery) {
+    const [profile] = await db
+      .select({ id: foundersTable.id })
+      .from(foundersTable)
+      .where(eq(foundersTable.userId, current.id))
+      .limit(1);
+    res.json({
+      recovered: true,
+      accessToken: token,
+      tokenType: "Bearer",
+      expiresAt: new Date(Date.now() + SESSION_MS).toISOString(),
+      passkeyRequired: false,
+      user: {
+        id: current.id,
+        email: current.email,
+        emailVerified: Boolean(current.emailVerifiedAt),
+        onboardingComplete: Boolean(profile),
+        passkeyEnrolled: false,
+        passkeyVerified: true,
+      },
+    });
+    return;
+  }
   res.json({ recovered: true });
 });
 

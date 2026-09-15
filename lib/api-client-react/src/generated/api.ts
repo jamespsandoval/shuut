@@ -34,11 +34,16 @@ import type {
   ContactMessageResult,
   DeletionResult,
   EmailCodeInput,
+  ExchangeMobilePasskeyHandoff200,
   FollowState,
   GetFeedParams,
   HealthStatus,
   LoginInput,
+  MobileAuthSession,
+  MobilePasskeyGrantInput,
+  MobilePasskeyHandoff,
   OnboardingInput,
+  OpenMobilePasskeyHandoffParams,
   PasskeyDeviceList,
   PasskeyRecoveryStatus,
   Post,
@@ -565,6 +570,727 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getVerifyLoginMutationOptions(options));
+    }
+
+export const getStartMobileAuthUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/start`
+}
+
+/**
+ * Starts passwordless authentication for the native client. No cookies are issued.
+ */
+export const startMobileAuth = async (loginInput: LoginInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthStartResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AuthStartResult>(getStartMobileAuthUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(loginInput)
+  }
+);}
+
+
+
+
+
+export const getStartMobileAuthMutationKey = () => ['startMobileAuth'] as const;
+
+export const getStartMobileAuthMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMobileAuth>>, TError,StartMobileAuthMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMobileAuth>>, TError,StartMobileAuthMutationVariables, TContext> => {
+
+const mutationKey = getStartMobileAuthMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMobileAuth>>, StartMobileAuthMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  startMobileAuth(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartMobileAuthMutationResult = NonNullable<Awaited<ReturnType<typeof startMobileAuth>>>
+    export type StartMobileAuthMutationBody = BodyType<LoginInput>
+    export type StartMobileAuthMutationError = ErrorType<unknown>
+    export type StartMobileAuthMutationVariables = {data: BodyType<LoginInput>}
+
+    export const useStartMobileAuth = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMobileAuth>>, TError,StartMobileAuthMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startMobileAuth>>,
+        TError,
+        StartMobileAuthMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartMobileAuthMutationOptions(options));
+    }
+
+export const getStartMobileLoginUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/login`
+}
+
+/**
+ * Sends a sign-in code to a native client without issuing cookies.
+ */
+export const startMobileLogin = async (loginInput: LoginInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AuthMessage>(getStartMobileLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(loginInput)
+  }
+);}
+
+
+
+
+
+export const getStartMobileLoginMutationKey = () => ['startMobileLogin'] as const;
+
+export const getStartMobileLoginMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMobileLogin>>, TError,StartMobileLoginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMobileLogin>>, TError,StartMobileLoginMutationVariables, TContext> => {
+
+const mutationKey = getStartMobileLoginMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMobileLogin>>, StartMobileLoginMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  startMobileLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartMobileLoginMutationResult = NonNullable<Awaited<ReturnType<typeof startMobileLogin>>>
+    export type StartMobileLoginMutationBody = BodyType<LoginInput>
+    export type StartMobileLoginMutationError = ErrorType<unknown>
+    export type StartMobileLoginMutationVariables = {data: BodyType<LoginInput>}
+
+    export const useStartMobileLogin = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMobileLogin>>, TError,StartMobileLoginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startMobileLogin>>,
+        TError,
+        StartMobileLoginMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartMobileLoginMutationOptions(options));
+    }
+
+export const getVerifyMobileLoginUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/login/verify`
+}
+
+/**
+ * Exchanges an email code for a bearer session. Existing passkey users receive a pending session until handoff verification completes.
+ */
+export const verifyMobileLogin = async (emailCodeInput: EmailCodeInput, options?: Parameters<typeof customFetch>[1]): Promise<MobileAuthSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MobileAuthSession>(getVerifyMobileLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(emailCodeInput)
+  }
+);}
+
+
+
+
+
+export const getVerifyMobileLoginMutationKey = () => ['verifyMobileLogin'] as const;
+
+export const getVerifyMobileLoginMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyMobileLogin>>, TError,VerifyMobileLoginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyMobileLogin>>, TError,VerifyMobileLoginMutationVariables, TContext> => {
+
+const mutationKey = getVerifyMobileLoginMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyMobileLogin>>, VerifyMobileLoginMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  verifyMobileLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyMobileLoginMutationResult = NonNullable<Awaited<ReturnType<typeof verifyMobileLogin>>>
+    export type VerifyMobileLoginMutationBody = BodyType<EmailCodeInput>
+    export type VerifyMobileLoginMutationError = ErrorType<unknown>
+    export type VerifyMobileLoginMutationVariables = {data: BodyType<EmailCodeInput>}
+
+    export const useVerifyMobileLogin = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyMobileLogin>>, TError,VerifyMobileLoginMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyMobileLogin>>,
+        TError,
+        VerifyMobileLoginMutationVariables,
+        TContext
+      > => {
+      return useMutation(getVerifyMobileLoginMutationOptions(options));
+    }
+
+export const getVerifyMobileEmailUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/verify-email`
+}
+
+/**
+ * Verifies a registration email and returns a bearer session without cookies.
+ */
+export const verifyMobileEmail = async (emailCodeInput: EmailCodeInput, options?: Parameters<typeof customFetch>[1]): Promise<MobileAuthSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MobileAuthSession>(getVerifyMobileEmailUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(emailCodeInput)
+  }
+);}
+
+
+
+
+
+export const getVerifyMobileEmailMutationKey = () => ['verifyMobileEmail'] as const;
+
+export const getVerifyMobileEmailMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyMobileEmail>>, TError,VerifyMobileEmailMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyMobileEmail>>, TError,VerifyMobileEmailMutationVariables, TContext> => {
+
+const mutationKey = getVerifyMobileEmailMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyMobileEmail>>, VerifyMobileEmailMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  verifyMobileEmail(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyMobileEmailMutationResult = NonNullable<Awaited<ReturnType<typeof verifyMobileEmail>>>
+    export type VerifyMobileEmailMutationBody = BodyType<EmailCodeInput>
+    export type VerifyMobileEmailMutationError = ErrorType<unknown>
+    export type VerifyMobileEmailMutationVariables = {data: BodyType<EmailCodeInput>}
+
+    export const useVerifyMobileEmail = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyMobileEmail>>, TError,VerifyMobileEmailMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyMobileEmail>>,
+        TError,
+        VerifyMobileEmailMutationVariables,
+        TContext
+      > => {
+      return useMutation(getVerifyMobileEmailMutationOptions(options));
+    }
+
+export const getMobileLogoutUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/logout`
+}
+
+export const mobileLogout = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getMobileLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMobileLogoutMutationKey = () => ['mobileLogout'] as const;
+
+export const getMobileLogoutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mobileLogout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mobileLogout>>, TError,void, TContext> => {
+
+const mutationKey = getMobileLogoutMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mobileLogout>>, void> = () => {
+
+
+          return  mobileLogout(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MobileLogoutMutationResult = NonNullable<Awaited<ReturnType<typeof mobileLogout>>>
+
+    export type MobileLogoutMutationError = ErrorType<unknown>
+
+
+    export const useMobileLogout = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mobileLogout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mobileLogout>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getMobileLogoutMutationOptions(options));
+    }
+
+export const getStartMobilePasskeyHandoffUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/passkey/handoff`
+}
+
+/**
+ * Creates a short-lived, one-time browser passkey exchange grant. The URL contains only the grant, never a session bearer.
+ */
+export const startMobilePasskeyHandoff = async ( options?: Parameters<typeof customFetch>[1]): Promise<MobilePasskeyHandoff> => {
+
+  return customFetch<MobilePasskeyHandoff>(getStartMobilePasskeyHandoffUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartMobilePasskeyHandoffMutationKey = () => ['startMobilePasskeyHandoff'] as const;
+
+export const getStartMobilePasskeyHandoffMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMobilePasskeyHandoff>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMobilePasskeyHandoff>>, TError,void, TContext> => {
+
+const mutationKey = getStartMobilePasskeyHandoffMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMobilePasskeyHandoff>>, void> = () => {
+
+
+          return  startMobilePasskeyHandoff(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartMobilePasskeyHandoffMutationResult = NonNullable<Awaited<ReturnType<typeof startMobilePasskeyHandoff>>>
+
+    export type StartMobilePasskeyHandoffMutationError = ErrorType<unknown>
+
+
+    export const useStartMobilePasskeyHandoff = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMobilePasskeyHandoff>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startMobilePasskeyHandoff>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartMobilePasskeyHandoffMutationOptions(options));
+    }
+
+export const getOpenMobilePasskeyHandoffUrl = (params: OpenMobilePasskeyHandoffParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/auth/mobile/passkey/handoff?${stringifiedParams}` : `/api/auth/mobile/passkey/handoff`
+}
+
+export const openMobilePasskeyHandoff = async (params: OpenMobilePasskeyHandoffParams, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getOpenMobilePasskeyHandoffUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getOpenMobilePasskeyHandoffQueryKey = (params?: OpenMobilePasskeyHandoffParams,) => {
+    return [
+    `/api/auth/mobile/passkey/handoff`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getOpenMobilePasskeyHandoffQueryOptions = <TData = Awaited<ReturnType<typeof openMobilePasskeyHandoff>>, TError = ErrorType<unknown>>(params: OpenMobilePasskeyHandoffParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof openMobilePasskeyHandoff>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getOpenMobilePasskeyHandoffQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof openMobilePasskeyHandoff>>> = ({ signal }) => openMobilePasskeyHandoff(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof openMobilePasskeyHandoff>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type OpenMobilePasskeyHandoffQueryResult = NonNullable<Awaited<ReturnType<typeof openMobilePasskeyHandoff>>>
+export type OpenMobilePasskeyHandoffQueryError = ErrorType<unknown>
+
+
+
+export function useOpenMobilePasskeyHandoff<TData = Awaited<ReturnType<typeof openMobilePasskeyHandoff>>, TError = ErrorType<unknown>>(
+ params: OpenMobilePasskeyHandoffParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof openMobilePasskeyHandoff>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getOpenMobilePasskeyHandoffQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCompleteMobilePasskeyHandoffUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/passkey/handoff/complete`
+}
+
+export const completeMobilePasskeyHandoff = async (mobilePasskeyGrantInput: MobilePasskeyGrantInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getCompleteMobilePasskeyHandoffUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(mobilePasskeyGrantInput)
+  }
+);}
+
+
+
+
+
+export const getCompleteMobilePasskeyHandoffMutationKey = () => ['completeMobilePasskeyHandoff'] as const;
+
+export const getCompleteMobilePasskeyHandoffMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMobilePasskeyHandoff>>, TError,CompleteMobilePasskeyHandoffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeMobilePasskeyHandoff>>, TError,CompleteMobilePasskeyHandoffMutationVariables, TContext> => {
+
+const mutationKey = getCompleteMobilePasskeyHandoffMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMobilePasskeyHandoff>>, CompleteMobilePasskeyHandoffMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  completeMobilePasskeyHandoff(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteMobilePasskeyHandoffMutationResult = NonNullable<Awaited<ReturnType<typeof completeMobilePasskeyHandoff>>>
+    export type CompleteMobilePasskeyHandoffMutationBody = BodyType<MobilePasskeyGrantInput>
+    export type CompleteMobilePasskeyHandoffMutationError = ErrorType<unknown>
+    export type CompleteMobilePasskeyHandoffMutationVariables = {data: BodyType<MobilePasskeyGrantInput>}
+
+    export const useCompleteMobilePasskeyHandoff = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMobilePasskeyHandoff>>, TError,CompleteMobilePasskeyHandoffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeMobilePasskeyHandoff>>,
+        TError,
+        CompleteMobilePasskeyHandoffMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCompleteMobilePasskeyHandoffMutationOptions(options));
+    }
+
+export const getExchangeMobilePasskeyHandoffUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/passkey/handoff/exchange`
+}
+
+export const exchangeMobilePasskeyHandoff = async (mobilePasskeyGrantInput: MobilePasskeyGrantInput, options?: Parameters<typeof customFetch>[1]): Promise<ExchangeMobilePasskeyHandoff200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ExchangeMobilePasskeyHandoff200>(getExchangeMobilePasskeyHandoffUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(mobilePasskeyGrantInput)
+  }
+);}
+
+
+
+
+
+export const getExchangeMobilePasskeyHandoffMutationKey = () => ['exchangeMobilePasskeyHandoff'] as const;
+
+export const getExchangeMobilePasskeyHandoffMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exchangeMobilePasskeyHandoff>>, TError,ExchangeMobilePasskeyHandoffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof exchangeMobilePasskeyHandoff>>, TError,ExchangeMobilePasskeyHandoffMutationVariables, TContext> => {
+
+const mutationKey = getExchangeMobilePasskeyHandoffMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exchangeMobilePasskeyHandoff>>, ExchangeMobilePasskeyHandoffMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  exchangeMobilePasskeyHandoff(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExchangeMobilePasskeyHandoffMutationResult = NonNullable<Awaited<ReturnType<typeof exchangeMobilePasskeyHandoff>>>
+    export type ExchangeMobilePasskeyHandoffMutationBody = BodyType<MobilePasskeyGrantInput>
+    export type ExchangeMobilePasskeyHandoffMutationError = ErrorType<unknown>
+    export type ExchangeMobilePasskeyHandoffMutationVariables = {data: BodyType<MobilePasskeyGrantInput>}
+
+    export const useExchangeMobilePasskeyHandoff = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exchangeMobilePasskeyHandoff>>, TError,ExchangeMobilePasskeyHandoffMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof exchangeMobilePasskeyHandoff>>,
+        TError,
+        ExchangeMobilePasskeyHandoffMutationVariables,
+        TContext
+      > => {
+      return useMutation(getExchangeMobilePasskeyHandoffMutationOptions(options));
     }
 
 export const getGetCurrentUserUrl = () => {

@@ -97,6 +97,146 @@ export const VerifyLoginResponse = zod.object({
 })
 
 
+/**
+ * Starts passwordless authentication for the native client. No cookies are issued.
+ */
+export const startMobileAuthBodyEmailMax = 254;
+
+
+
+export const StartMobileAuthBody = zod.object({
+  "email": zod.string().email().max(startMobileAuthBodyEmailMax)
+})
+
+export const StartMobileAuthResponse = zod.object({
+  "flow": zod.enum(['login', 'register']),
+  "message": zod.string()
+})
+
+
+/**
+ * Sends a sign-in code to a native client without issuing cookies.
+ */
+export const startMobileLoginBodyEmailMax = 254;
+
+
+
+export const StartMobileLoginBody = zod.object({
+  "email": zod.string().email().max(startMobileLoginBodyEmailMax)
+})
+
+export const StartMobileLoginResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
+ * Exchanges an email code for a bearer session. Existing passkey users receive a pending session until handoff verification completes.
+ */
+export const verifyMobileLoginBodyEmailMax = 254;
+
+export const verifyMobileLoginBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+
+
+export const VerifyMobileLoginBody = zod.object({
+  "email": zod.string().email().max(verifyMobileLoginBodyEmailMax),
+  "code": zod.string().regex(verifyMobileLoginBodyCodeRegExp)
+})
+
+export const VerifyMobileLoginResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
+})
+}).and(zod.object({
+  "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "passkeyRequired": zod.boolean()
+}))
+
+
+/**
+ * Verifies a registration email and returns a bearer session without cookies.
+ */
+export const verifyMobileEmailBodyEmailMax = 254;
+
+export const verifyMobileEmailBodyCodeRegExp = new RegExp('^[0-9]{6}$');
+
+
+export const VerifyMobileEmailBody = zod.object({
+  "email": zod.string().email().max(verifyMobileEmailBodyEmailMax),
+  "code": zod.string().regex(verifyMobileEmailBodyCodeRegExp)
+})
+
+export const VerifyMobileEmailResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
+})
+}).and(zod.object({
+  "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "passkeyRequired": zod.boolean()
+}))
+
+
+export const MobileLogoutResponse = zod.void()
+
+
+/**
+ * Creates a short-lived, one-time browser passkey exchange grant. The URL contains only the grant, never a session bearer.
+ */
+export const StartMobilePasskeyHandoffResponse = zod.object({
+  "handoffUrl": zod.string().url().describe('Contains only a one-time exchange grant'),
+  "expiresAt": zod.coerce.date()
+})
+
+
+export const openMobilePasskeyHandoffQueryGrantMin = 32;
+
+
+
+export const OpenMobilePasskeyHandoffQueryParams = zod.object({
+  "grant": zod.coerce.string().min(openMobilePasskeyHandoffQueryGrantMin)
+})
+
+export const OpenMobilePasskeyHandoffResponse = zod.unknown()
+
+
+export const completeMobilePasskeyHandoffBodyGrantMin = 32;
+
+
+
+export const CompleteMobilePasskeyHandoffBody = zod.object({
+  "grant": zod.string().min(completeMobilePasskeyHandoffBodyGrantMin)
+})
+
+export const CompleteMobilePasskeyHandoffResponse = zod.unknown()
+
+
+export const exchangeMobilePasskeyHandoffBodyGrantMin = 32;
+
+
+
+export const ExchangeMobilePasskeyHandoffBody = zod.object({
+  "grant": zod.string().min(exchangeMobilePasskeyHandoffBodyGrantMin)
+})
+
+export const ExchangeMobilePasskeyHandoffResponse = zod.object({
+  "verified": zod.boolean()
+})
+
+
 export const GetCurrentUserResponse = zod.object({
   "user": zod.object({
   "id": zod.string(),
@@ -170,9 +310,25 @@ export const ConfirmPasskeyRecoveryBody = zod.object({
   "code": zod.string().regex(confirmPasskeyRecoveryBodyCodeRegExp)
 })
 
-export const ConfirmPasskeyRecoveryResponse = zod.object({
+export const ConfirmPasskeyRecoveryResponse = zod.union([zod.object({
   "recovered": zod.boolean()
+}),zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean(),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean()
 })
+}).and(zod.object({
+  "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "passkeyRequired": zod.boolean()
+})).and(zod.object({
+  "recovered": zod.literal(true)
+}))])
 
 
 export const LogoutResponse = zod.void()

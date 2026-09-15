@@ -132,12 +132,35 @@ export const sessionsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    transport: text("transport").notNull().default("browser"),
     deviceHash: text("device_hash"),
     ipPrefix: text("ip_prefix"),
     passkeyVerifiedAt: timestamp("passkey_verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("shuut_sessions_user_idx").on(table.userId)],
+);
+
+export const mobileSessionGrantsTable = pgTable(
+  "shuut_mobile_session_grants",
+  {
+    grantHash: text("grant_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    sessionTokenHash: text("session_token_hash")
+      .notNull()
+      .references(() => sessionsTable.tokenHash, { onDelete: "cascade" }),
+    browserSessionTokenHash: text("browser_session_token_hash"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("shuut_mobile_session_grants_user_idx").on(table.userId),
+    index("shuut_mobile_session_grants_expiry_idx").on(table.expiresAt),
+  ],
 );
 
 export const authCodesTable = pgTable(

@@ -19,6 +19,7 @@ import {
   db,
   commentsTable,
   foundersTable,
+  passkeyRecoveriesTable,
   objectCleanupJobsTable,
   passkeysTable,
   privateObjectCleanupTable,
@@ -319,6 +320,169 @@ test("passwordless login resists enumeration and replay, logout invalidates the 
   })).status, 401);
 });
 
+test("session transports cannot cross authentication channels or bypass device binding", async () => {
+  const email = `${prefix}-transport@example.test`;
+  const browser = await register(email);
+  assert.equal((await request("/api/auth/me", {
+    headers: { cookie: `shu_session=${browser.session}` },
+  })).status, 401);
+  assert.equal((await request("/api/auth/me", {
+    headers: { authorization: `Bearer ${browser.session}` },
+  })).status, 401);
+
+  await request("/api/auth/mobile/login", { method: "POST", json: { email } });
+  const mobileResponse = await request("/api/auth/mobile/login/verify", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Your SHÜÜT sign-in code") },
+  });
+  const mobile = await mobileResponse.json() as { accessToken: string };
+  assert.equal((await request("/api/auth/me", {
+    headers: { cookie: `shu_session=${mobile.accessToken}` },
+  })).status, 401);
+});
+
+test("mobile auth returns an explicit bearer session without cookies and revokes it on logout", async () => {
+  const email = `${prefix}-mobile@example.test`;
+  await register(email);
+  const start = await request("/api/auth/mobile/login", {
+    method: "POST",
+    json: { email },
+  });
+  assert.equal(start.status, 202);
+  const verified = await request("/api/auth/mobile/login/verify", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Your SHÜÜT sign-in code") },
+  });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.headers.get("set-cookie"), null);
+  const body = await verified.json() as {
+    accessToken: string;
+    tokenType: string;
+    passkeyRequired: boolean;
+  };
+  assert.match(body.accessToken, /^[A-Za-z0-9_-]{32,}$/);
+  assert.equal(body.tokenType, "Bearer");
+  assert.equal(body.passkeyRequired, false);
+
+  const me = await request("/api/auth/me", {
+    headers: { authorization: `Bearer ${body.accessToken}` },
+  });
+  assert.equal(me.status, 200);
+  const logout = await request("/api/auth/mobile/logout", {
+    method: "POST",
+    headers: { authorization: `Bearer ${body.accessToken}` },
+  });
+  assert.equal(logout.status, 204);
+  assert.equal((await request("/api/auth/me", {
+    headers: { authorization: `Bearer ${body.accessToken}` },
+  })).status, 401);
+});
+
+test("mobile sessions for passkey users remain pending until passkey handoff", async () => {
+  const email = `${prefix}-mobile-passkey@example.test`;
+  const browser = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.insert(passkeysTable).values({
+    credentialId: `${prefix}-mobile-passkey-credential`,
+    userId: user.id,
+    publicKey: Buffer.from([1, 2, 3]).toString("base64"),
+    counter: 0,
+  });
+  const start = await request("/api/auth/mobile/login", {
+    method: "POST",
+    json: { email },
+  });
+  assert.equal(start.status, 202);
+  const verified = await request("/api/auth/mobile/login/verify", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Your SHÜÜT sign-in code") },
+  });
+  assert.equal(verified.status, 200);
+  const body = await verified.json() as { accessToken: string; passkeyRequired: boolean };
+  assert.equal(body.passkeyRequired, true);
+  assert.equal((await request("/api/feed", {
+    headers: { authorization: `Bearer ${body.accessToken}` },
+  })).status, 403);
+  // The mobile bearer is deliberately not accepted as a fully verified
+  // browser session, while the original browser session remains revocable.
+  assert.equal((await request("/api/auth/me", { session: browser })).status, 401);
+});
+
+test("browser passkey handoff serves a ceremony page and cannot consume an unapproved grant", async () => {
+  const email = `${prefix}-mobile-handoff@example.test`;
+  await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.insert(passkeysTable).values({
+    credentialId: `${prefix}-mobile-handoff-credential`,
+    userId: user.id,
+    publicKey: Buffer.from([1, 2, 3]).toString("base64"),
+    counter: 0,
+  });
+  await request("/api/auth/mobile/login", { method: "POST", json: { email } });
+  const login = await request("/api/auth/mobile/login/verify", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Your SHÜÜT sign-in code") },
+  });
+  const { accessToken } = await login.json() as { accessToken: string };
+  const started = await request("/api/auth/mobile/passkey/handoff", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  assert.equal(started.status, 201);
+  const handoff = await started.json() as { handoffUrl: string };
+  assert.ok(!handoff.handoffUrl.includes(accessToken));
+  const grantUrl = new URL(handoff.handoffUrl);
+  const opened = await request(`${grantUrl.pathname}${grantUrl.search}`);
+  assert.equal(opened.status, 200);
+  assert.match(opened.headers.get("content-type") || "", /text\/html/);
+  const page = await opened.text();
+  assert.match(page, /navigator\.credentials\.get/);
+  assert.match(page, /passkey\/assertion\/options/);
+  assert.match(page, /passkey\/assertion\/verify/);
+  assert.match(page, /mobile\/passkey\/handoff\/complete/);
+  assert.ok(!page.includes(accessToken));
+  const browser = parseSession(opened);
+
+  const beforeExchange = await request("/api/auth/mobile/passkey/handoff/exchange", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}` },
+    json: { grant: grantUrl.searchParams.get("grant") },
+  });
+  assert.equal(beforeExchange.status, 400);
+  const [stillPending] = await db.select({ passkeyVerifiedAt: sessionsTable.passkeyVerifiedAt })
+    .from(sessionsTable)
+    .where(eq(sessionsTable.tokenHash, hashSessionToken(accessToken)));
+  assert.equal(stillPending.passkeyVerifiedAt, null);
+
+  // Simulate the existing browser WebAuthn verifier after the ceremony. The
+  // handoff completion must activate only the matching mobile session.
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.tokenHash, hashSessionToken(browser.session)));
+  const completed = await request("/api/auth/mobile/passkey/handoff/complete", {
+    method: "POST",
+    session: browser,
+    json: { grant: grantUrl.searchParams.get("grant") },
+  });
+  assert.equal(completed.status, 200);
+  const exchanged = await request("/api/auth/mobile/passkey/handoff/exchange", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}` },
+    json: { grant: grantUrl.searchParams.get("grant") },
+  });
+  assert.equal(exchanged.status, 200);
+  const mobileMe = await request("/api/auth/me", {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  assert.equal(mobileMe.status, 200);
+  assert.equal((await mobileMe.json() as { user: { passkeyVerified: boolean } }).user.passkeyVerified, true);
+  assert.equal((await request("/api/auth/mobile/passkey/handoff/exchange", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}` },
+    json: { grant: grantUrl.searchParams.get("grant") },
+  })).status, 400);
+  assert.equal((await request(`${grantUrl.pathname}${grantUrl.search}`)).status, 400);
+});
+
 test("unified auth start chooses sign-in for members and registration for new emails", async () => {
   const memberEmail = `${prefix}-unified-member@example.test`;
   await register(memberEmail);
@@ -345,6 +509,81 @@ test("unified auth start chooses sign-in for members and registration for new em
     message: "Check your email to continue registration.",
   });
   codeFor(newEmail, "Verify your SHÜÜT account");
+});
+
+test("mobile passkey recovery rotates the bearer without issuing browser cookies", async () => {
+  const email = `${prefix}-mobile-recovery@example.test`;
+  await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.insert(passkeysTable).values({
+    credentialId: `${prefix}-mobile-recovery-credential`,
+    userId: user.id,
+    publicKey: Buffer.from([1, 2, 3]).toString("base64"),
+    counter: 0,
+  });
+  await request("/api/auth/mobile/login", { method: "POST", json: { email } });
+  const login = await request("/api/auth/mobile/login/verify", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Your SHÜÜT sign-in code") },
+  });
+  const oldToken = (await login.json() as { accessToken: string }).accessToken;
+  assert.equal((await request("/api/auth/passkey/recovery/request", {
+    method: "POST",
+    headers: { authorization: `Bearer ${oldToken}` },
+  })).status, 202);
+  await db.update(passkeyRecoveriesTable).set({ availableAt: new Date(0) })
+    .where(eq(passkeyRecoveriesTable.userId, user.id));
+  assert.equal((await request("/api/auth/passkey/recovery/code", {
+    method: "POST",
+    headers: { authorization: `Bearer ${oldToken}` },
+  })).status, 202);
+  const confirmed = await request("/api/auth/passkey/recovery/confirm", {
+    method: "POST",
+    headers: { authorization: `Bearer ${oldToken}` },
+    json: { code: codeFor(email, "Confirm your SHÜÜT passkey recovery") },
+  });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.headers.get("set-cookie"), null);
+  const replacement = await confirmed.json() as { accessToken: string; recovered: boolean };
+  assert.equal(replacement.recovered, true);
+  assert.notEqual(replacement.accessToken, oldToken);
+  assert.equal((await request("/api/auth/me", {
+    headers: { authorization: `Bearer ${oldToken}` },
+  })).status, 401);
+  assert.equal((await request("/api/auth/me", {
+    headers: { authorization: `Bearer ${replacement.accessToken}` },
+  })).status, 200);
+});
+
+test("web passkey recovery keeps browser cookie rotation semantics", async () => {
+  const email = `${prefix}-web-recovery@example.test`;
+  const oldSession = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.insert(passkeysTable).values({
+    credentialId: `${prefix}-web-recovery-credential`,
+    userId: user.id,
+    publicKey: Buffer.from([1, 2, 3]).toString("base64"),
+    counter: 0,
+  });
+  assert.equal((await request("/api/auth/passkey/recovery/request", {
+    method: "POST",
+    session: oldSession,
+  })).status, 202);
+  await db.update(passkeyRecoveriesTable).set({ availableAt: new Date(0) })
+    .where(eq(passkeyRecoveriesTable.userId, user.id));
+  assert.equal((await request("/api/auth/passkey/recovery/code", {
+    method: "POST",
+    session: oldSession,
+  })).status, 202);
+  const confirmed = await request("/api/auth/passkey/recovery/confirm", {
+    method: "POST",
+    session: oldSession,
+    json: { code: codeFor(email, "Confirm your SHÜÜT passkey recovery") },
+  });
+  assert.equal(confirmed.status, 200);
+  const replacement = parseSession(confirmed);
+  assert.equal((await request("/api/auth/me", { session: oldSession })).status, 401);
+  assert.equal((await request("/api/auth/me", { session: replacement })).status, 200);
 });
 
 test("registration is bound to RP ID, origin, challenge, and session, then cannot be replayed", async () => {

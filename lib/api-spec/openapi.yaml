@@ -81,10 +81,111 @@ paths:
         '200':
           description: Sign-in code verified and session created
           content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/mobile/start:
+    post:
+      operationId: startMobileAuth
+      tags: [auth]
+      description: Starts passwordless authentication for the native client. No cookies are issued.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoginInput' } } }
+      responses:
+        '202':
+          description: The appropriate sign-in or registration code was sent
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthStartResult' } } }
+  /auth/mobile/login:
+    post:
+      operationId: startMobileLogin
+      tags: [auth]
+      description: Sends a sign-in code to a native client without issuing cookies.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoginInput' } } }
+      responses:
+        '202':
+          description: Sign-in code sent when the account exists
+          content: { application/json: { schema: { $ref: '#/components/schemas/AuthMessage' } } }
+  /auth/mobile/login/verify:
+    post:
+      operationId: verifyMobileLogin
+      tags: [auth]
+      description: Exchanges an email code for a bearer session. Existing passkey users receive a pending session until handoff verification completes.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmailCodeInput' } } }
+      responses:
+        '200':
+          description: Mobile bearer session
+          content: { application/json: { schema: { $ref: '#/components/schemas/MobileAuthSession' } } }
+  /auth/mobile/verify-email:
+    post:
+      operationId: verifyMobileEmail
+      tags: [auth]
+      description: Verifies a registration email and returns a bearer session without cookies.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmailCodeInput' } } }
+      responses:
+        '200':
+          description: Mobile bearer session
+          content: { application/json: { schema: { $ref: '#/components/schemas/MobileAuthSession' } } }
+  /auth/mobile/logout:
+    post:
+      operationId: mobileLogout
+      tags: [auth]
+      security: [{ BearerAuth: [] }]
+      responses:
+        '204': { description: Bearer session revoked }
+  /auth/mobile/passkey/handoff:
+    post:
+      operationId: startMobilePasskeyHandoff
+      tags: [auth]
+      security: [{ BearerAuth: [] }]
+      description: Creates a short-lived, one-time browser passkey exchange grant. The URL contains only the grant, never a session bearer.
+      responses:
+        '201':
+          description: Browser handoff URL
+          content: { application/json: { schema: { $ref: '#/components/schemas/MobilePasskeyHandoff' } } }
+    get:
+      operationId: openMobilePasskeyHandoff
+      tags: [auth]
+      parameters:
+        - { name: grant, in: query, required: true, schema: { type: string, minLength: 32 } }
+      responses:
+        '200':
+          description: Branded browser page that runs the WebAuthn ceremony and completes the one-time grant
+          content:
+            text/html:
+              schema: { type: string }
+  /auth/mobile/passkey/handoff/complete:
+    post:
+      operationId: completeMobilePasskeyHandoff
+      tags: [auth]
+      security: [{ SessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MobilePasskeyGrantInput' } } }
+      responses:
+        '200': { description: Browser passkey approved }
+  /auth/mobile/passkey/handoff/exchange:
+    post:
+      operationId: exchangeMobilePasskeyHandoff
+      tags: [auth]
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MobilePasskeyGrantInput' } } }
+      responses:
+        '200':
+          description: Mobile bearer session is now fully verified
+          content: { application/json: { schema: { type: object, required: [verified], properties: { verified: { type: boolean } } } } }
   /auth/me:
     get:
       operationId: getCurrentUser
       tags: [auth]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       responses:
         '200':
           description: Current authenticated user
@@ -167,17 +268,30 @@ paths:
     post:
       operationId: confirmPasskeyRecovery
       tags: [auth]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/RecoveryCodeInput' } } }
       responses:
         '200':
           description: Passkeys reset and sessions revoked
-          content: { application/json: { schema: { type: object, required: [recovered], properties: { recovered: { type: boolean } } } } }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [recovered]
+                    properties: { recovered: { type: boolean } }
+                  - $ref: '#/components/schemas/MobileRecoverySession'
   /auth/logout:
     post:
       operationId: logout
       tags: [auth]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       responses:
         '204': { description: Session ended }
   /auth/onboarding:
@@ -431,6 +545,10 @@ components:
       type: apiKey
       in: cookie
       name: shu_session
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
   schemas:
     AuthUser:
       type: object
@@ -447,6 +565,34 @@ components:
       required: [user]
       properties:
         user: { $ref: '#/components/schemas/AuthUser' }
+    MobileAuthSession:
+      allOf:
+        - $ref: '#/components/schemas/AuthSession'
+        - type: object
+          required: [accessToken, tokenType, expiresAt, passkeyRequired]
+          properties:
+            accessToken: { type: string, description: Opaque bearer token; store in native secure storage. }
+            tokenType: { type: string, enum: [Bearer] }
+            expiresAt: { type: string, format: date-time }
+            passkeyRequired: { type: boolean }
+    MobilePasskeyHandoff:
+      type: object
+      required: [handoffUrl, expiresAt]
+      properties:
+        handoffUrl: { type: string, format: uri, description: Contains only a one-time exchange grant, never a bearer session token. }
+        expiresAt: { type: string, format: date-time }
+    MobilePasskeyGrantInput:
+      type: object
+      required: [grant]
+      properties:
+        grant: { type: string, minLength: 32 }
+    MobileRecoverySession:
+      allOf:
+        - $ref: '#/components/schemas/MobileAuthSession'
+        - type: object
+          required: [recovered]
+          properties:
+            recovered: { type: boolean, const: true }
     AuthMessage:
       type: object
       required: [message]

@@ -18,6 +18,36 @@ export interface AuthSession {
   user: AuthUser;
 }
 
+export type MobileAuthSessionTokenType = typeof MobileAuthSessionTokenType[keyof typeof MobileAuthSessionTokenType];
+
+
+export const MobileAuthSessionTokenType = {
+  Bearer: 'Bearer',
+} as const;
+
+export type MobileAuthSession = AuthSession & {
+  /** Opaque bearer token; store in native secure storage. */
+  accessToken: string;
+  tokenType: MobileAuthSessionTokenType;
+  expiresAt: string;
+  passkeyRequired: boolean;
+};
+
+export interface MobilePasskeyHandoff {
+  /** Contains only a one-time exchange grant */
+  handoffUrl: string;
+  expiresAt: string;
+}
+
+export interface MobilePasskeyGrantInput {
+  /** @minLength 32 */
+  grant: string;
+}
+
+export type MobileRecoverySession = MobileAuthSession & {
+  recovered: true;
+};
+
 export interface AuthMessage {
   message: string;
 }
@@ -368,13 +398,24 @@ export interface AskAnswer {
   hasEnoughContext: boolean;
 }
 
+export type OpenMobilePasskeyHandoffParams = {
+/**
+ * @minLength 32
+ */
+grant: string;
+};
+
+export type ExchangeMobilePasskeyHandoff200 = {
+  verified: boolean;
+};
+
 export type BeginPasskeyRegistration200 = { [key: string]: unknown };
 
 export type BeginPasskeyAssertion200 = { [key: string]: unknown };
 
 export type ConfirmPasskeyRecovery200 = {
   recovered: boolean;
-};
+} | MobileRecoverySession;
 
 export type GetFeedParams = {
 view?: GetFeedView;
