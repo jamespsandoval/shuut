@@ -16,6 +16,10 @@ import {
 } from '@workspace/api-client-react';
 import { useAuth } from '../../hooks/useAuthStore';
 
+function normalizeConfirmationCode(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 6);
+}
+
 export default function VerifyScreen() {
   const { email, flow } = useLocalSearchParams<{ email: string, flow: string }>();
   const [code, setCode] = useState('');
@@ -47,14 +51,15 @@ export default function VerifyScreen() {
   const error = verifyEmail.error || verifyLogin.error || startHandoff.error || exchangeHandoff.error || requestRecovery.error || sendRecoveryCode.error || confirmRecovery.error;
 
   const handleVerify = async () => {
-    if (!code || code.length < 6) return;
+    const confirmationCode = normalizeConfirmationCode(code);
+    if (confirmationCode.length !== 6 || isPending) return;
     
     try {
       let session;
       if (flow === 'register') {
-        session = await verifyEmail.mutateAsync({ data: { email, code } });
+        session = await verifyEmail.mutateAsync({ data: { email, code: confirmationCode } });
       } else {
-        session = await verifyLogin.mutateAsync({ data: { email, code } });
+        session = await verifyLogin.mutateAsync({ data: { email, code: confirmationCode } });
       }
 
       await signIn(session);
@@ -110,9 +115,10 @@ export default function VerifyScreen() {
   };
 
   const handleConfirmRecovery = async () => {
-    if (!recoveryCode || recoveryCode.length < 6) return;
+    const confirmationCode = normalizeConfirmationCode(recoveryCode);
+    if (confirmationCode.length !== 6 || isPending) return;
     try {
-      const res = await confirmRecovery.mutateAsync({ data: { code: recoveryCode } });
+      const res = await confirmRecovery.mutateAsync({ data: { code: confirmationCode } });
       if (res && 'accessToken' in res) {
         await signIn(res as MobileRecoverySession);
       } else if (res.recovered) {
@@ -152,9 +158,16 @@ export default function VerifyScreen() {
               placeholder="000000"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="number-pad"
+              returnKeyType="done"
+              textContentType="oneTimeCode"
+              autoComplete="one-time-code"
+              selectTextOnFocus
               maxLength={6}
               value={code}
-              onChangeText={setCode}
+              onChangeText={(value) => setCode(normalizeConfirmationCode(value))}
+              onSubmitEditing={() => {
+                void handleVerify();
+              }}
             />
 
             {error && (
@@ -261,9 +274,16 @@ export default function VerifyScreen() {
                       placeholder="000000"
                       placeholderTextColor={colors.mutedForeground}
                       keyboardType="number-pad"
+                      returnKeyType="done"
+                      textContentType="oneTimeCode"
+                      autoComplete="one-time-code"
+                      selectTextOnFocus
                       maxLength={6}
                       value={recoveryCode}
-                      onChangeText={setRecoveryCode}
+                      onChangeText={(value) => setRecoveryCode(normalizeConfirmationCode(value))}
+                      onSubmitEditing={() => {
+                        void handleConfirmRecovery();
+                      }}
                     />
                     <TouchableOpacity
                       style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius, marginTop: 8 }]}
