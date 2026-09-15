@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
-import { Link } from "wouter"
-import { Play, Repeat2, Share, Trash2, MoreHorizontal, Pencil, Loader2 } from "lucide-react"
+import { Link, useLocation } from "wouter"
+import { Play, Repeat2, Share, Trash2, Pencil, Loader2, Mic } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { Post, ReactionInputEmojiType } from "@workspace/api-client-react"
 import { 
@@ -17,21 +17,21 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { PostComments } from "./post-comments"
 
 interface PostCardProps {
   post: Post
   isDetail?: boolean
+  isFocused?: boolean
 }
 
 const REACTIONS: { type: ReactionInputEmojiType; emoji: string }[] = [
-  { type: "goat", emoji: "🐐" },
   { type: "rocket", emoji: "🚀" },
   { type: "laughing", emoji: "😂" },
-  { type: "confused", emoji: "😕" },
   { type: "thumbsDown", emoji: "👎" },
 ]
 
-export function PostCard({ post, isDetail = false }: PostCardProps) {
+export function PostCard({ post, isDetail = false, isFocused = false }: PostCardProps) {
   const queryClient = useQueryClient()
   const setReaction = useSetReaction()
   const reshuutPost = useReshuutPost()
@@ -39,12 +39,17 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   const updatePost = useUpdatePost()
   const createShareLink = useCreatePostShareLink()
   const { toast } = useToast()
+  const [, setLocation] = useLocation()
   
-  const [showMenu, setShowMenu] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.transcript)
   const [canStillEdit, setCanStillEdit] = useState(post.canEdit)
+  const [showComments, setShowComments] = useState(isDetail || isFocused)
   const isAuthor = post.editableUntil !== null
+
+  useEffect(() => {
+    if (isDetail || isFocused) setShowComments(true)
+  }, [isDetail, isFocused])
 
   useEffect(() => {
     setCanStillEdit(post.canEdit)
@@ -61,8 +66,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
     setReaction.mutate(
       { postId: post.id, data: { emojiType: type } },
       {
-        onSuccess: (updatedPost) => {
-          // Optimistically updating would be better, but invalidating works.
+        onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
         }
       }
@@ -79,6 +83,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   }
 
   const handleDelete = () => {
+    if (!window.confirm("Are you sure you want to delete this SHÜÜT?")) return;
     deletePost.mutate(
       { postId: post.id },
       {
@@ -137,43 +142,50 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
   }
 
   return (
-    <article className={cn(
-      "bg-card border-b border-border/40 p-4 transition-colors hover:bg-card/50",
-      isDetail ? "border-b-0 pb-6" : ""
-    )}>
+    <article 
+      id={`post-${post.id}`}
+      className={cn(
+        "bg-card border-b border-border/40 p-4 transition-colors hover:bg-card/50 scroll-m-20",
+        (isDetail || isFocused) ? "border-b-0 pb-6" : "",
+        isFocused && "ring-2 ring-primary/20 bg-card/80 rounded-xl my-2 shadow-sm"
+      )}
+    >
       {post.isReshuuted && post.reshuutedBy && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold mb-3 px-4 uppercase tracking-wider">
-          <Repeat2 className="w-3 h-3" />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold mb-3 px-1 uppercase tracking-wider">
+          <Repeat2 className="w-3.5 h-3.5" />
           <span>{post.reshuutedBy} reshüüted</span>
         </div>
       )}
 
-      <div className="flex gap-4">
-        {/* Avatar */}
-        <Link href={`/u/${post.author.handle}`} className="shrink-0 pt-1 group">
-          <div 
-            className="w-12 h-12 rounded-full overflow-hidden transition-transform group-hover:scale-105 active:scale-95"
-            style={{ backgroundColor: post.author.avatarColor || '#3B82F6' }}
-          >
-            <div className="w-full h-full flex items-center justify-center text-white font-bold text-xl mix-blend-overlay">
-              {post.author.name.charAt(0).toUpperCase()}
+      <div className="flex flex-col gap-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <Link href={`/u/${post.author.handle}`} className="flex items-center gap-3 group min-w-0">
+            <div 
+              className="w-11 h-11 rounded-full overflow-hidden transition-transform group-hover:scale-105 active:scale-95 shrink-0 shadow-sm relative"
+              style={{ backgroundColor: post.author.avatarColor || '#3B82F6' }}
+            >
+              {post.author.avatarUrl ? (
+                <img src={post.author.avatarUrl} alt={post.author.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white font-bold text-lg mix-blend-overlay">
+                  {post.author.name.charAt(0).toUpperCase()}
+                </div>
+              )}
             </div>
-          </div>
-        </Link>
+            <div className="flex flex-col min-w-0 justify-center">
+              <div className="truncate font-bold text-[15px] text-foreground group-hover:underline leading-tight pb-0.5">{post.author.name}</div>
+              <div className="truncate text-[13px] text-muted-foreground leading-tight">@{post.author.handle}</div>
+            </div>
+          </Link>
+          <Link href={`/p/${post.id}`} className="text-[13px] text-muted-foreground hover:underline whitespace-nowrap shrink-0 self-start pt-1">
+            {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+          </Link>
+        </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1">
-            <Link href={`/u/${post.author.handle}`} className="group min-w-0">
-              <div className="truncate font-bold text-foreground group-hover:underline">{post.author.name}</div>
-              <div className="truncate text-sm text-muted-foreground">@{post.author.handle}</div>
-            </Link>
-            <Link href={`/p/${post.id}`} className="text-xs text-muted-foreground hover:underline whitespace-nowrap ml-2">
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-            </Link>
-          </div>
-
-          <div className="mb-4">
+        <div className="w-full">
+          <div className="mb-2">
             {isEditing ? (
               <div className="space-y-3">
                 <Textarea
@@ -182,35 +194,42 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
                   maxLength={5000}
                   autoFocus
                   data-testid={`textarea-edit-post-${post.id}`}
-                  className="min-h-28 resize-none"
+                  className="min-h-28 resize-none text-[15px]"
                 />
                 <div className="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
-                  <Button size="sm" onClick={handleEdit} disabled={updatePost.isPending || !editText.trim() || !canStillEdit}>
+                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="rounded-full">Cancel</Button>
+                  <Button size="sm" onClick={handleEdit} disabled={updatePost.isPending || !editText.trim() || !canStillEdit} className="rounded-full px-5 font-bold">
                     {updatePost.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save
                   </Button>
                 </div>
               </div>
             ) : (
-              <p className={cn(
-              "text-foreground leading-relaxed whitespace-pre-wrap break-words",
-              isDetail ? "text-xl font-medium" : "text-base"
-            )}>
-              {post.transcript}
+              <p 
+                onClick={() => {
+                  if (!isDetail && !isFocused) {
+                    setLocation(`/u/${post.author.handle}?shuut=${post.id}`)
+                  }
+                }}
+                className={cn(
+                  "text-foreground leading-relaxed whitespace-pre-wrap break-words",
+                  (isDetail || isFocused) ? "text-[17px] font-medium" : "text-[15px] line-clamp-3 cursor-pointer hover:opacity-80 transition-opacity"
+                )}
+              >
+                {post.transcript}
               </p>
             )}
           </div>
 
           {post.audioUrl && (
-            <div className="mb-4">
+            <div className="mb-2">
               <AudioPlayer audioUrl={post.audioUrl} durationSeconds={post.durationSeconds} />
             </div>
           )}
 
           {!post.audioUrl && (
             <div
-              className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground"
+              className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground"
               aria-label={`Recording length: ${post.durationSeconds} seconds`}
             >
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -221,9 +240,9 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
           )}
 
           {/* Action Bar */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-6 mt-4 pt-3 border-t border-border/30">
+          <div className="flex items-center gap-1.5 sm:gap-4 mt-1 pt-2 border-t border-border/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-1">
             {/* Reactions */}
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex items-center gap-1 shrink-0">
               {REACTIONS.map(({ type, emoji }) => {
                 const count = post.reactions[type as keyof typeof post.reactions] || 0
                 const isActive = post.viewerReaction === type
@@ -233,7 +252,7 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
                     key={type}
                     onClick={() => handleReaction(type)}
                     className={cn(
-                      "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95",
+                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95",
                       isActive ? "bg-primary/10 text-primary font-bold" : "text-muted-foreground",
                       isActive && "ring-1 ring-primary/30"
                     )}
@@ -246,69 +265,65 @@ export function PostCard({ post, isDetail = false }: PostCardProps) {
               })}
             </div>
 
-            <div className="flex-1" />
+            {/* Comment */}
+            <button
+              onClick={() => setShowComments(prev => !prev)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[15px] font-medium transition-all hover:bg-secondary text-muted-foreground hover:text-foreground active:scale-95 shrink-0"
+              title="Comment"
+            >
+              <Mic className="w-4 h-4" />
+              <span className="hidden sm:inline">Reply</span>
+            </button>
+
+            <div className="flex-1 min-w-4" />
 
             {/* Reshüüt */}
             <button
               onClick={handleReshuut}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95 text-muted-foreground hover:text-foreground",
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95 text-muted-foreground hover:text-foreground shrink-0",
                 post.isReshuuted && "text-green-500 font-medium"
               )}
             >
-              <Repeat2 className="w-4 h-4" />
+              <Repeat2 className="w-[18px] h-[18px]" />
               <span className="hidden sm:inline">Reshüüt</span>
             </button>
 
             <button
               onClick={handleShare}
               aria-label="Share post"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground active:scale-95"
+              className="flex w-9 h-9 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground active:scale-95 shrink-0"
             >
-              <Share className="h-4 w-4" />
+              <Share className="w-[18px] h-[18px]" />
             </button>
 
-            {/* Options Menu */}
-            {isAuthor && <div className="relative ml-2">
+            {isAuthor && canStillEdit && (
               <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground transition-all active:scale-95"
+                onClick={() => {
+                  setEditText(post.transcript)
+                  setIsEditing(true)
+                }}
+                className="flex w-9 h-9 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground active:scale-95 shrink-0"
+                title="Edit SHÜÜT"
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <Pencil className="w-[18px] h-[18px]" />
               </button>
-              
-              {showMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                  <div className="absolute right-0 bottom-full mb-2 bg-popover border border-border shadow-lg rounded-xl p-2 z-50 flex flex-col min-w-[140px] animate-in fade-in zoom-in-95">
-                    {canStillEdit && (
-                      <button
-                        onClick={() => {
-                          setShowMenu(false)
-                          setEditText(post.transcript)
-                          setIsEditing(true)
-                        }}
-                        className="px-3 py-2 text-sm hover:bg-secondary rounded-md flex items-center gap-2 text-left"
-                      >
-                        <Pencil className="w-4 h-4" />
-                        Edit SHÜÜT
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => {
-                        setShowMenu(false)
-                        handleDelete()
-                      }}
-                      className="px-3 py-2 text-sm hover:bg-destructive/10 text-destructive rounded-md flex items-center gap-2 text-left"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>}
+            )}
+
+            {isAuthor && (
+              <button
+                onClick={handleDelete}
+                className="flex w-9 h-9 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive active:scale-95 shrink-0 ml-0.5"
+                title="Delete SHÜÜT"
+              >
+                <Trash2 className="w-[18px] h-[18px]" />
+              </button>
+            )}
           </div>
+          
+          {(showComments) && (
+            <PostComments postId={post.id} />
+          )}
         </div>
       </div>
     </article>

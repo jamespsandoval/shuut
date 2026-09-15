@@ -13,9 +13,7 @@ export type PostViewerReaction = typeof PostViewerReaction[keyof typeof PostView
 
 
 export const PostViewerReaction = {
-  goat: 'goat',
   rocket: 'rocket',
   laughing: 'laughing',
-  confused: 'confused',
   thumbsDown: 'thumbsDown',
 } as const;

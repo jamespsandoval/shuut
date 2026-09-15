@@ -152,10 +152,8 @@ export interface Founder {
 }
 
 export interface ReactionSummary {
-  goat: number;
   rocket: number;
   laughing: number;
-  confused: number;
   thumbsDown: number;
 }
 
@@ -166,10 +164,8 @@ export type PostViewerReaction = typeof PostViewerReaction[keyof typeof PostView
 
 
 export const PostViewerReaction = {
-  goat: 'goat',
   rocket: 'rocket',
   laughing: 'laughing',
-  confused: 'confused',
   thumbsDown: 'thumbsDown',
 } as const;
 
@@ -279,6 +275,37 @@ export interface PostEditInput {
   transcript: string;
 }
 
+export interface VoiceCommentInput {
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  audioObjectPath: string;
+  /**
+     * @minimum 1
+     * @maximum 90
+     */
+  durationSeconds: number;
+}
+
+export type VoiceCommentSubmissionStatus = typeof VoiceCommentSubmissionStatus[keyof typeof VoiceCommentSubmissionStatus];
+
+
+export const VoiceCommentSubmissionStatus = {
+  processing: 'processing',
+} as const;
+
+export interface VoiceCommentSubmission {
+  id: number;
+  status: VoiceCommentSubmissionStatus;
+}
+
+export interface VoiceComment {
+  id: number;
+  author: Founder;
+  transcript: string;
+  audioUrl: string;
+  durationSeconds: number;
+  createdAt: string;
+}
+
 export interface PostShareLink {
   url: string;
 }
@@ -296,10 +323,8 @@ export type ReactionInputEmojiType = typeof ReactionInputEmojiType[keyof typeof 
 
 
 export const ReactionInputEmojiType = {
-  goat: 'goat',
   rocket: 'rocket',
   laughing: 'laughing',
-  confused: 'confused',
   thumbsDown: 'thumbsDown',
 } as const;
 

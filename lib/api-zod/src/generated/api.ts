@@ -278,13 +278,11 @@ export const GetFeedResponseItem = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
@@ -332,13 +330,11 @@ export const GetProfileResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
@@ -413,13 +409,11 @@ export const UpdateProfileResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
@@ -498,13 +492,11 @@ export const CreatePostResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
@@ -535,13 +527,11 @@ export const GetPostResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
@@ -587,13 +577,11 @@ export const UpdatePostResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
@@ -606,7 +594,7 @@ export const SetReactionParams = zod.object({
 })
 
 export const SetReactionBody = zod.object({
-  "emojiType": zod.enum(['goat', 'rocket', 'laughing', 'confused', 'thumbsDown'])
+  "emojiType": zod.enum(['rocket', 'laughing', 'thumbsDown'])
 })
 
 export const SetReactionResponse = zod.object({
@@ -628,18 +616,69 @@ export const SetReactionResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
+
+
+export const GetPostCommentsParams = zod.object({
+  "postId": zod.coerce.number().int()
+})
+
+export const GetPostCommentsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "audioUrl": zod.string(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date()
+})
+export const GetPostCommentsResponse = zod.array(GetPostCommentsResponseItem)
+
+
+export const CreatePostCommentParams = zod.object({
+  "postId": zod.coerce.number().int()
+})
+
+export const createPostCommentBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+export const createPostCommentBodyDurationSecondsMax = 90;
+
+
+
+export const CreatePostCommentBody = zod.object({
+  "audioObjectPath": zod.string().regex(createPostCommentBodyAudioObjectPathRegExp),
+  "durationSeconds": zod.number().int().min(1).max(createPostCommentBodyDurationSecondsMax)
+})
+
+export const CreatePostCommentResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['processing'])
+})
+
+
+export const GetCommentAudioParams = zod.object({
+  "commentId": zod.coerce.number().int()
+})
+
+export const GetCommentAudioResponse = zod.unknown()
 
 
 export const ReshuutPostParams = zod.object({
@@ -665,13 +704,11 @@ export const ReshuutPostResponse = zod.object({
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
-  "goat": zod.number().int(),
   "rocket": zod.number().int(),
   "laughing": zod.number().int(),
-  "confused": zod.number().int(),
   "thumbsDown": zod.number().int()
 }),
-  "viewerReaction": zod.union([zod.literal('goat'),zod.literal('rocket'),zod.literal('laughing'),zod.literal('confused'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "isReshuuted": zod.boolean(),
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),

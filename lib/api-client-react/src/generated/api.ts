@@ -52,6 +52,9 @@ import type {
   UploadUrlRequest,
   UploadUrlResponse,
   UsernameAvailability,
+  VoiceComment,
+  VoiceCommentInput,
+  VoiceCommentSubmission,
   WebAuthnCredential
 } from './api.schemas';
 
@@ -2586,6 +2589,231 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getSetReactionMutationOptions(options));
     }
+
+export const getGetPostCommentsUrl = (postId: number,) => {
+
+
+
+
+  return `/api/posts/${postId}/comments`
+}
+
+export const getPostComments = async (postId: number, options?: Parameters<typeof customFetch>[1]): Promise<VoiceComment[]> => {
+
+  return customFetch<VoiceComment[]>(getGetPostCommentsUrl(postId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPostCommentsQueryKey = (postId: number,) => {
+    return [
+    `/api/posts/${postId}/comments`
+    ] as const;
+    }
+
+
+export const getGetPostCommentsQueryOptions = <TData = Awaited<ReturnType<typeof getPostComments>>, TError = ErrorType<unknown>>(postId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPostComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPostCommentsQueryKey(postId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPostComments>>> = ({ signal }) => getPostComments(postId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: postId !== null && postId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPostComments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPostCommentsQueryResult = NonNullable<Awaited<ReturnType<typeof getPostComments>>>
+export type GetPostCommentsQueryError = ErrorType<unknown>
+
+
+
+export function useGetPostComments<TData = Awaited<ReturnType<typeof getPostComments>>, TError = ErrorType<unknown>>(
+ postId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPostComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPostCommentsQueryOptions(postId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePostCommentUrl = (postId: number,) => {
+
+
+
+
+  return `/api/posts/${postId}/comments`
+}
+
+export const createPostComment = async (postId: number,
+    voiceCommentInput: VoiceCommentInput, options?: Parameters<typeof customFetch>[1]): Promise<VoiceCommentSubmission> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<VoiceCommentSubmission>(getCreatePostCommentUrl(postId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(voiceCommentInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePostCommentMutationKey = () => ['createPostComment'] as const;
+
+export const getCreatePostCommentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostComment>>, TError,CreatePostCommentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPostComment>>, TError,CreatePostCommentMutationVariables, TContext> => {
+
+const mutationKey = getCreatePostCommentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPostComment>>, CreatePostCommentMutationVariables> = (props) => {
+          const {postId,data} = props ?? {};
+
+          return  createPostComment(postId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePostCommentMutationResult = NonNullable<Awaited<ReturnType<typeof createPostComment>>>
+    export type CreatePostCommentMutationBody = BodyType<VoiceCommentInput>
+    export type CreatePostCommentMutationError = ErrorType<unknown>
+    export type CreatePostCommentMutationVariables = {postId: number;data: BodyType<VoiceCommentInput>}
+
+    export const useCreatePostComment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostComment>>, TError,CreatePostCommentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPostComment>>,
+        TError,
+        CreatePostCommentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePostCommentMutationOptions(options));
+    }
+
+export const getGetCommentAudioUrl = (commentId: number,) => {
+
+
+
+
+  return `/api/comments/${commentId}/audio`
+}
+
+export const getCommentAudio = async (commentId: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetCommentAudioUrl(commentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommentAudioQueryKey = (commentId: number,) => {
+    return [
+    `/api/comments/${commentId}/audio`
+    ] as const;
+    }
+
+
+export const getGetCommentAudioQueryOptions = <TData = Awaited<ReturnType<typeof getCommentAudio>>, TError = ErrorType<unknown>>(commentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommentAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommentAudioQueryKey(commentId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommentAudio>>> = ({ signal }) => getCommentAudio(commentId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: commentId !== null && commentId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommentAudio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommentAudioQueryResult = NonNullable<Awaited<ReturnType<typeof getCommentAudio>>>
+export type GetCommentAudioQueryError = ErrorType<unknown>
+
+
+
+export function useGetCommentAudio<TData = Awaited<ReturnType<typeof getCommentAudio>>, TError = ErrorType<unknown>>(
+ commentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommentAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommentAudioQueryOptions(commentId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getReshuutPostUrl = (postId: number,) => {
 

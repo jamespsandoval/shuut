@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import {
   AskFounderBody,
   AskFounderParams,
@@ -33,22 +33,30 @@ import {
   UpdatePostResponse,
   CreatePostShareLinkParams,
   CreatePostShareLinkResponse,
+  CreatePostCommentBody,
+  CreatePostCommentParams,
+  CreatePostCommentResponse,
+  GetPostCommentsParams,
+  GetPostCommentsResponse,
+  GetCommentAudioParams,
 } from "@workspace/api-zod";
 import {
   db,
   foundersTable,
   postsTable,
+  commentsTable,
   profileImageUploadsTable,
   usersTable,
   type FounderRow,
   type PostRow,
+  type CommentRow,
 } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
 import {
   clearSessionCookie,
   getAuthenticatedUserId,
 } from "../middlewares/sessionAuth";
-import { auditSecurityEvent } from "../lib/security";
+import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/security";
 import { createPostShareToken } from "../lib/postShareToken";
 
 const router: IRouter = Router();
@@ -76,109 +84,21 @@ async function currentFounder(userId: string) {
   return linked ?? null;
 }
 
-const seedFounders = [
-  {
-    name: "Maya Okafor",
-    handle: "maya",
-    bio: "Building better ways for small teams to make hard decisions.",
-    avatarColor: "#F59E0B",
-    isFollowing: false,
-    followerCount: 184,
-    followingCount: 92,
-  },
-  {
-    name: "Alex Tan",
-    handle: "alextan",
-    bio: "Building Fold. Thinking out loud about product, people and momentum.",
-    avatarColor: "#3B82F6",
-    isFollowing: true,
-    followerCount: 428,
-    followingCount: 117,
-  },
-  {
-    name: "Priya Shah",
-    handle: "priyashah",
-    bio: "Working in climate tech. London. Usually asking the uncomfortable question.",
-    avatarColor: "#10B981",
-    isFollowing: false,
-    followerCount: 316,
-    followingCount: 143,
-  },
-];
-
+let syntheticProfilesCleaned = false;
 async function ensureSeeded(): Promise<void> {
-  await db
-    .update(foundersTable)
-    .set({ bio: "Building Fold. Thinking out loud about product, people and momentum." })
-    .where(
-      and(
-        eq(foundersTable.handle, "alextan"),
-        eq(foundersTable.bio, "Founder at Fold. Thinking out loud about product, people and momentum."),
-      ),
-    );
-  await db
-    .update(foundersTable)
-    .set({ bio: "Working in climate tech. London. Usually asking the uncomfortable question." })
-    .where(
-      and(
-        eq(foundersTable.handle, "nia"),
-        eq(foundersTable.bio, "Climate tech founder. London. Usually asking the uncomfortable question."),
-      ),
-    );
-  await db
-    .update(postsTable)
-    .set({
-      transcript:
-        "The best conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
-    })
-    .where(
-      eq(
-        postsTable.transcript,
-        "The best founder conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
-      ),
-    );
-  const existing = await db.select({ id: foundersTable.id }).from(foundersTable).limit(1);
-  if (existing.length) return;
-  const founders = await db.insert(foundersTable).values(seedFounders).returning();
-  const byHandle = new Map(founders.map((founder) => [founder.handle, founder]));
-  await db.insert(postsTable).values([
-    {
-      authorId: byHandle.get("alextan")!.id,
-      transcript:
-        "The best conversations I’ve had this month started with someone admitting what they didn’t know. Certainty is useful for execution, but curiosity is what keeps the company alive.",
-      durationSeconds: 28,
-      goat: 18,
-      rocket: 9,
-      laughing: 2,
-      confused: 1,
-      thumbsDown: 0,
-      createdAt: new Date(Date.now() - 22 * 60 * 1000),
-    },
-    {
-      authorId: byHandle.get("priyashah")!.id,
-      transcript:
-        "A tiny observation from a customer call: people don’t want another dashboard. They want to know what to do next, and they want to trust why. We’re rebuilding the whole flow around that.",
-      durationSeconds: 34,
-      goat: 12,
-      rocket: 24,
-      laughing: 0,
-      confused: 3,
-      thumbsDown: 1,
-      createdAt: new Date(Date.now() - 67 * 60 * 1000),
-    },
-    {
-      authorId: byHandle.get("maya")!.id,
-      transcript:
-        "Today’s reminder to myself: a decision can be reversible and still deserve care. Move quickly, write down the assumption, and make it easy for the team to tell you when the assumption stops being true.",
-      durationSeconds: 31,
-      goat: 21,
-      rocket: 14,
-      laughing: 1,
-      confused: 0,
-      thumbsDown: 0,
-      createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
-    },
-  ]);
+  if (syntheticProfilesCleaned) return;
+  await db.delete(foundersTable).where(and(
+    isNull(foundersTable.userId),
+    or(
+      and(eq(foundersTable.handle, "maya"), eq(foundersTable.name, "Maya Okafor")),
+      and(eq(foundersTable.handle, "alextan"), eq(foundersTable.name, "Alex Tan")),
+      and(eq(foundersTable.handle, "priyashah"), eq(foundersTable.name, "Priya Shah")),
+    ),
+  ));
+  await db.update(postsTable)
+    .set({ viewerReaction: null })
+    .where(inArray(postsTable.viewerReaction, ["goat", "confused"]));
+  syntheticProfilesCleaned = true;
 }
 
 function founderJson(founder: FounderRow) {
@@ -215,19 +135,13 @@ function postJson(post: PostRow, author: FounderRow, viewerFounderId?: number | 
     durationSeconds: post.durationSeconds,
     createdAt: post.createdAt,
     reactions: {
-      goat: post.goat,
       rocket: post.rocket,
       laughing: post.laughing,
-      confused: post.confused,
       thumbsDown: post.thumbsDown,
     },
-    viewerReaction: post.viewerReaction as
-      | "goat"
-      | "rocket"
-      | "laughing"
-      | "confused"
-      | "thumbsDown"
-      | null,
+    viewerReaction: ["rocket", "laughing", "thumbsDown"].includes(post.viewerReaction ?? "")
+      ? post.viewerReaction as "rocket" | "laughing" | "thumbsDown"
+      : null,
     isReshuuted: post.isReshuuted,
     reshuutedBy: post.reshuutedBy,
     canEdit:
@@ -238,6 +152,17 @@ function postJson(post: PostRow, author: FounderRow, viewerFounderId?: number | 
       viewerFounderId === post.authorId
         ? new Date(post.createdAt.getTime() + POST_EDIT_WINDOW_MS)
         : null,
+  };
+}
+
+function commentJson(comment: CommentRow, author: FounderRow) {
+  return {
+    id: comment.id,
+    author: founderJson(author),
+    transcript: comment.transcript,
+    audioUrl: `/api/comments/${comment.id}/audio`,
+    durationSeconds: comment.durationSeconds,
+    createdAt: comment.createdAt,
   };
 }
 
@@ -687,6 +612,142 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
   res.json(GetPostResponse.parse(postJson(post, author, viewer?.id)));
 });
 
+router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
+  const params = GetPostCommentsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const rows = await db.select().from(commentsTable)
+    .where(and(
+      eq(commentsTable.postId, params.data.postId),
+      eq(commentsTable.transcriptionStatus, "ready"),
+    ))
+    .orderBy(asc(commentsTable.createdAt));
+  const authors = rows.length
+    ? await db.select().from(foundersTable)
+      .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))]))
+    : [];
+  const byId = new Map(authors.map((author) => [author.id, author]));
+  res.json(GetPostCommentsResponse.parse(
+    rows.flatMap((row) => {
+      const author = byId.get(row.authorId);
+      return author ? [commentJson(row, author)] : [];
+    }),
+  ));
+});
+
+router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  const params = CreatePostCommentParams.safeParse(req.params);
+  const body = CreatePostCommentBody.safeParse(req.body);
+  if (!userId || !params.success || !body.success) {
+    res.status(userId ? 400 : 401).json({ error: userId ? "Invalid voice comment" : "Unauthorized" });
+    return;
+  }
+  const limit = await consumeRateLimit(
+    `voice-comment:${privacyHash(userId)}`,
+    20,
+    60 * 60 * 1000,
+  );
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfter));
+    res.status(429).json({ error: "Too many voice comments. Please try again later." });
+    return;
+  }
+  const author = await currentFounder(userId);
+  const [post] = await db.select().from(postsTable)
+    .where(and(eq(postsTable.id, params.data.postId), eq(postsTable.transcriptionStatus, "ready")))
+    .limit(1);
+  if (!author || !post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+  const [pendingUpload] = await db.select().from(profileImageUploadsTable)
+    .where(and(
+      eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+      eq(profileImageUploadsTable.userId, userId),
+    ))
+    .limit(1);
+  if (!pendingUpload) {
+    await auditSecurityEvent(req, "audio_denial", userId, { reason: "comment_upload_not_owned" });
+    res.status(403).json({ error: "This voice recording does not belong to you" });
+    return;
+  }
+  try {
+    await objectStorage.publishAudio(body.data.audioObjectPath, userId);
+  } catch {
+    res.status(400).json({ error: "The voice recording could not be verified" });
+    return;
+  }
+  let created: CommentRow;
+  try {
+    [created] = await db.insert(commentsTable).values({
+      postId: post.id,
+      authorId: author.id,
+      audioUrl: body.data.audioObjectPath,
+      durationSeconds: body.data.durationSeconds,
+    }).returning();
+  } catch (error) {
+    await objectStorage.deleteObject(body.data.audioObjectPath).catch((storageError) => {
+      req.log.error({ err: storageError }, "Could not roll back unpublished comment recording");
+    });
+    throw error;
+  }
+  await db.delete(profileImageUploadsTable).where(and(
+    eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+    eq(profileImageUploadsTable.userId, userId),
+  ));
+  await auditSecurityEvent(req, "voice_comment_created", userId, {
+    postId: post.id,
+    commentId: created.id,
+  });
+  res.status(202).json(CreatePostCommentResponse.parse({ id: created.id, status: "processing" }));
+  void transcribeRecording(created.audioUrl)
+    .then(async (transcript) => {
+      await db.update(commentsTable)
+        .set({ transcript, transcriptionStatus: "ready" })
+        .where(eq(commentsTable.id, created.id));
+    })
+    .catch(async (error) => {
+      req.log.error({ err: error, commentId: created.id }, "Background comment transcription failed");
+      try {
+        await objectStorage.deleteObject(created.audioUrl);
+      } catch (storageError) {
+        req.log.warn({ err: storageError, commentId: created.id }, "Could not remove failed comment recording");
+      }
+      await db.delete(commentsTable).where(eq(commentsTable.id, created.id));
+    });
+});
+
+router.get("/comments/:commentId/audio", async (req, res): Promise<void> => {
+  const params = GetCommentAudioParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [comment] = await db.select().from(commentsTable)
+    .where(and(
+      eq(commentsTable.id, params.data.commentId),
+      eq(commentsTable.transcriptionStatus, "ready"),
+    ))
+    .limit(1);
+  if (!comment) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
+  try {
+    const metadata = await objectStorage.streamPrivate(comment.audioUrl);
+    res.setHeader("Content-Type", metadata.contentType);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Accept-Ranges", "bytes");
+    if (metadata.size) res.setHeader("Content-Length", metadata.size);
+    Readable.fromWeb(metadata.body as ReadableStream<Uint8Array>).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Audio not found" });
+  }
+});
+
 router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
   const params = CreatePostShareLinkParams.safeParse(req.params);
   if (!params.success) {
@@ -760,12 +821,24 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
     res.status(403).json({ error: "You can only delete your own posts" });
     return;
   }
+  const commentRecordings = await db.select({ objectPath: commentsTable.audioUrl })
+    .from(commentsTable)
+    .where(eq(commentsTable.postId, post.id));
   if (post.audioUrl?.startsWith("/objects/uploads/")) {
     try {
       await objectStorage.deleteObject(post.audioUrl);
     } catch (error) {
       req.log.error({ err: error, postId: post.id }, "Could not remove post recording");
       res.status(500).json({ error: "The post recording could not be removed" });
+      return;
+    }
+  }
+  for (const recording of commentRecordings) {
+    try {
+      await objectStorage.deleteObject(recording.objectPath);
+    } catch (error) {
+      req.log.error({ err: error, postId: post.id }, "Could not remove post comment recording");
+      res.status(500).json({ error: "A comment recording could not be removed" });
       return;
     }
   }
@@ -786,14 +859,14 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     return;
   }
   const counts = {
-    goat: current.goat,
     rocket: current.rocket,
     laughing: current.laughing,
-    confused: current.confused,
     thumbsDown: current.thumbsDown,
   };
   const key = body.data.emojiType;
-  const old = current.viewerReaction as keyof typeof counts | null;
+  const old = current.viewerReaction && current.viewerReaction in counts
+    ? current.viewerReaction as keyof typeof counts
+    : null;
   if (old) counts[old] = Math.max(0, counts[old] - 1);
   const nextReaction = old === key ? null : key;
   if (nextReaction) counts[nextReaction] += 1;
@@ -812,9 +885,14 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (!viewer) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
   const [updated] = await db
     .update(postsTable)
-    .set({ isReshuuted: true, reshuutedBy: "Maya Okafor" })
+    .set({ isReshuuted: true, reshuutedBy: viewer.name })
     .where(eq(postsTable.id, params.data.postId))
     .returning();
   if (!updated) {
@@ -894,40 +972,43 @@ router.delete("/account", async (req, res): Promise<void> => {
     return;
   }
   const founder = await currentFounder(userId);
-  const recordings = founder
+  const posts = founder
     ? await db
-        .select({ objectPath: postsTable.audioUrl })
+        .select({ id: postsTable.id, objectPath: postsTable.audioUrl })
         .from(postsTable)
         .where(eq(postsTable.authorId, founder.id))
     : [];
-  if (founder?.avatarObjectPath) {
-    try {
-      await objectStorage.deleteObject(founder.avatarObjectPath);
-    } catch (error) {
-      req.log.warn({ err: error }, "Could not remove account headshot");
-    }
-  }
-  if (founder) {
-    await db.delete(foundersTable).where(eq(foundersTable.id, founder.id));
-  }
-  for (const recording of recordings) {
-    if (!recording.objectPath?.startsWith("/objects/uploads/")) continue;
-    try {
-      await objectStorage.deleteObject(recording.objectPath);
-    } catch (error) {
-      req.log.warn({ err: error }, "Could not remove account voice recording");
-    }
-  }
+  const commentRecordings = founder
+    ? await db
+        .select({ objectPath: commentsTable.audioUrl })
+        .from(commentsTable)
+        .where(or(
+          eq(commentsTable.authorId, founder.id),
+          ...(posts.length ? [inArray(commentsTable.postId, posts.map((post) => post.id))] : []),
+        ))
+    : [];
   const pendingUploads = await db
     .select({ objectPath: profileImageUploadsTable.objectPath })
     .from(profileImageUploadsTable)
     .where(eq(profileImageUploadsTable.userId, userId));
-  for (const upload of pendingUploads) {
+  const accountObjects = [
+    ...(founder?.avatarObjectPath ? [founder.avatarObjectPath] : []),
+    ...[...posts, ...commentRecordings].flatMap((recording) =>
+      recording.objectPath?.startsWith("/objects/uploads/") ? [recording.objectPath] : [],
+    ),
+    ...pendingUploads.map((upload) => upload.objectPath),
+  ];
+  for (const objectPath of accountObjects) {
     try {
-      await objectStorage.deleteObject(upload.objectPath);
+      await objectStorage.deleteObject(objectPath);
     } catch (error) {
-      req.log.warn({ err: error }, "Could not remove pending account upload");
+      req.log.error({ err: error, objectPath }, "Could not remove account object");
+      res.status(500).json({ error: "An account recording or image could not be removed" });
+      return;
     }
+  }
+  if (founder) {
+    await db.delete(foundersTable).where(eq(foundersTable.id, founder.id));
   }
   await db
     .delete(profileImageUploadsTable)

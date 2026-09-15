@@ -44,6 +44,28 @@ export const postsTable = pgTable("shuut_posts", {
   reshuutedBy: text("reshuuted_by"),
 });
 
+export const commentsTable = pgTable(
+  "shuut_comments",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => postsTable.id, { onDelete: "cascade" }),
+    authorId: integer("author_id")
+      .notNull()
+      .references(() => foundersTable.id, { onDelete: "cascade" }),
+    transcript: text("transcript").notNull().default(""),
+    transcriptionStatus: text("transcription_status").notNull().default("processing"),
+    audioUrl: text("audio_url").notNull(),
+    durationSeconds: integer("duration_seconds").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("shuut_comments_post_created_idx").on(table.postId, table.createdAt),
+    index("shuut_comments_author_idx").on(table.authorId),
+  ],
+);
+
 export const profileImageUploadsTable = pgTable(
   "shuut_profile_image_uploads",
   {
@@ -171,3 +193,4 @@ export const securityAuditEventsTable = pgTable(
 
 export type FounderRow = typeof foundersTable.$inferSelect;
 export type PostRow = typeof postsTable.$inferSelect;
+export type CommentRow = typeof commentsTable.$inferSelect;

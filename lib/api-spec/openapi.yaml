@@ -345,6 +345,40 @@ paths:
         '200':
           description: Updated post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+  /posts/{postId}/comments:
+    get:
+      operationId: getPostComments
+      tags: [posts]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Ready voice comments
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/VoiceComment' } }
+    post:
+      operationId: createPostComment
+      tags: [posts]
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VoiceCommentInput' } } }
+      responses:
+        '202':
+          description: Voice comment accepted for transcription
+          content: { application/json: { schema: { $ref: '#/components/schemas/VoiceCommentSubmission' } } }
+  /comments/{commentId}/audio:
+    get:
+      operationId: getCommentAudio
+      tags: [posts]
+      parameters:
+        - { name: commentId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Private comment audio
+          content: { audio/*: { schema: { type: string, format: binary } } }
   /posts/{postId}/reshuut:
     post:
       operationId: reshuutPost
@@ -513,12 +547,10 @@ components:
         previewTranscript: { type: boolean }
     ReactionSummary:
       type: object
-      required: [goat, rocket, laughing, confused, thumbsDown]
+      required: [rocket, laughing, thumbsDown]
       properties:
-        goat: { type: integer }
         rocket: { type: integer }
         laughing: { type: integer }
-        confused: { type: integer }
         thumbsDown: { type: integer }
     Post:
       type: object
@@ -531,7 +563,7 @@ components:
         durationSeconds: { type: integer }
         createdAt: { type: string, format: date-time }
         reactions: { $ref: '#/components/schemas/ReactionSummary' }
-        viewerReaction: { type: [string, 'null'], enum: [goat, rocket, laughing, confused, thumbsDown, null] }
+        viewerReaction: { type: [string, 'null'], enum: [rocket, laughing, thumbsDown, null] }
         isReshuuted: { type: boolean }
         reshuutedBy: { type: [string, 'null'] }
         canEdit: { type: boolean }
@@ -582,6 +614,28 @@ components:
       required: [transcript]
       properties:
         transcript: { type: string, minLength: 1, maxLength: 5000 }
+    VoiceCommentInput:
+      type: object
+      required: [audioObjectPath, durationSeconds]
+      properties:
+        audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+        durationSeconds: { type: integer, minimum: 1, maximum: 90 }
+    VoiceCommentSubmission:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [processing] }
+    VoiceComment:
+      type: object
+      required: [id, author, transcript, audioUrl, durationSeconds, createdAt]
+      properties:
+        id: { type: integer }
+        author: { $ref: '#/components/schemas/Founder' }
+        transcript: { type: string }
+        audioUrl: { type: string }
+        durationSeconds: { type: integer }
+        createdAt: { type: string, format: date-time }
     PostShareLink:
       type: object
       required: [url]
@@ -601,7 +655,7 @@ components:
       type: object
       required: [emojiType]
       properties:
-        emojiType: { type: string, enum: [goat, rocket, laughing, confused, thumbsDown] }
+        emojiType: { type: string, enum: [rocket, laughing, thumbsDown] }
     FollowState:
       type: object
       required: [isFollowing, followerCount]

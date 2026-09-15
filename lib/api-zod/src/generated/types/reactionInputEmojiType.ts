@@ -10,9 +10,7 @@ export type ReactionInputEmojiType = typeof ReactionInputEmojiType[keyof typeof 
 
 
 export const ReactionInputEmojiType = {
-  goat: 'goat',
   rocket: 'rocket',
   laughing: 'laughing',
-  confused: 'confused',
   thumbsDown: 'thumbsDown',
 } as const;

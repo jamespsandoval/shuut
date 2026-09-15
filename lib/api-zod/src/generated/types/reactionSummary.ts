@@ -7,9 +7,7 @@
  */
 
 export interface ReactionSummary {
-  goat: number;
   rocket: number;
   laughing: number;
-  confused: number;
   thumbsDown: number;
 }

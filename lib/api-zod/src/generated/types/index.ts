@@ -48,4 +48,8 @@ export * from './uploadUrlRequest';
 export * from './uploadUrlRequestContentType';
 export * from './uploadUrlResponse';
 export * from './usernameAvailability';
+export * from './voiceComment';
+export * from './voiceCommentInput';
+export * from './voiceCommentSubmission';
+export * from './voiceCommentSubmissionStatus';
 export * from './webAuthnCredential';

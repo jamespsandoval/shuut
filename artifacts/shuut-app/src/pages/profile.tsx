@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useParams, Link, useLocation } from "wouter"
+import { useParams, Link, useLocation, useSearch } from "wouter"
 import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, useDeleteAccount, useLogout } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
@@ -347,6 +347,11 @@ export default function Profile() {
   const resolvedHandle = handle || ""
   const isCurrentUser = resolvedHandle === "me"
 
+  const search = useSearch()
+  const searchParams = new URLSearchParams(search)
+  const shuutId = searchParams.get("shuut")
+  const focusedPostId = shuutId ? parseInt(shuutId, 10) : null
+
   const { data: profile, isLoading, error } = useGetProfile(resolvedHandle)
   const queryClient = useQueryClient()
   const toggleFollow = useToggleFollow()
@@ -436,6 +441,19 @@ export default function Profile() {
       }, 200)
     }
   }
+
+  useEffect(() => {
+    if (focusedPostId && profile?.posts.find(p => p.id === focusedPostId)) {
+      const timeout = setTimeout(() => {
+        const el = document.getElementById(`post-${focusedPostId}`)
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" })
+        }
+      }, 100)
+      return () => clearTimeout(timeout)
+    }
+    return undefined;
+  }, [focusedPostId, profile?.posts])
 
   return (
     <Layout>
@@ -692,7 +710,7 @@ export default function Profile() {
               </div>
             ) : (
               profile.posts.map(post => (
-                <PostCard key={post.id} post={post} />
+                <PostCard key={post.id} post={post} isFocused={post.id === focusedPostId} />
               ))
             )}
           </div>
