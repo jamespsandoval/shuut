@@ -56,7 +56,20 @@ export default function LoginScreen() {
           <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
             <Mail color={colors.mutedForeground} size={20} style={styles.inputIcon} />
             <TextInput
-              style={[styles.input, { color: colors.foreground }]}
+              style={[
+                styles.input,
+                { color: colors.foreground },
+                Platform.OS === 'web'
+                  ? ({
+                      appearance: 'none',
+                      outline: 'none',
+                      outlineStyle: 'none',
+                      outlineWidth: 0,
+                      outlineColor: 'transparent',
+                      boxShadow: 'none',
+                    } as any)
+                  : undefined,
+              ]}
               placeholder="steve@apple.com"
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
@@ -146,6 +159,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     height: '100%',
     paddingLeft: 6,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     outlineWidth: 0,
   },
   button: {
