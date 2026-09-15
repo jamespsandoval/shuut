@@ -6,7 +6,7 @@ const light = {
   ring: "#3B82F6", // Blue
   card: "#FFFFFF",
   cardForeground: "#111827",
-  cardBorder: "#F3F4F6",
+  cardBorder: "#E5E7EB",
   popover: "#FFFFFF",
   popoverForeground: "#111827",
   popoverBorder: "#F3F4F6",
