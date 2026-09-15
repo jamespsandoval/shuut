@@ -68,7 +68,6 @@ export default function LoginScreen() {
             ]}
             placeholder="steve@apple.com"
             placeholderTextColor={BRAND.slate}
-            keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
             value={email}
