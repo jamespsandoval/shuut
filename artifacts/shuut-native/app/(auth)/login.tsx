@@ -70,6 +70,7 @@ export default function LoginScreen() {
             placeholderTextColor={BRAND.slate}
             autoCapitalize="none"
             autoCorrect={false}
+            keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
           />

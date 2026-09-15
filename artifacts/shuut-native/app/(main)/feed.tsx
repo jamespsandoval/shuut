@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView } from 'react-native';
 import { useColors } from '../../hooks/useColors';
-import { useGetFeed, useDeletePost, Post } from '@workspace/api-client-react';
+import { useGetFeed, useDeletePost, useSetReaction, Post } from '@workspace/api-client-react';
 import { useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
 import { Play, Pause, Rocket, Smile, ThumbsDown, User, Trash2 } from 'lucide-react-native';
@@ -19,6 +19,7 @@ export default function FeedScreen() {
   );
 
   const deletePost = useDeletePost();
+  const setReaction = useSetReaction();
 
   const handleDelete = (postId: number) => {
     deletePost.mutate(
@@ -29,14 +30,23 @@ export default function FeedScreen() {
     );
   };
 
+  const handleReaction = (postId: number, emojiType: 'rocket' | 'laughing' | 'thumbsDown') => {
+    setReaction.mutate(
+      { postId, data: { emojiType } },
+      {
+        onSuccess: () => refetch()
+      }
+    );
+  };
+
   const renderPost = ({ item }: { item: Post }) => {
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
         onPress={() => router.push(`/post/${item.id}`)}
       >
         <View style={styles.postHeader}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.authorInfo}
             onPress={() => router.push(`/profile/${item.author.handle}`)}
           >
@@ -71,18 +81,27 @@ export default function FeedScreen() {
         <AuthenticatedAudioPlayer url={item.audioUrl} durationSeconds={item.durationSeconds} />
 
         <View style={styles.reactions}>
-          <View style={styles.reactionBtn}>
+          <TouchableOpacity
+            style={[styles.reactionBtn, item.viewerReaction === 'rocket' && { backgroundColor: `${colors.primary}1A` }]}
+            onPress={() => handleReaction(item.id, 'rocket')}
+          >
             <Rocket color={item.viewerReaction === 'rocket' ? colors.primary : colors.mutedForeground} size={16} />
-            <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>{item.reactions.rocket}</Text>
-          </View>
-          <View style={styles.reactionBtn}>
+            <Text style={[styles.reactionCount, { color: item.viewerReaction === 'rocket' ? colors.primary : colors.mutedForeground }]}>{item.reactions.rocket}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.reactionBtn, item.viewerReaction === 'laughing' && { backgroundColor: `${colors.primary}1A` }]}
+            onPress={() => handleReaction(item.id, 'laughing')}
+          >
             <Smile color={item.viewerReaction === 'laughing' ? colors.primary : colors.mutedForeground} size={16} />
-            <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>{item.reactions.laughing}</Text>
-          </View>
-          <View style={styles.reactionBtn}>
+            <Text style={[styles.reactionCount, { color: item.viewerReaction === 'laughing' ? colors.primary : colors.mutedForeground }]}>{item.reactions.laughing}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.reactionBtn, item.viewerReaction === 'thumbsDown' && { backgroundColor: `${colors.primary}1A` }]}
+            onPress={() => handleReaction(item.id, 'thumbsDown')}
+          >
             <ThumbsDown color={item.viewerReaction === 'thumbsDown' ? colors.primary : colors.mutedForeground} size={16} />
-            <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>{item.reactions.thumbsDown}</Text>
-          </View>
+            <Text style={[styles.reactionCount, { color: item.viewerReaction === 'thumbsDown' ? colors.primary : colors.mutedForeground }]}>{item.reactions.thumbsDown}</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     );
@@ -91,9 +110,14 @@ export default function FeedScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>SHÜÜT</Text>
+        <Image
+          source={require('../../assets/brand/shuut-wordmark.png')}
+          style={styles.logo}
+          contentFit="contain"
+          tintColor={colors.foreground}
+        />
         <View style={[styles.tabBar, { backgroundColor: colors.input }]}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.tab, view === 'everyone' && { backgroundColor: colors.card, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }]}
             onPress={() => setView('everyone')}
           >
@@ -101,7 +125,7 @@ export default function FeedScreen() {
               Everyone
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.tab, view === 'following' && { backgroundColor: colors.card, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }]}
             onPress={() => setView('following')}
           >
@@ -140,6 +164,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
   },
+  logo: {
+    width: 140,
+    height: 36,
+    marginBottom: 16,
+  },
   title: {
     fontFamily: 'Inter_700Bold',
     fontSize: 24,
@@ -161,8 +190,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   listContent: {
-    padding: 16,
-    gap: 16,
+    padding: 12,
+    gap: 12,
   },
   postCard: {
     padding: 16,
@@ -173,7 +202,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   authorInfo: {
     flexDirection: 'row',
@@ -181,29 +210,29 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   authorName: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 15,
   },
   authorHandle: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 14,
+    fontSize: 13,
   },
   time: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 12,
+    fontSize: 13,
   },
   transcript: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 12,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 8,
   },
   audioPill: {
     flexDirection: 'row',
@@ -221,12 +250,20 @@ const styles = StyleSheet.create({
   },
   reactions: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 8,
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
   reactionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
   },
   reactionCount: {
     fontFamily: 'Inter_500Medium',

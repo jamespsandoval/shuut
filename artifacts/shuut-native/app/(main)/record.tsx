@@ -161,14 +161,24 @@ export default function RecordScreen() {
                 onPress={() => setRecordedUri(null)}
                 disabled={isUploading}
               >
-                <Text style={[styles.retakeText, { color: colors.mutedForeground }]}>Retake</Text>
+                <Text style={[styles.retakeText, { color: colors.mutedForeground }]}>Discard</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.recordCard}>
-              <Text style={[styles.instructionText, { color: colors.foreground }]}>
-                {isRecording ? 'Recording...' : 'Tap to start recording'}
-              </Text>
+              {isRecording ? (
+                <View style={styles.recordingState}>
+                  <Text style={[styles.recordingTitle, { color: colors.destructive }]}>RECORDING</Text>
+                  <Text style={[styles.timerText, { color: colors.foreground }]}>
+                    {Math.floor((recorderState?.durationMillis || 0) / 1000 / 60)}:{Math.floor(((recorderState?.durationMillis || 0) / 1000) % 60).toString().padStart(2, '0')}
+                  </Text>
+                  <Text style={[styles.timerLimit, { color: colors.mutedForeground }]}>/ 1:30</Text>
+                </View>
+              ) : (
+                <Text style={[styles.instructionText, { color: colors.foreground }]}>
+                  Ready, Set...
+                </Text>
+              )}
               
               <TouchableOpacity 
                 style={[
@@ -180,7 +190,7 @@ export default function RecordScreen() {
                 {isRecording ? (
                   <Square color={colors.primaryForeground} size={32} />
                 ) : (
-                  <Mic color={colors.primaryForeground} size={32} />
+                  <Mic color={colors.primaryForeground} size={40} />
                 )}
               </TouchableOpacity>
             </View>
@@ -231,9 +241,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 32,
   },
+  recordingState: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  recordingTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 20,
+    letterSpacing: 2,
+  },
+  timerText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 64,
+    fontVariant: ['tabular-nums'],
+  },
+  timerLimit: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 16,
+  },
   instructionText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 24,
   },
   recordButton: {
     width: 96,

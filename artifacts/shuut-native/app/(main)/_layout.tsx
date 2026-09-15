@@ -21,8 +21,9 @@ export default function MainLayout() {
         name="feed"
         options={{
           title: 'Feed',
-          tabBarIcon: ({ color, size }) => (
-            <Home color={color} size={size} />
+          tabBarShowLabel: false,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Home color={color} size={28} strokeWidth={focused ? 2.5 : 2} />
           ),
         }}
       />
@@ -30,8 +31,9 @@ export default function MainLayout() {
         name="record"
         options={{
           title: 'Record',
-          tabBarIcon: ({ color, size }) => (
-            <Mic color={color} size={size} />
+          tabBarShowLabel: false,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Mic color={color} size={28} strokeWidth={focused ? 2.5 : 2} />
           ),
         }}
       />
@@ -39,8 +41,9 @@ export default function MainLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <User color={color} size={size} />
+          tabBarShowLabel: false,
+          tabBarIcon: ({ color, size, focused }) => (
+            <User color={color} size={28} strokeWidth={focused ? 2.5 : 2} />
           ),
         }}
       />

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { setAuthTokenGetter, getCurrentUser, MobileAuthSession } from "@workspace/api-client-react";
 import {
@@ -10,6 +11,29 @@ import {
 
 const TOKEN_KEY = "shuut_auth_token";
 const AUTH_STATE_KEY = "shuut_auth_state";
+
+const authStorage = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === "web") {
+      return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(key);
+    }
+    return SecureStore.getItemAsync(key);
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === "web") {
+      if (typeof sessionStorage !== "undefined") sessionStorage.setItem(key, value);
+      return;
+    }
+    await SecureStore.setItemAsync(key, value);
+  },
+  async deleteItem(key: string): Promise<void> {
+    if (Platform.OS === "web") {
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(key);
+      return;
+    }
+    await SecureStore.deleteItemAsync(key);
+  },
+};
 
 interface AuthContextType {
   token: string | null;
@@ -28,13 +52,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Setup the token getter for api-client-react
-    setAuthTokenGetter(() => SecureStore.getItemAsync(TOKEN_KEY));
+    setAuthTokenGetter(() => authStorage.getItem(TOKEN_KEY));
     
     const rehydrate = async () => {
       try {
         const [savedToken, savedState] = await Promise.all([
-          SecureStore.getItemAsync(TOKEN_KEY),
-          SecureStore.getItemAsync(AUTH_STATE_KEY),
+          authStorage.getItem(TOKEN_KEY),
+          authStorage.getItem(AUTH_STATE_KEY),
         ]);
         if (!savedToken) {
           setAuthState('unauthenticated');
@@ -46,15 +70,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const session = await getCurrentUser();
           const nextState = resolveAuthSessionState(session);
-          await SecureStore.setItemAsync(AUTH_STATE_KEY, nextState);
+          await authStorage.setItem(AUTH_STATE_KEY, nextState);
           setAuthState(nextState);
         } catch (err: any) {
           if (err?.status === 403 || err?.code === 'passkey_required') {
             setAuthState('passkeyPending');
           } else if (err?.status === 401) {
             await Promise.all([
-              SecureStore.deleteItemAsync(TOKEN_KEY),
-              SecureStore.deleteItemAsync(AUTH_STATE_KEY),
+              authStorage.deleteItem(TOKEN_KEY),
+              authStorage.deleteItem(AUTH_STATE_KEY),
             ]);
             setToken(null);
             setAuthState('unauthenticated');
@@ -78,8 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? 'ready'
         : 'onboardingPending';
     await Promise.all([
-      SecureStore.setItemAsync(TOKEN_KEY, session.accessToken),
-      SecureStore.setItemAsync(AUTH_STATE_KEY, nextState),
+      authStorage.setItem(TOKEN_KEY, session.accessToken),
+      authStorage.setItem(AUTH_STATE_KEY, nextState),
     ]);
     setToken(session.accessToken);
     setAuthState(nextState);
@@ -90,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const session = await getCurrentUser();
       const nextState = resolveAuthSessionState(session);
-      await SecureStore.setItemAsync(AUTH_STATE_KEY, nextState);
+      await authStorage.setItem(AUTH_STATE_KEY, nextState);
       setAuthState(nextState);
     } catch (err) {
       setAuthState('passkeyPending');
@@ -98,14 +122,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const completeOnboarding = () => {
-    void SecureStore.setItemAsync(AUTH_STATE_KEY, 'ready');
+    void authStorage.setItem(AUTH_STATE_KEY, 'ready');
     setAuthState('ready');
   };
 
   const signOut = async () => {
     await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_KEY),
-      SecureStore.deleteItemAsync(AUTH_STATE_KEY),
+      authStorage.deleteItem(TOKEN_KEY),
+      authStorage.deleteItem(AUTH_STATE_KEY),
     ]);
     setToken(null);
     setAuthState('unauthenticated');

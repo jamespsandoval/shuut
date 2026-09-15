@@ -148,7 +148,7 @@ export default function PostDetailScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <View style={styles.postHeader}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.authorInfo}
               onPress={() => router.push(`/profile/${post.author.handle}`)}
             >
@@ -183,17 +183,26 @@ export default function PostDetailScreen() {
           <AuthenticatedAudioPlayer url={post.audioUrl} durationSeconds={post.durationSeconds} />
 
           <View style={styles.reactions}>
-            <TouchableOpacity style={styles.reactionBtn} onPress={() => handleReaction('rocket')}>
+            <TouchableOpacity
+              style={[styles.reactionBtn, post.viewerReaction === 'rocket' && { backgroundColor: `${colors.primary}1A` }]}
+              onPress={() => handleReaction('rocket')}
+            >
               <Rocket color={post.viewerReaction === 'rocket' ? colors.primary : colors.mutedForeground} size={16} />
-              <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>{post.reactions.rocket}</Text>
+              <Text style={[styles.reactionCount, { color: post.viewerReaction === 'rocket' ? colors.primary : colors.mutedForeground }]}>{post.reactions.rocket}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reactionBtn} onPress={() => handleReaction('laughing')}>
+            <TouchableOpacity
+              style={[styles.reactionBtn, post.viewerReaction === 'laughing' && { backgroundColor: `${colors.primary}1A` }]}
+              onPress={() => handleReaction('laughing')}
+            >
               <Smile color={post.viewerReaction === 'laughing' ? colors.primary : colors.mutedForeground} size={16} />
-              <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>{post.reactions.laughing}</Text>
+              <Text style={[styles.reactionCount, { color: post.viewerReaction === 'laughing' ? colors.primary : colors.mutedForeground }]}>{post.reactions.laughing}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reactionBtn} onPress={() => handleReaction('thumbsDown')}>
+            <TouchableOpacity
+              style={[styles.reactionBtn, post.viewerReaction === 'thumbsDown' && { backgroundColor: `${colors.primary}1A` }]}
+              onPress={() => handleReaction('thumbsDown')}
+            >
               <ThumbsDown color={post.viewerReaction === 'thumbsDown' ? colors.primary : colors.mutedForeground} size={16} />
-              <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>{post.reactions.thumbsDown}</Text>
+              <Text style={[styles.reactionCount, { color: post.viewerReaction === 'thumbsDown' ? colors.primary : colors.mutedForeground }]}>{post.reactions.thumbsDown}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -327,8 +336,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   duration: { fontFamily: 'Inter_500Medium', fontSize: 14 },
-  reactions: { flexDirection: 'row', gap: 24 },
-  reactionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  reactions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  reactionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+  },
   reactionCount: { fontFamily: 'Inter_500Medium', fontSize: 14 },
   commentsTitle: {
     fontFamily: 'Inter_600SemiBold',

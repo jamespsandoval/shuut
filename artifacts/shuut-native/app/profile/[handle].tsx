@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useGetProfile, useToggleFollow } from '@workspace/api-client-react';
 import { ChevronLeft, User, Settings } from 'lucide-react-native';
+import { Image } from 'expo-image';
 import { useAuth } from '../../hooks/useAuthStore';
 
 export default function ProfileScreen() {
@@ -40,9 +41,13 @@ export default function ProfileScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.profileHeader}>
-          <View style={[styles.avatarLarge, { backgroundColor: profile.founder.avatarColor || colors.primary }]}>
-            <User color="#fff" size={40} />
-          </View>
+          {profile.founder.avatarUrl ? (
+            <Image source={{ uri: profile.founder.avatarUrl }} style={styles.avatarLarge} />
+          ) : (
+            <View style={[styles.avatarLarge, { backgroundColor: profile.founder.avatarColor || colors.primary }]}>
+              <User color="#fff" size={40} />
+            </View>
+          )}
           <View style={styles.statsRow}>
             <View style={styles.stat}>
               <Text style={[styles.statValue, { color: colors.foreground }]}>{profile.postCount}</Text>
@@ -65,8 +70,15 @@ export default function ProfileScreen() {
           {profile.founder.bio && (
             <Text style={[styles.bio, { color: colors.foreground }]}>{profile.founder.bio}</Text>
           )}
-          {profile.founder.website && (
-            <Text style={[styles.website, { color: colors.primary }]}>{profile.founder.website}</Text>
+          {(profile.founder.location || profile.founder.website) && (
+            <View style={styles.metaRow}>
+              {profile.founder.location && (
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{profile.founder.location}</Text>
+              )}
+              {profile.founder.website && (
+                <Text style={[styles.metaText, { color: colors.primary }]}>{profile.founder.website}</Text>
+              )}
+            </View>
           )}
         </View>
 
@@ -117,9 +129,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   avatarLarge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -130,18 +142,19 @@ const styles = StyleSheet.create({
     marginLeft: 24,
   },
   stat: { alignItems: 'center' },
-  statValue: { fontFamily: 'Inter_700Bold', fontSize: 18 },
+  statValue: { fontFamily: 'Inter_700Bold', fontSize: 20 },
   statLabel: { fontFamily: 'Inter_400Regular', fontSize: 14 },
-  infoSection: { marginBottom: 16 },
-  name: { fontFamily: 'Inter_700Bold', fontSize: 20 },
-  handle: { fontFamily: 'Inter_400Regular', fontSize: 16, marginBottom: 8 },
-  bio: { fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 22, marginBottom: 4 },
-  website: { fontFamily: 'Inter_500Medium', fontSize: 14 },
+  infoSection: { marginBottom: 24 },
+  name: { fontFamily: 'Inter_700Bold', fontSize: 24, marginBottom: 4 },
+  handle: { fontFamily: 'Inter_500Medium', fontSize: 16, marginBottom: 12 },
+  bio: { fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 24, marginBottom: 16 },
+  metaRow: { flexDirection: 'row', gap: 16, flexWrap: 'wrap' },
+  metaText: { fontFamily: 'Inter_500Medium', fontSize: 14 },
   followButton: {
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
     marginBottom: 24,
   },
-  followButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 16 },
+  followButtonText: { fontFamily: 'Inter_700Bold', fontSize: 16 },
 });

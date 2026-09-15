@@ -18,12 +18,16 @@ export default function MyProfileScreen() {
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
   const [bio, setBio] = useState('');
+  const [location, setLocation] = useState('');
+  const [website, setWebsite] = useState('');
 
   useEffect(() => {
     if (profileData?.founder) {
       setName(profileData.founder.name);
       setHandle(profileData.founder.handle);
       setBio(profileData.founder.bio || '');
+      setLocation(profileData.founder.location || '');
+      setWebsite(profileData.founder.website || '');
     }
   }, [profileData]);
 
@@ -31,7 +35,7 @@ export default function MyProfileScreen() {
     if (!name || !handle) return;
     
     updateProfile.mutate(
-      { handle: "me", data: createEditableProfileUpdate(name, handle, bio) },
+      { handle: "me", data: createEditableProfileUpdate(name, handle, bio, location, website) },
       {
         onSuccess: () => {
           setIsEditing(false);
@@ -105,6 +109,22 @@ export default function MyProfileScreen() {
                   placeholderTextColor={colors.mutedForeground}
                   multiline
                 />
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.input }]}
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="Location"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+                <TextInput
+                  style={[styles.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.input }]}
+                  value={website}
+                  onChangeText={setWebsite}
+                  placeholder="Website"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
                 <TouchableOpacity 
                   style={[styles.saveBtn, { backgroundColor: colors.primary }]}
                   onPress={handleSave}
@@ -118,6 +138,16 @@ export default function MyProfileScreen() {
                 <Text style={[styles.name, { color: colors.foreground }]}>{profileData?.founder?.name}</Text>
                 <Text style={[styles.handle, { color: colors.mutedForeground }]}>@{profileData?.founder?.handle}</Text>
                 {profileData?.founder?.bio && <Text style={[styles.bio, { color: colors.foreground }]}>{profileData.founder.bio}</Text>}
+                {(profileData?.founder?.location || profileData?.founder?.website) && (
+                  <View style={styles.metaRow}>
+                    {profileData?.founder?.location && (
+                      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{profileData.founder.location}</Text>
+                    )}
+                    {profileData?.founder?.website && (
+                      <Text style={[styles.metaText, { color: colors.primary }]}>{profileData.founder.website}</Text>
+                    )}
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -165,16 +195,18 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-  name: { fontFamily: 'Inter_600SemiBold', fontSize: 20, marginBottom: 4 },
-  handle: { fontFamily: 'Inter_400Regular', fontSize: 16, marginBottom: 12 },
-  bio: { fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center' },
+  name: { fontFamily: 'Inter_700Bold', fontSize: 24, marginBottom: 4, textAlign: 'center' },
+  handle: { fontFamily: 'Inter_500Medium', fontSize: 16, marginBottom: 16, textAlign: 'center' },
+  bio: { fontFamily: 'Inter_400Regular', fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 16 },
+  metaRow: { flexDirection: 'row', gap: 16, justifyContent: 'center', flexWrap: 'wrap' },
+  metaText: { fontFamily: 'Inter_500Medium', fontSize: 14 },
   editForm: { width: '100%', gap: 12 },
   input: {
     borderWidth: 1,

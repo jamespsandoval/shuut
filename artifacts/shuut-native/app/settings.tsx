@@ -4,14 +4,14 @@ import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../hooks/useColors';
 import { useAuth } from '../hooks/useAuthStore';
-import { ChevronLeft, LogOut, Trash2, FileText, ShieldAlert } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, LogOut, Trash2, FileText, ShieldAlert } from 'lucide-react-native';
 import { useMobileLogout, useDeleteAccount } from '@workspace/api-client-react';
 
 export default function SettingsScreen() {
   const colors = useColors();
   const router = useRouter();
   const { signOut } = useAuth();
-  
+
   const logout = useMobileLogout();
   const deleteAccount = useDeleteAccount();
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
@@ -70,42 +70,48 @@ export default function SettingsScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Account</Text>
-        
-        <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]} onPress={handleLogout}>
-          <View style={styles.menuItemLeft}>
-            <LogOut color={colors.foreground} size={20} />
-            <Text style={[styles.menuItemText, { color: colors.foreground }]}>Log out</Text>
-          </View>
-        </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]} onPress={handleDeleteAccount}>
-          <View style={styles.menuItemLeft}>
-            <Trash2 color={colors.destructive} size={20} />
-            <Text style={[styles.menuItemText, { color: colors.destructive }]}>Delete Account</Text>
-          </View>
-        </TouchableOpacity>
+        <View style={{ borderRadius: 16, overflow: 'hidden', marginHorizontal: 16 }}>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]} onPress={handleLogout}>
+            <View style={styles.menuItemLeft}>
+              <LogOut color={colors.foreground} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.foreground }]}>Log out</Text>
+            </View>
+          </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginTop: 24 }]}>About</Text>
-        
-        <TouchableOpacity 
-          style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
-          onPress={() => openUrl('/terms')}
-        >
-          <View style={styles.menuItemLeft}>
-            <FileText color={colors.foreground} size={20} />
-            <Text style={[styles.menuItemText, { color: colors.foreground }]}>Terms of Service</Text>
-          </View>
-        </TouchableOpacity>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderBottomWidth: 0 }]} onPress={handleDeleteAccount}>
+            <View style={styles.menuItemLeft}>
+              <Trash2 color={colors.destructive} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.destructive }]}>Delete Account</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity 
-          style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
-          onPress={() => openUrl('/privacy')}
-        >
-          <View style={styles.menuItemLeft}>
-            <ShieldAlert color={colors.foreground} size={20} />
-            <Text style={[styles.menuItemText, { color: colors.foreground }]}>Privacy Policy</Text>
-          </View>
-        </TouchableOpacity>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginTop: 32 }]}>About</Text>
+
+        <View style={{ borderRadius: 16, overflow: 'hidden', marginHorizontal: 16 }}>
+          <TouchableOpacity
+            style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+            onPress={() => openUrl('/terms')}
+          >
+            <View style={styles.menuItemLeft}>
+              <FileText color={colors.foreground} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.foreground }]}>Terms of Service</Text>
+            </View>
+            <ChevronRight color={colors.mutedForeground} size={20} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, { backgroundColor: colors.card, borderBottomWidth: 0 }]}
+            onPress={() => openUrl('/privacy')}
+          >
+            <View style={styles.menuItemLeft}>
+              <ShieldAlert color={colors.foreground} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.foreground }]}>Privacy Policy</Text>
+            </View>
+            <ChevronRight color={colors.mutedForeground} size={20} />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       <Modal visible={isDeleteModalVisible} transparent animationType="fade">
@@ -128,8 +134,8 @@ export default function SettingsScreen() {
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIsDeleteModalVisible(false)} disabled={deleteAccount.isPending}>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalDeleteBtn, { backgroundColor: colors.destructive, opacity: deleteConfirmation === 'DELETE' ? 1 : 0.5 }]} 
+              <TouchableOpacity
+                style={[styles.modalDeleteBtn, { backgroundColor: colors.destructive, opacity: deleteConfirmation === 'DELETE' ? 1 : 0.5 }]}
                 onPress={performDelete}
                 disabled={deleteConfirmation !== 'DELETE' || deleteAccount.isPending}
               >
@@ -160,8 +166,8 @@ const styles = StyleSheet.create({
   content: { paddingVertical: 16 },
   sectionTitle: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    paddingHorizontal: 16,
+    fontSize: 13,
+    paddingHorizontal: 24,
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 1,
