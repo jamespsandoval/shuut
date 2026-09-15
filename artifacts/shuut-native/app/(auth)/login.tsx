@@ -14,6 +14,30 @@ export default function LoginScreen() {
   const startAuth = useStartMobileAuth();
   const colors = useColors();
 
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    const styleId = 'shuut-login-input-focus-reset';
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      input#shuut-login-email,
+      input#shuut-login-email:focus,
+      input#shuut-login-email:focus-visible {
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        outline: none !important;
+        border: 0 !important;
+        box-shadow: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => style.remove();
+  }, []);
+
   const handleContinue = () => {
     if (!email || !email.includes('@')) return;
     
@@ -56,6 +80,7 @@ export default function LoginScreen() {
           <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
             <Mail color={colors.mutedForeground} size={20} style={styles.inputIcon} />
             <TextInput
+              nativeID="shuut-login-email"
               style={[
                 styles.input,
                 { color: colors.foreground },
