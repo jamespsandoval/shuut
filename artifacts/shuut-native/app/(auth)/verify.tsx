@@ -40,6 +40,30 @@ export default function VerifyScreen() {
   const [recoveryCode, setRecoveryCode] = useState('');
 
   useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    const styleId = 'shuut-verification-input-focus-reset';
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      input#shuut-verification-code,
+      input#shuut-verification-code:focus,
+      input#shuut-verification-code:focus-visible {
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        outline: none !important;
+        border: 0 !important;
+        box-shadow: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => style.remove();
+  }, []);
+
+  useEffect(() => {
     if (flow === 'pending') {
       setHandoffStep(true);
     }
@@ -175,6 +199,7 @@ export default function VerifyScreen() {
               <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
                 <KeyRound color={colors.mutedForeground} size={20} style={styles.inputIcon} />
                 <TextInput
+                  nativeID="shuut-verification-code"
                   style={[styles.input, { color: colors.foreground }]}
                   placeholder="0 0 0 0 0 0"
                   placeholderTextColor={colors.mutedForeground}
