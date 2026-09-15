@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
-import { db, foundersTable, postsTable } from "@workspace/db";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { db, foundersTable, postsTable, usersTable } from "@workspace/db";
 import { verifyPostShareToken } from "../lib/postShareToken";
 
 const router: IRouter = Router();
@@ -105,10 +105,16 @@ router.get("/p/:postId", async (req, res): Promise<void> => {
       })
       .from(postsTable)
       .innerJoin(foundersTable, eq(foundersTable.id, postsTable.authorId))
+      .leftJoin(usersTable, eq(usersTable.id, foundersTable.userId))
       .where(
         and(
           eq(postsTable.id, postId),
           eq(postsTable.transcriptionStatus, "ready"),
+          eq(postsTable.deletionStatus, "active"),
+          or(
+            isNull(foundersTable.userId),
+            eq(usersTable.deletionStatus, "active"),
+          ),
         ),
       )
       .limit(1);

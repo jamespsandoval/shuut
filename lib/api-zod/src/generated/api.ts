@@ -16,7 +16,6 @@ export const HealthCheckResponse = zod.object({
 export const registerBodyEmailMax = 254;
 
 
-
 export const RegisterBody = zod.object({
   "email": zod.string().email().max(registerBodyEmailMax)
 })
@@ -27,7 +26,6 @@ export const RegisterResponse = zod.object({
 
 
 export const startAuthBodyEmailMax = 254;
-
 
 
 export const StartAuthBody = zod.object({
@@ -63,7 +61,6 @@ export const VerifyEmailResponse = zod.object({
 
 
 export const loginBodyEmailMax = 254;
-
 
 
 export const LoginBody = zod.object({
@@ -224,7 +221,9 @@ export const CheckUsernameAvailabilityResponse = zod.object({
 })
 
 
-export const DeleteAccountResponse = zod.void()
+export const DeleteAccountResponse = zod.object({
+  "status": zod.enum(['completed', 'pending', 'failed'])
+})
 
 
 export const sendContactMessageBodyFirstNameMax = 80;
@@ -236,7 +235,6 @@ export const sendContactMessageBodyEmailMax = 254;
 export const sendContactMessageBodyMessageMax = 1000;
 
 export const sendContactMessageBodyWebsiteMax = 0;
-
 
 
 export const SendContactMessageBody = zod.object({
@@ -428,7 +426,6 @@ export const requestUploadUrlBodyNameMax = 255;
 export const requestUploadUrlBodySizeMax = 15000000;
 
 
-
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1).max(requestUploadUrlBodyNameMax),
   "size": zod.number().int().min(1).max(requestUploadUrlBodySizeMax),
@@ -464,7 +461,6 @@ export const createPostBodyTranscriptMax = 5000;
 
 export const createPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const createPostBodyDurationSecondsMax = 90;
-
 
 
 export const CreatePostBody = zod.object({
@@ -543,7 +539,9 @@ export const DeletePostParams = zod.object({
   "postId": zod.coerce.number().int()
 })
 
-export const DeletePostResponse = zod.void()
+export const DeletePostResponse = zod.object({
+  "status": zod.enum(['completed', 'pending', 'failed'])
+})
 
 
 export const UpdatePostParams = zod.object({
@@ -551,7 +549,6 @@ export const UpdatePostParams = zod.object({
 })
 
 export const updatePostBodyTranscriptMax = 5000;
-
 
 
 export const UpdatePostBody = zod.object({
@@ -662,7 +659,6 @@ export const createPostCommentBodyAudioObjectPathRegExp = new RegExp('^/objects/
 export const createPostCommentBodyDurationSecondsMax = 90;
 
 
-
 export const CreatePostCommentBody = zod.object({
   "audioObjectPath": zod.string().regex(createPostCommentBodyAudioObjectPathRegExp),
   "durationSeconds": zod.number().int().min(1).max(createPostCommentBodyDurationSecondsMax)
@@ -742,7 +738,6 @@ export const AskFounderParams = zod.object({
 export const askFounderBodyQuestionMin = 2;
 
 
-
 export const AskFounderBody = zod.object({
   "question": zod.string().min(askFounderBodyQuestionMin)
 })
@@ -756,5 +751,4 @@ export const AskFounderResponse = zod.object({
 })),
   "hasEnoughContext": zod.boolean()
 })
-
 

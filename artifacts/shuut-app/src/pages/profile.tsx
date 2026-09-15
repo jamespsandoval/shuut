@@ -371,7 +371,17 @@ export default function Profile() {
 
   const handleDeleteAccount = () => {
     deleteAccountMutation.mutate(undefined, {
-      onSuccess: () => {
+      onSuccess: (result) => {
+        if (result.status !== "completed") {
+          toast({
+            title: result.status === "failed" ? "Account deletion needs cleanup" : "Account deletion is pending",
+            description: result.status === "failed"
+              ? "A storage cleanup failed and will retry automatically. You can also press delete again to retry now."
+              : "Your account is locked while private recordings are removed.",
+            variant: result.status === "failed" ? "destructive" : "default",
+          })
+          return
+        }
         toast({ title: "Account deleted successfully." })
         logoutMutation.mutate(undefined, {
           onSettled: () => {
@@ -725,4 +735,3 @@ export default function Profile() {
     </Layout>
   )
 }
-

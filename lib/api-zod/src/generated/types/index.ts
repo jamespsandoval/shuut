@@ -20,6 +20,8 @@ export * from './beginPasskeyRegistration200';
 export * from './confirmPasskeyRecovery200';
 export * from './contactMessageInput';
 export * from './contactMessageResult';
+export * from './deletionResult';
+export * from './deletionResultStatus';
 export * from './emailCodeInput';
 export * from './followState';
 export * from './founder';

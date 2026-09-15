@@ -4,6 +4,7 @@ import { Storage, type File } from "@google-cloud/storage";
 import { getObjectAclPolicy, setObjectAclPolicy, type ObjectAclPolicy } from "./objectAcl";
 
 const SIDECAR = "http://127.0.0.1:1106";
+export const SIGNED_UPLOAD_TTL_MS = 15 * 60 * 1000;
 const storage = new Storage({
   credentials: {
     audience: "replit",
@@ -33,7 +34,7 @@ async function signedPutUrl(bucketName: string, objectName: string): Promise<str
       bucket_name: bucketName,
       object_name: objectName,
       method: "PUT",
-      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      expires_at: new Date(Date.now() + SIGNED_UPLOAD_TTL_MS).toISOString(),
     }),
     signal: AbortSignal.timeout(30_000),
   });

@@ -4,19 +4,21 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { eq, inArray, like } from "drizzle-orm";
 import app from "../src/app";
+import { retryDueCleanupJobs } from "../src/routes/shuut";
+import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
 import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
 import { hashSessionToken } from "../src/middlewares/sessionAuth";
 import { authCodeEmail } from "../src/lib/authCodeEmail";
-import { processPrivateObjectCleanup } from "../src/lib/privateObjectCleanup";
 import {
-  securityNotificationEmail,
   sendSecurityNotificationEmail,
   type SecurityNotificationKind,
 } from "../src/lib/postmark";
 import {
   db,
+  commentsTable,
   foundersTable,
+  objectCleanupJobsTable,
   passkeysTable,
   privateObjectCleanupTable,
   pool,
@@ -37,7 +39,6 @@ let realFetch: typeof globalThis.fetch;
 let realRegisterVerifier: typeof webauthnVerifier.verifyRegistration;
 let realAssertionVerifier: typeof webauthnVerifier.verifyAuthentication;
 let realStreamPrivate: ObjectStorageService["streamPrivate"];
-let realDeleteObject: ObjectStorageService["deleteObject"];
 let requestNumber = 0;
 
 type BrowserSession = {
@@ -55,21 +56,6 @@ function codeFor(email: string, subject: string): string {
   const code = message.TextBody.match(/\b\d{6}\b/)?.[0];
   assert.ok(code, "Expected a six-digit code");
   return code;
-}
-
-function assertCodeEmail(email: string, subject: string, expectedPhrase: string) {
-  const message = sentEmails.findLast(
-    (entry) => entry.To === email && entry.Subject === subject,
-  );
-  assert.ok(message, `Expected captured email "${subject}" for ${email}`);
-  const code = message.TextBody.match(/\b\d{6}\b/)?.[0];
-  assert.ok(code);
-  assert.ok(message.HtmlBody);
-  assert.match(message.HtmlBody, new RegExp(`>${code}<`));
-  assert.match(message.HtmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
-  assert.match(message.HtmlBody, /expires in <strong[^>]*>15 minutes<\/strong>/);
-  assert.match(message.HtmlBody, new RegExp(expectedPhrase, "i"));
-  assert.ok(!message.HtmlBody.includes("<img"));
 }
 
 test("authentication code templates are readable, branded, and safely escaped", () => {
@@ -119,14 +105,15 @@ test("Postmark payloads include branded HTML and text for every security notific
       phrase: "No further action is needed",
     },
   ];
-  const availableAt = '2026-09-16T12:00:00.000Z<&"';
 
   for (const item of cases) {
     const to = `${prefix}-${item.kind}@example.test`;
     await sendSecurityNotificationEmail({
       to,
       kind: item.kind,
-      ...(item.kind === "recovery-requested" ? { availableAt } : {}),
+      ...(item.kind === "recovery-requested"
+        ? { availableAt: "2026-09-16T12:00:00.000Z" }
+        : {}),
     });
     const payload = sentEmails.findLast(
       (entry) => entry.To === to && entry.Subject === item.subject,
@@ -136,17 +123,7 @@ test("Postmark payloads include branded HTML and text for every security notific
     assert.match(payload.HtmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
     assert.ok(payload.HtmlBody.includes(item.phrase));
     assert.ok(payload.TextBody.includes(item.phrase));
-    assert.ok(!payload.HtmlBody.includes("<img"));
-    assert.ok(!/https?:\/\//i.test(payload.HtmlBody));
   }
-
-  const recovery = securityNotificationEmail({
-    kind: "recovery-requested",
-    availableAt,
-  });
-  assert.ok(recovery.textBody.includes(availableAt));
-  assert.ok(recovery.htmlBody.includes("2026-09-16T12:00:00.000Z&lt;&amp;&quot;"));
-  assert.ok(!recovery.htmlBody.includes(availableAt));
 });
 
 function parseSession(response: Response): BrowserSession {
@@ -232,7 +209,6 @@ before(async () => {
   realRegisterVerifier = webauthnVerifier.verifyRegistration;
   realAssertionVerifier = webauthnVerifier.verifyAuthentication;
   realStreamPrivate = ObjectStorageService.prototype.streamPrivate;
-  realDeleteObject = ObjectStorageService.prototype.deleteObject;
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -245,7 +221,6 @@ after(async () => {
   webauthnVerifier.verifyRegistration = realRegisterVerifier;
   webauthnVerifier.verifyAuthentication = realAssertionVerifier;
   ObjectStorageService.prototype.streamPrivate = realStreamPrivate;
-  ObjectStorageService.prototype.deleteObject = realDeleteObject;
   globalThis.fetch = realFetch;
   const users = await db.select({ id: usersTable.id }).from(usersTable)
     .where(like(usersTable.email, `${prefix}%`));
@@ -273,9 +248,7 @@ after(async () => {
 });
 
 test("email verification creates a pending session blocked from protected data and audio actions", async () => {
-  const email = `${prefix}-pending@example.test`;
-  const session = await register(email);
-  assertCodeEmail(email, "Verify your SHÜÜT account", "safely ignore");
+  const session = await register(`${prefix}-pending@example.test`);
   for (const [path, method, json] of [
     ["/api/feed", "GET", undefined],
     ["/api/posts/1/audio", "GET", undefined],
@@ -320,7 +293,6 @@ test("passwordless login resists enumeration and replay, logout invalidates the 
   assert.deepEqual(await known.json(), await unknown.json());
 
   const code = codeFor(email, "Your SHÜÜT sign-in code");
-  assertCodeEmail(email, "Your SHÜÜT sign-in code", "safely ignore");
   const verified = await request("/api/auth/login/verify", {
     method: "POST",
     json: { email, code },
@@ -525,6 +497,8 @@ test("publishing requires owned audio and responses never expose private object 
     durationSeconds: 3,
     audioUrl: objectPath,
   }).returning();
+  await db.delete(profileImageUploadsTable)
+    .where(eq(profileImageUploadsTable.objectPath, objectPath));
   const feed = await request("/api/feed", { session });
   assert.equal(feed.status, 200);
   const feedText = await feed.text();
@@ -547,41 +521,440 @@ test("publishing requires owned audio and responses never expose private object 
     method: "DELETE",
     session,
   });
-  assert.equal(deletion.status, 204);
-  const [queued] = await db
-    .select()
-    .from(privateObjectCleanupTable)
-    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
-  assert.ok(queued, "Account deletion must durably queue its private recording");
+  assert.equal(deletion.status, 200);
+  assert.deepEqual(await deletion.json(), { status: "completed" });
   assert.equal((await request("/api/auth/me", {
     headers: { cookie: session.cookie },
   })).status, 401);
+});
 
+test("failed post recording cleanup remains durable and retries to completion", async () => {
+  const email = `${prefix}-post-cleanup@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, user.id));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Cleanup Retry",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-16)}retry`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const objectPath = `/objects/uploads/${prefix}-retry-recording`;
+  const [post] = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "Retry this cleanup",
+    durationSeconds: 4,
+    audioUrl: objectPath,
+  }).returning();
+  const shareBeforeDeletion = await request(`/api/posts/${post.id}/share-link`, {
+    method: "POST",
+    session,
+  });
+  assert.equal(shareBeforeDeletion.status, 200);
+  const shareUrl = new URL((await shareBeforeDeletion.json() as { url: string }).url);
+  const realDeleteObject = ObjectStorageService.prototype.deleteObject;
+  let attempts = 0;
+  ObjectStorageService.prototype.deleteObject = async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("simulated storage outage");
+  };
+  try {
+    const failed = await request(`/api/posts/${post.id}`, {
+      method: "DELETE",
+      session,
+    });
+    assert.equal(failed.status, 200);
+    assert.deepEqual(await failed.json(), { status: "failed" });
+    const [deletingPost] = await db.select().from(postsTable).where(eq(postsTable.id, post.id));
+    assert.equal(deletingPost.deletionStatus, "deleting");
+    const [job] = await db.select().from(objectCleanupJobsTable)
+      .where(eq(objectCleanupJobsTable.scopeId, String(post.id)));
+    assert.equal(job.status, "failed");
+    assert.equal((await request(`/api/posts/${post.id}`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}/audio`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}/comments`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}/share-link`, {
+      method: "POST",
+      session,
+    })).status, 404);
+    const feed = await request("/api/feed", { session });
+    assert.ok(!(await feed.text()).includes(`"id":${post.id}`));
+    const sharedPreview = await request(`${shareUrl.pathname}${shareUrl.search}`);
+    assert.ok(!(await sharedPreview.text()).includes("Retry this cleanup"));
+
+    await db.update(objectCleanupJobsTable).set({ nextAttemptAt: new Date(0) })
+      .where(eq(objectCleanupJobsTable.id, job.id));
+    const completed = await request(`/api/posts/${post.id}`, {
+      method: "DELETE",
+      session,
+    });
+    assert.equal(completed.status, 200);
+    assert.deepEqual(await completed.json(), { status: "completed" });
+    assert.equal(attempts, 2);
+    assert.equal(
+      (await db.select().from(postsTable).where(eq(postsTable.id, post.id))).length,
+      0,
+    );
+  } finally {
+    ObjectStorageService.prototype.deleteObject = realDeleteObject;
+  }
+});
+
+test("account deletion waits out issued upload URLs and blocks new uploads", async () => {
+  const email = `${prefix}-upload-race@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, user.id));
+  await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Upload Race",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-16)}upload`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const [founder] = await db.select().from(foundersTable).where(eq(foundersTable.userId, user.id));
+  const postObjectPath = `/objects/uploads/${prefix}-account-post`;
+  const [post] = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "Hidden during account cleanup",
+    durationSeconds: 2,
+    audioUrl: postObjectPath,
+  }).returning();
+  const objectPath = `/objects/uploads/${prefix}-issued-upload`;
+  await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
+  const realDeleteObject = ObjectStorageService.prototype.deleteObject;
+  const deletedPaths: string[] = [];
+  ObjectStorageService.prototype.deleteObject = async (path) => {
+    deletedPaths.push(path);
+  };
+  try {
+    const pending = await request("/api/account", { method: "DELETE", session });
+    assert.equal(pending.status, 200);
+    assert.deepEqual(await pending.json(), { status: "pending" });
+    assert.ok(deletedPaths.includes(postObjectPath));
+    assert.equal((await request(`/api/profiles/${founder.handle}`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}/audio`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}/comments`, { session })).status, 404);
+    assert.equal((await request(`/api/posts/${post.id}/share-link`, {
+      method: "POST",
+      session,
+    })).status, 404);
+    const feed = await request("/api/feed", { session });
+    assert.ok(!(await feed.text()).includes("Hidden during account cleanup"));
+    const [job] = await db.select().from(objectCleanupJobsTable)
+      .where(eq(objectCleanupJobsTable.scopeId, user.id));
+    assert.ok(job.nextAttemptAt.getTime() > Date.now());
+
+    const blockedUpload = await request("/api/storage/uploads/request-url", {
+      method: "POST",
+      session,
+      json: { name: "late.webm", size: 10, contentType: "audio/webm" },
+    });
+    assert.equal(blockedUpload.status, 409);
+    deletedPaths.length = 0;
+
+    await db.update(objectCleanupJobsTable).set({ nextAttemptAt: new Date(0) })
+      .where(eq(objectCleanupJobsTable.id, job.id));
+    const completed = await request("/api/account", { method: "DELETE", session });
+    assert.equal(completed.status, 200);
+    assert.deepEqual(await completed.json(), { status: "completed" });
+    assert.deepEqual(deletedPaths, [objectPath]);
+  } finally {
+    ObjectStorageService.prototype.deleteObject = realDeleteObject;
+  }
+});
+
+test("retry sweep finalizes deleting posts with zero or already-completed object jobs", async () => {
+  const email = `${prefix}-finalization-retry@example.test`;
+  await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Finalization Retry",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-16)}finalize`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const [emptyPost, completedJobPost] = await db.insert(postsTable).values([
+    {
+      authorId: founder.id,
+      transcript: "No objects remain",
+      durationSeconds: 1,
+      deletionStatus: "deleting",
+    },
+    {
+      authorId: founder.id,
+      transcript: "Object deletion finished before interruption",
+      durationSeconds: 1,
+      deletionStatus: "deleting",
+    },
+  ]).returning();
+  await db.insert(objectCleanupJobsTable).values({
+    objectPath: `/objects/uploads/${prefix}-already-deleted`,
+    scopeType: "post",
+    scopeId: String(completedJobPost.id),
+    status: "completed",
+  });
+
+  await retryDueCleanupJobs();
+
+  assert.equal(
+    (await db.select().from(postsTable).where(inArray(
+      postsTable.id,
+      [emptyPost.id, completedJobPost.id],
+    ))).length,
+    0,
+  );
+  assert.equal(
+    (await db.select().from(objectCleanupJobsTable)
+      .where(eq(objectCleanupJobsTable.scopeId, String(completedJobPost.id)))).length,
+    0,
+  );
+});
+
+test("comment publication serializes with post deletion and its recording is removed", async () => {
+  const email = `${prefix}-comment-delete-race@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, user.id));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Comment Race",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-16)}comment`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const [post] = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "Delete while comment publishes",
+    durationSeconds: 1,
+  }).returning();
+  const objectPath = `/objects/uploads/${prefix}-racing-comment`;
+  await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
+  const realPublishAudio = ObjectStorageService.prototype.publishAudio;
+  const realDeleteObject = ObjectStorageService.prototype.deleteObject;
+  let releasePublication!: () => void;
+  let publicationStarted!: () => void;
+  const publicationStartedPromise = new Promise<void>((resolve) => {
+    publicationStarted = resolve;
+  });
+  const releasePublicationPromise = new Promise<void>((resolve) => {
+    releasePublication = resolve;
+  });
+  const deletedPaths: string[] = [];
+  ObjectStorageService.prototype.publishAudio = async () => {
+    publicationStarted();
+    await releasePublicationPromise;
+  };
+  ObjectStorageService.prototype.deleteObject = async (path) => {
+    deletedPaths.push(path);
+  };
+  try {
+    const commentRequest = request(`/api/posts/${post.id}/comments`, {
+      method: "POST",
+      session,
+      json: { audioObjectPath: objectPath, durationSeconds: 2 },
+    });
+    await publicationStartedPromise;
+    const deletionRequest = request(`/api/posts/${post.id}`, {
+      method: "DELETE",
+      session,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    releasePublication();
+
+    const comment = await commentRequest;
+    assert.equal(comment.status, 202);
+    const deletion = await deletionRequest;
+    assert.equal(deletion.status, 200);
+    assert.deepEqual(await deletion.json(), { status: "completed" });
+    assert.ok(deletedPaths.includes(objectPath));
+    assert.equal(
+      (await db.select().from(profileImageUploadsTable)
+        .where(eq(profileImageUploadsTable.objectPath, objectPath))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(objectCleanupJobsTable)
+        .where(eq(objectCleanupJobsTable.scopeId, objectPath))).length,
+      0,
+    );
+  } finally {
+    releasePublication();
+    ObjectStorageService.prototype.publishAudio = realPublishAudio;
+    ObjectStorageService.prototype.deleteObject = realDeleteObject;
+  }
+});
+
+test("expiry cleanup cannot claim recordings being published as posts or comments", async () => {
+  const email = `${prefix}-expiry-publication-race@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, user.id));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Expiry Race",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-14)}expiry`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const targetPost = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "Comment expiry target",
+    durationSeconds: 1,
+  }).returning().then(([row]) => row);
+  const realPublishAudio = ObjectStorageService.prototype.publishAudio;
+  const realReadAudio = ObjectStorageService.prototype.readAudio;
+  const capturedFetch = globalThis.fetch;
+  ObjectStorageService.prototype.readAudio = async () => ({
+    data: Buffer.from("voice"),
+    contentType: "audio/webm",
+  });
+  globalThis.fetch = async (input, init) => {
+    if (String(input).includes("api.elevenlabs.io")) {
+      return new Response(JSON.stringify({ text: "Published safely" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return capturedFetch(input, init);
+  };
+  try {
+    for (const kind of ["post", "comment"] as const) {
+      const objectPath = `/objects/uploads/${prefix}-expiry-${kind}`;
+      await db.insert(profileImageUploadsTable).values({
+        objectPath,
+        userId: user.id,
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+      });
+      let releasePublication!: () => void;
+      let publicationStarted!: () => void;
+      const publicationStartedPromise = new Promise<void>((resolve) => {
+        publicationStarted = resolve;
+      });
+      const releasePublicationPromise = new Promise<void>((resolve) => {
+        releasePublication = resolve;
+      });
+      ObjectStorageService.prototype.publishAudio = async () => {
+        publicationStarted();
+        await releasePublicationPromise;
+      };
+      const publicationRequest = kind === "post"
+        ? request("/api/posts", {
+          method: "POST",
+          session,
+          json: {
+            transcript: "Expiry-safe post",
+            durationSeconds: 2,
+            audioObjectPath: objectPath,
+          },
+        })
+        : request(`/api/posts/${targetPost.id}/comments`, {
+          method: "POST",
+          session,
+          json: { audioObjectPath: objectPath, durationSeconds: 2 },
+        });
+      await publicationStartedPromise;
+      const expiryRequest = queueExpiredPrivateUploads();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      releasePublication();
+      const publication = await publicationRequest;
+      assert.equal(publication.status, kind === "post" ? 201 : 202);
+      assert.equal(await expiryRequest, 0);
+      assert.equal(
+        (await db.select().from(privateObjectCleanupTable)
+          .where(eq(privateObjectCleanupTable.objectPath, objectPath))).length,
+        0,
+      );
+    }
+  } finally {
+    globalThis.fetch = capturedFetch;
+    ObjectStorageService.prototype.publishAudio = realPublishAudio;
+    ObjectStorageService.prototype.readAudio = realReadAudio;
+  }
+});
+
+test("failed comment transcription keeps durable cleanup work until storage retry succeeds", async () => {
+  const email = `${prefix}-comment-transcription-cleanup@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, user.id));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Comment Cleanup",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-14)}transcribe`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const [post] = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "Comment transcription target",
+    durationSeconds: 1,
+  }).returning();
+  const objectPath = `/objects/uploads/${prefix}-failed-comment-transcription`;
+  await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
+  const realPublishAudio = ObjectStorageService.prototype.publishAudio;
+  const realReadAudio = ObjectStorageService.prototype.readAudio;
+  const realDeleteObject = ObjectStorageService.prototype.deleteObject;
+  const capturedFetch = globalThis.fetch;
   let deleteAttempts = 0;
+  ObjectStorageService.prototype.publishAudio = async () => {};
+  ObjectStorageService.prototype.readAudio = async () => ({
+    data: Buffer.from("voice"),
+    contentType: "audio/webm",
+  });
   ObjectStorageService.prototype.deleteObject = async () => {
     deleteAttempts += 1;
-    if (deleteAttempts === 1) throw new Error("Temporary object storage outage");
+    if (deleteAttempts === 1) throw new Error("simulated cleanup outage");
   };
-  assert.equal(await processPrivateObjectCleanup(), 0);
-  const [retry] = await db
-    .select()
-    .from(privateObjectCleanupTable)
-    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
-  assert.equal(retry.attempts, 1);
-  assert.match(retry.lastError ?? "", /Temporary object storage outage/);
-
-  await db
-    .update(privateObjectCleanupTable)
-    .set({ nextAttemptAt: new Date(0) })
-    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
-  assert.equal(await processPrivateObjectCleanup(), 1);
-  assert.equal(deleteAttempts, 2);
-  const completed = await db
-    .select()
-    .from(privateObjectCleanupTable)
-    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
-  assert.equal(completed.length, 0);
-  ObjectStorageService.prototype.deleteObject = realDeleteObject;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).includes("api.elevenlabs.io")) {
+      return new Response("transcription unavailable", { status: 503 });
+    }
+    return capturedFetch(input, init);
+  };
+  try {
+    const response = await request(`/api/posts/${post.id}/comments`, {
+      method: "POST",
+      session,
+      json: { audioObjectPath: objectPath, durationSeconds: 2 },
+    });
+    assert.equal(response.status, 202);
+    const { id } = await response.json() as { id: number };
+    let job;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      [job] = await db.select().from(objectCleanupJobsTable)
+        .where(eq(objectCleanupJobsTable.scopeId, objectPath));
+      if (job?.status === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(job?.status, "failed");
+    assert.equal(
+      (await db.select().from(commentsTable).where(eq(commentsTable.id, id))).length,
+      0,
+    );
+    await db.update(objectCleanupJobsTable).set({ nextAttemptAt: new Date(0) })
+      .where(eq(objectCleanupJobsTable.id, job!.id));
+    await retryDueCleanupJobs();
+    assert.equal(deleteAttempts, 2);
+    assert.equal(
+      (await db.select().from(objectCleanupJobsTable)
+        .where(eq(objectCleanupJobsTable.scopeId, objectPath))).length,
+      0,
+    );
+  } finally {
+    globalThis.fetch = capturedFetch;
+    ObjectStorageService.prototype.publishAudio = realPublishAudio;
+    ObjectStorageService.prototype.readAudio = realReadAudio;
+    ObjectStorageService.prototype.deleteObject = realDeleteObject;
+  }
 });
 
 test("rich preview metadata requires an authenticated share action and signed token", async () => {

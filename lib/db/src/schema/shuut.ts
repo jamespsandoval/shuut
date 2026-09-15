@@ -6,6 +6,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const foundersTable = pgTable("shuut_founders", {
@@ -42,6 +43,7 @@ export const postsTable = pgTable("shuut_posts", {
   viewerReaction: text("viewer_reaction"),
   isReshuuted: boolean("is_reshuuted").notNull().default(false),
   reshuutedBy: text("reshuuted_by"),
+  deletionStatus: text("deletion_status").notNull().default("active"),
 });
 
 export const commentsTable = pgTable(
@@ -95,8 +97,33 @@ export const usersTable = pgTable("shuut_users", {
   passwordHash: text("password_hash").notNull(),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deletionStatus: text("deletion_status").notNull().default("active"),
 });
 
+export const objectCleanupJobsTable = pgTable(
+  "shuut_object_cleanup_jobs",
+  {
+    id: serial("id").primaryKey(),
+    objectPath: text("object_path").notNull(),
+    scopeType: text("scope_type").notNull(),
+    scopeId: text("scope_id").notNull(),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("shuut_cleanup_jobs_retry_idx").on(table.status, table.nextAttemptAt),
+    index("shuut_cleanup_jobs_scope_idx").on(table.scopeType, table.scopeId),
+    uniqueIndex("shuut_cleanup_jobs_scope_object_idx").on(
+      table.scopeType,
+      table.scopeId,
+      table.objectPath,
+    ),
+  ],
+);
 export const sessionsTable = pgTable(
   "shuut_sessions",
   {

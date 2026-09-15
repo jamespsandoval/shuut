@@ -209,8 +209,9 @@ paths:
       operationId: deleteAccount
       tags: [account]
       responses:
-        '204':
-          description: Account data deleted
+        '200':
+          description: Account deletion state
+          content: { application/json: { schema: { $ref: '#/components/schemas/DeletionResult' } } }
   /contact:
     post:
       operationId: sendContactMessage
@@ -319,7 +320,9 @@ paths:
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       responses:
-        '204': { description: Deleted }
+        '200':
+          description: Post deletion state
+          content: { application/json: { schema: { $ref: '#/components/schemas/DeletionResult' } } }
     patch:
       operationId: updatePost
       tags: [posts]
@@ -531,6 +534,11 @@ components:
       type: object
       required: [status]
       properties: { status: { type: string } }
+    DeletionResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [completed, pending, failed] }
     Founder:
       type: object
       required: [id, name, handle, bio, avatarColor, isFollowing, previewTranscript]

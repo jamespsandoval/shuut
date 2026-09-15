@@ -135,6 +135,7 @@ export interface HealthStatus {
   status: string;
 }
 
+export type DeletionResultStatus = typeof DeletionResultStatus[keyof typeof DeletionResultStatus];
 export interface Founder {
   id: number;
   name: string;
@@ -374,3 +375,13 @@ export const GetFeedView = {
   following: 'following',
 } as const;
 
+
+export interface DeletionResult {
+  status: DeletionResultStatus;
+}
+
+export const DeletionResultStatus = {
+  completed: 'completed',
+  pending: 'pending',
+  failed: 'failed',
+} as const;

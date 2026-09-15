@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
-import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import {
   AskFounderBody,
   AskFounderParams,
@@ -8,6 +8,8 @@ import {
   CreatePostBody,
   CreatePostResponse,
   DeletePostParams,
+  DeletePostResponse,
+  DeleteAccountResponse,
   GetFeedQueryParams,
   GetFeedResponse,
   GetPostParams,
@@ -45,31 +47,155 @@ import {
   foundersTable,
   postsTable,
   commentsTable,
-  privateObjectCleanupTable,
   profileImageUploadsTable,
   usersTable,
+  objectCleanupJobsTable,
   type FounderRow,
   type PostRow,
   type CommentRow,
 } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { SIGNED_UPLOAD_TTL_MS } from "../lib/objectStorage";
+import { logger } from "../lib/logger";
 import {
   clearSessionCookie,
   getAuthenticatedUserId,
 } from "../middlewares/sessionAuth";
 import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/security";
 import { createPostShareToken } from "../lib/postShareToken";
-import {
-  privateUploadPaths,
-  queueExpiredPrivateUploads,
-} from "../lib/privateObjectCleanup";
+import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
 const POST_EDIT_WINDOW_MS = 30 * 1000;
+const CLEANUP_RETRY_BASE_MS = 5_000;
+const SIGNED_UPLOAD_EXPIRY_SAFETY_MS = 5_000;
 class AudioVerificationError extends Error {}
 
+type CleanupScope = { type: "post" | "account" | "orphan"; id: string };
+
+function cleanupBackoff(attempts: number) {
+  return Math.min(60 * 60 * 1000, CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts, 9));
+}
+
+async function finalizeCleanupScope(scope: CleanupScope) {
+  const remaining = await db.select({ id: objectCleanupJobsTable.id })
+    .from(objectCleanupJobsTable)
+    .where(and(
+      eq(objectCleanupJobsTable.scopeType, scope.type),
+      eq(objectCleanupJobsTable.scopeId, scope.id),
+      ne(objectCleanupJobsTable.status, "completed"),
+    ))
+    .limit(1);
+  if (remaining.length) return false;
+
+  await db.transaction(async (tx) => {
+    if (scope.type === "post") {
+      await tx.delete(postsTable).where(eq(postsTable.id, Number(scope.id)));
+    } else if (scope.type === "account") {
+      const [founder] = await tx.select({ id: foundersTable.id })
+        .from(foundersTable)
+        .where(eq(foundersTable.userId, scope.id))
+        .limit(1);
+      if (founder) await tx.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+      await tx.delete(profileImageUploadsTable).where(eq(profileImageUploadsTable.userId, scope.id));
+      await tx.delete(usersTable).where(eq(usersTable.id, scope.id));
+    }
+    await tx.delete(objectCleanupJobsTable).where(and(
+      eq(objectCleanupJobsTable.scopeType, scope.type),
+      eq(objectCleanupJobsTable.scopeId, scope.id),
+    ));
+  });
+  return true;
+}
+
+async function processCleanupScope(
+  scope: CleanupScope,
+  log?: { error: (details: object, message: string) => unknown },
+) {
+  const jobs = await db.select().from(objectCleanupJobsTable).where(and(
+    eq(objectCleanupJobsTable.scopeType, scope.type),
+    eq(objectCleanupJobsTable.scopeId, scope.id),
+    ne(objectCleanupJobsTable.status, "completed"),
+    lte(objectCleanupJobsTable.nextAttemptAt, new Date()),
+  ));
+  let failed = false;
+  for (const job of jobs) {
+    try {
+      await objectStorage.deleteObject(job.objectPath);
+      await db.update(objectCleanupJobsTable).set({
+        status: "completed",
+        attempts: job.attempts + 1,
+        lastError: null,
+        updatedAt: new Date(),
+      }).where(eq(objectCleanupJobsTable.id, job.id));
+    } catch (error) {
+      failed = true;
+      log?.error({ err: error, cleanupJobId: job.id }, "Object cleanup attempt failed");
+      await db.update(objectCleanupJobsTable).set({
+        status: "failed",
+        attempts: job.attempts + 1,
+        lastError: error instanceof Error ? error.message.slice(0, 1000) : "Unknown storage error",
+        nextAttemptAt: new Date(Date.now() + cleanupBackoff(job.attempts + 1)),
+        updatedAt: new Date(),
+      }).where(eq(objectCleanupJobsTable.id, job.id));
+    }
+  }
+  const completed = await finalizeCleanupScope(scope);
+  return completed ? "completed" as const : failed ? "failed" as const : "pending" as const;
+}
+
+export async function retryDueCleanupJobs() {
+  const due = await db.select({
+    type: objectCleanupJobsTable.scopeType,
+    id: objectCleanupJobsTable.scopeId,
+  }).from(objectCleanupJobsTable).where(and(
+    ne(objectCleanupJobsTable.status, "completed"),
+    lte(objectCleanupJobsTable.nextAttemptAt, new Date()),
+  )).limit(25);
+  const deletingPosts = await db.select({ id: postsTable.id })
+    .from(postsTable)
+    .where(eq(postsTable.deletionStatus, "deleting"))
+    .limit(25);
+  const deletingUsers = await db.select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.deletionStatus, "deleting"))
+    .limit(25);
+  const scopes = new Map(due.map((row) => [`${row.type}:${row.id}`, {
+    type: row.type as CleanupScope["type"],
+    id: row.id,
+  }]));
+  for (const post of deletingPosts) {
+    scopes.set(`post:${post.id}`, { type: "post", id: String(post.id) });
+  }
+  for (const user of deletingUsers) {
+    scopes.set(`account:${user.id}`, { type: "account", id: user.id });
+  }
+  for (const scope of scopes.values()) {
+    try {
+      await processCleanupScope(scope);
+    } catch (error) {
+      logger.error({ err: error, scopeType: scope.type, scopeId: scope.id }, "Cleanup scope retry failed");
+    }
+  }
+}
+
+function scheduleCleanupSweep() {
+  void retryDueCleanupJobs().catch((error) => {
+    logger.error({ err: error }, "Cleanup retry sweep failed");
+  });
+}
+
+const cleanupTimer = setInterval(scheduleCleanupSweep, 15_000);
+cleanupTimer.unref();
+scheduleCleanupSweep();
+
 async function currentFounder(userId: string) {
+  const [user] = await db.select({ deletionStatus: usersTable.deletionStatus })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!user || user.deletionStatus !== "active") return null;
   const [linked] = await db.select().from(foundersTable).where(eq(foundersTable.userId, userId));
   return linked ?? null;
 }
@@ -156,14 +282,32 @@ function commentJson(comment: CommentRow, author: FounderRow) {
   };
 }
 
+async function activeFounders(founders: FounderRow[]) {
+  const userIds = founders.flatMap((founder) => founder.userId ? [founder.userId] : []);
+  if (!userIds.length) return founders;
+  const activeUsers = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+    inArray(usersTable.id, userIds),
+    eq(usersTable.deletionStatus, "active"),
+  ));
+  const activeUserIds = new Set(activeUsers.map((user) => user.id));
+  return founders.filter((founder) => !founder.userId || activeUserIds.has(founder.userId));
+}
+
+async function isFounderActive(founder: FounderRow | undefined) {
+  return Boolean(founder && (await activeFounders([founder])).length);
+}
+
 async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
   if (!rows.length) return [];
-  const founders = await db
+  const founders = await activeFounders(await db
     .select()
     .from(foundersTable)
-    .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))]));
+    .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))])));
   const byId = new Map(founders.map((founder) => [founder.id, founder]));
-  return rows.map((row) => postJson(row, byId.get(row.authorId)!, viewerFounderId));
+  return rows.flatMap((row) => {
+    const author = byId.get(row.authorId);
+    return author ? [postJson(row, author, viewerFounderId)] : [];
+  });
 }
 
 router.get("/feed", async (req, res): Promise<void> => {
@@ -174,7 +318,7 @@ router.get("/feed", async (req, res): Promise<void> => {
     return;
   }
   const all = (await db.select().from(postsTable).orderBy(desc(postsTable.createdAt)))
-    .filter((post) => post.transcriptionStatus === "ready");
+    .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   let rows = all;
   if (params.data.view === "following") {
@@ -204,6 +348,7 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     founder = await currentFounder(userId);
   } else {
     [founder] = await db.select().from(foundersTable).where(eq(foundersTable.handle, params.data.handle));
+    if (!(await isFounderActive(founder))) founder = undefined;
   }
   if (!founder) {
     res.status(404).json({ error: "Profile not found" });
@@ -214,7 +359,7 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     .from(postsTable)
     .where(eq(postsTable.authorId, founder.id))
     .orderBy(desc(postsTable.createdAt)))
-    .filter((post) => post.transcriptionStatus === "ready");
+    .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   res.json(
     GetProfileResponse.parse({
@@ -336,11 +481,24 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
   }
   try {
     await queueExpiredPrivateUploads();
-    const upload = await objectStorage.createUpload(body.data.size, body.data.contentType);
-    await db.insert(profileImageUploadsTable).values({
-      objectPath: upload.objectPath,
-      userId,
+    const upload = await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+      const [user] = await tx.select({ deletionStatus: usersTable.deletionStatus })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      if (user?.deletionStatus !== "active") return null;
+      const created = await objectStorage.createUpload(body.data.size, body.data.contentType);
+      await tx.insert(profileImageUploadsTable).values({
+        objectPath: created.objectPath,
+        userId,
+      });
+      return created;
     });
+    if (!upload) {
+      res.status(409).json({ error: "Account deletion is already in progress" });
+      return;
+    }
     res.json(RequestUploadUrlResponse.parse(upload));
   } catch (error) {
     req.log.error({ err: error }, "Failed to create upload");
@@ -354,11 +512,20 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [post] = await db.select({ audioUrl: postsTable.audioUrl })
+  const [post] = await db.select({
+    audioUrl: postsTable.audioUrl,
+    authorId: postsTable.authorId,
+  })
     .from(postsTable)
-    .where(eq(postsTable.id, params.data.postId))
+    .where(and(
+      eq(postsTable.id, params.data.postId),
+      eq(postsTable.deletionStatus, "active"),
+    ))
     .limit(1);
-  if (!post?.audioUrl?.startsWith("/objects/uploads/")) {
+  const [author] = post
+    ? await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId)).limit(1)
+    : [];
+  if (!post?.audioUrl?.startsWith("/objects/uploads/") || !(await isFounderActive(author))) {
     await auditSecurityEvent(req, "audio_denial", getAuthenticatedUserId(req));
     res.status(404).json({ error: "Audio not found" });
     return;
@@ -518,53 +685,48 @@ router.post("/posts", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
+  const [activeUser] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+    eq(usersTable.id, userId),
+    eq(usersTable.deletionStatus, "active"),
+  )).limit(1);
+  const author = activeUser ? await currentFounder(userId) : null;
+  if (!author) {
+    res.status(404).json({ error: "Founder not found" });
+    return;
+  }
   if (!body.data.audioObjectPath) {
     await auditSecurityEvent(req, "publish_denied", userId, { reason: "missing_audio" });
     res.status(400).json({ error: "An audio recording is required to publish." });
     return;
   }
-  const initialAuthor = await currentFounder(userId);
-  if (!initialAuthor) {
-    res.status(404).json({ error: "Founder not found" });
-    return;
-  }
   let publication:
-    | { status: "created"; created: PostRow; author: FounderRow }
+    | { status: "created"; created: PostRow }
     | { status: "upload_missing" }
-    | { status: "author_missing" };
+    | { status: "account_deleting" };
   try {
     publication = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(1, ${initialAuthor.id})`);
-      const [author] = await tx
-        .select()
-        .from(foundersTable)
-        .where(eq(foundersTable.userId, userId))
-        .limit(1);
-      if (!author) return { status: "author_missing" as const };
-      const [claimedUpload] = await tx
-        .delete(profileImageUploadsTable)
-        .where(and(
-          eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
-          eq(profileImageUploadsTable.userId, userId),
-        ))
-        .returning({ objectPath: profileImageUploadsTable.objectPath });
+      await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+      const [user] = await tx.select({ deletionStatus: usersTable.deletionStatus })
+        .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (user?.deletionStatus !== "active") return { status: "account_deleting" as const };
+      const [claimedUpload] = await tx.delete(profileImageUploadsTable).where(and(
+        eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+        eq(profileImageUploadsTable.userId, userId),
+      )).returning({ objectPath: profileImageUploadsTable.objectPath });
       if (!claimedUpload) return { status: "upload_missing" as const };
       try {
         await objectStorage.publishAudio(claimedUpload.objectPath, userId);
       } catch (error) {
         throw new AudioVerificationError("The voice recording could not be verified", { cause: error });
       }
-      const [created] = await tx
-        .insert(postsTable)
-        .values({
-          authorId: author.id,
-          transcript: body.data.transcript ?? "",
-          transcriptionStatus: body.data.transcript ? "ready" : "processing",
-          durationSeconds: body.data.durationSeconds,
-          audioUrl: claimedUpload.objectPath,
-        })
-        .returning();
-      return { status: "created" as const, created, author };
+      const [created] = await tx.insert(postsTable).values({
+        authorId: author.id,
+        transcript: body.data.transcript ?? "",
+        transcriptionStatus: body.data.transcript ? "ready" : "processing",
+        durationSeconds: body.data.durationSeconds,
+        audioUrl: claimedUpload.objectPath,
+      }).returning();
+      return { status: "created" as const, created };
     });
   } catch (error) {
     if (error instanceof AudioVerificationError) {
@@ -573,8 +735,8 @@ router.post("/posts", async (req, res): Promise<void> => {
     }
     throw error;
   }
-  if (publication.status === "author_missing") {
-    res.status(409).json({ error: "Your account is being deleted" });
+  if (publication.status === "account_deleting") {
+    res.status(409).json({ error: "Account deletion is already in progress" });
     return;
   }
   if (publication.status === "upload_missing") {
@@ -582,7 +744,7 @@ router.post("/posts", async (req, res): Promise<void> => {
     res.status(403).json({ error: "This voice recording does not belong to you" });
     return;
   }
-  const { created, author } = publication;
+  const { created } = publication;
   const audioObjectPath = created.audioUrl;
   await auditSecurityEvent(req, "publish", userId, { postId: created.id });
   res.status(201).json(CreatePostResponse.parse(postJson(created, author, author.id)));
@@ -609,12 +771,19 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [post] = await db.select().from(postsTable).where(eq(postsTable.id, params.data.postId));
+  const [post] = await db.select().from(postsTable).where(and(
+    eq(postsTable.id, params.data.postId),
+    eq(postsTable.deletionStatus, "active"),
+  ));
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId));
+  if (!(await isFounderActive(author))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   res.json(GetPostResponse.parse(postJson(post, author, viewer?.id)));
 });
@@ -625,6 +794,17 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const [parent] = await db.select({ authorId: postsTable.authorId }).from(postsTable).where(and(
+    eq(postsTable.id, params.data.postId),
+    eq(postsTable.deletionStatus, "active"),
+  )).limit(1);
+  const [parentAuthor] = parent
+    ? await db.select().from(foundersTable).where(eq(foundersTable.id, parent.authorId)).limit(1)
+    : [];
+  if (!parent || !(await isFounderActive(parentAuthor))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   const rows = await db.select().from(commentsTable)
     .where(and(
       eq(commentsTable.postId, params.data.postId),
@@ -632,8 +812,8 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
     ))
     .orderBy(asc(commentsTable.createdAt));
   const authors = rows.length
-    ? await db.select().from(foundersTable)
-      .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))]))
+    ? await activeFounders(await db.select().from(foundersTable)
+      .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))])))
     : [];
   const byId = new Map(authors.map((author) => [author.id, author]));
   res.json(GetPostCommentsResponse.parse(
@@ -662,59 +842,53 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     res.status(429).json({ error: "Too many voice comments. Please try again later." });
     return;
   }
-  const initialAuthor = await currentFounder(userId);
-  const [initialPost] = await db.select().from(postsTable)
-    .where(and(eq(postsTable.id, params.data.postId), eq(postsTable.transcriptionStatus, "ready")))
-    .limit(1);
-  if (!initialAuthor || !initialPost) {
+  const author = await currentFounder(userId);
+  const [post] = await db.select().from(postsTable)
+    .where(and(
+      eq(postsTable.id, params.data.postId),
+      eq(postsTable.transcriptionStatus, "ready"),
+      eq(postsTable.deletionStatus, "active"),
+    )).limit(1);
+  if (!author || !post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
   let publication:
-    | { status: "created"; created: CommentRow; postId: number }
+    | { status: "created"; created: CommentRow }
     | { status: "upload_missing" }
     | { status: "author_or_post_missing" };
   try {
     publication = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(1, ${initialAuthor.id})`);
-      await tx.execute(sql`select pg_advisory_xact_lock(2, ${initialPost.id})`);
-      const [author] = await tx
-        .select()
-        .from(foundersTable)
-        .where(eq(foundersTable.userId, userId))
-        .limit(1);
-      const [post] = await tx
-        .select()
-        .from(postsTable)
-        .where(and(
-          eq(postsTable.id, initialPost.id),
-          eq(postsTable.transcriptionStatus, "ready"),
-        ))
-        .limit(1);
-      if (!author || !post) return { status: "author_or_post_missing" as const };
-      const [claimedUpload] = await tx
-        .delete(profileImageUploadsTable)
-        .where(and(
-          eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
-          eq(profileImageUploadsTable.userId, userId),
-        ))
-        .returning({ objectPath: profileImageUploadsTable.objectPath });
+      await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+      await tx.execute(sql`select id from shuut_posts where id = ${post.id} for update`);
+      const [activeUser] = await tx.select({ id: usersTable.id }).from(usersTable).where(and(
+        eq(usersTable.id, userId),
+        eq(usersTable.deletionStatus, "active"),
+      )).limit(1);
+      const [activePost] = await tx.select({ id: postsTable.id }).from(postsTable).where(and(
+        eq(postsTable.id, post.id),
+        eq(postsTable.deletionStatus, "active"),
+      )).limit(1);
+      if (!activeUser || !activePost) {
+        return { status: "author_or_post_missing" as const };
+      }
+      const [claimedUpload] = await tx.delete(profileImageUploadsTable).where(and(
+        eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+        eq(profileImageUploadsTable.userId, userId),
+      )).returning({ objectPath: profileImageUploadsTable.objectPath });
       if (!claimedUpload) return { status: "upload_missing" as const };
       try {
         await objectStorage.publishAudio(claimedUpload.objectPath, userId);
       } catch (error) {
         throw new AudioVerificationError("The voice recording could not be verified", { cause: error });
       }
-      const [created] = await tx
-        .insert(commentsTable)
-        .values({
-          postId: post.id,
-          authorId: author.id,
-          audioUrl: claimedUpload.objectPath,
-          durationSeconds: body.data.durationSeconds,
-        })
-        .returning();
-      return { status: "created" as const, created, postId: post.id };
+      const [created] = await tx.insert(commentsTable).values({
+        postId: post.id,
+        authorId: author.id,
+        audioUrl: claimedUpload.objectPath,
+        durationSeconds: body.data.durationSeconds,
+      }).returning();
+      return { status: "created" as const, created };
     });
   } catch (error) {
     if (error instanceof AudioVerificationError) {
@@ -724,7 +898,7 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     throw error;
   }
   if (publication.status === "author_or_post_missing") {
-    res.status(409).json({ error: "The post or account is being deleted" });
+    res.status(409).json({ error: "This post or account is being deleted" });
     return;
   }
   if (publication.status === "upload_missing") {
@@ -732,9 +906,9 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     res.status(403).json({ error: "This voice recording does not belong to you" });
     return;
   }
-  const { created, postId } = publication;
+  const { created } = publication;
   await auditSecurityEvent(req, "voice_comment_created", userId, {
-    postId,
+    postId: post.id,
     commentId: created.id,
   });
   res.status(202).json(CreatePostCommentResponse.parse({ id: created.id, status: "processing" }));
@@ -746,13 +920,16 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     })
     .catch(async (error) => {
       req.log.error({ err: error, commentId: created.id }, "Background comment transcription failed");
+      const orphanScope: CleanupScope = { type: "orphan", id: created.audioUrl };
       await db.transaction(async (tx) => {
-        await tx
-          .insert(privateObjectCleanupTable)
-          .values({ objectPath: created.audioUrl })
-          .onConflictDoNothing();
+        await tx.insert(objectCleanupJobsTable).values({
+          objectPath: created.audioUrl,
+          scopeType: orphanScope.type,
+          scopeId: orphanScope.id,
+        }).onConflictDoNothing();
         await tx.delete(commentsTable).where(eq(commentsTable.id, created.id));
       });
+      await processCleanupScope(orphanScope, req.log);
     });
 });
 
@@ -769,6 +946,26 @@ router.get("/comments/:commentId/audio", async (req, res): Promise<void> => {
     ))
     .limit(1);
   if (!comment) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
+  const [parent] = await db.select().from(postsTable).where(and(
+    eq(postsTable.id, comment.postId),
+    eq(postsTable.deletionStatus, "active"),
+  )).limit(1);
+  const expectedAuthorIds = parent
+    ? [...new Set([parent.authorId, comment.authorId])]
+    : [];
+  const authors = parent
+    ? await db.select().from(foundersTable).where(inArray(
+      foundersTable.id,
+      expectedAuthorIds,
+    ))
+    : [];
+  const visibleAuthors = await activeFounders(authors);
+  if (!parent
+    || authors.length !== expectedAuthorIds.length
+    || visibleAuthors.length !== authors.length) {
     res.status(404).json({ error: "Audio not found" });
     return;
   }
@@ -791,11 +988,21 @@ router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
     return;
   }
   const [post] = await db
-    .select({ id: postsTable.id, transcriptionStatus: postsTable.transcriptionStatus })
+    .select({
+      id: postsTable.id,
+      authorId: postsTable.authorId,
+      transcriptionStatus: postsTable.transcriptionStatus,
+    })
     .from(postsTable)
-    .where(eq(postsTable.id, params.data.postId))
+    .where(and(
+      eq(postsTable.id, params.data.postId),
+      eq(postsTable.deletionStatus, "active"),
+    ))
     .limit(1);
-  if (!post || post.transcriptionStatus !== "ready") {
+  const [author] = post
+    ? await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId)).limit(1)
+    : [];
+  if (!post || post.transcriptionStatus !== "ready" || !(await isFounderActive(author))) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
@@ -847,46 +1054,38 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const deletion = await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(2, ${params.data.postId})`);
-    const [founder] = await tx
-      .select()
-      .from(foundersTable)
-      .where(eq(foundersTable.userId, userId))
-      .limit(1);
-    const [post] = await tx
-      .select()
-      .from(postsTable)
-      .where(eq(postsTable.id, params.data.postId))
-      .limit(1);
-    if (!post) return "missing" as const;
-    if (!founder || post.authorId !== founder.id) return "forbidden" as const;
-    const commentRecordings = await tx
-      .select({ objectPath: commentsTable.audioUrl })
-      .from(commentsTable)
-      .where(eq(commentsTable.postId, post.id));
-    const recordings = privateUploadPaths([
-      post.audioUrl,
-      ...commentRecordings.map((recording) => recording.objectPath),
-    ]);
-    if (recordings.length) {
-      await tx
-        .insert(privateObjectCleanupTable)
-        .values(recordings.map((objectPath) => ({ objectPath })))
-        .onConflictDoNothing();
-    }
-    await tx.delete(postsTable).where(eq(postsTable.id, post.id));
-    return "deleted" as const;
-  });
-  if (deletion === "missing") {
+  const founder = await currentFounder(userId);
+  const [post] = await db.select().from(postsTable).where(eq(postsTable.id, params.data.postId));
+  if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
-  if (deletion === "forbidden") {
+  if (!founder || post.authorId !== founder.id) {
     res.status(403).json({ error: "You can only delete your own posts" });
     return;
   }
-  res.sendStatus(204);
+  const scope: CleanupScope = { type: "post", id: String(post.id) };
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from shuut_posts where id = ${post.id} for update`);
+    await tx.update(postsTable).set({ deletionStatus: "deleting" }).where(eq(postsTable.id, post.id));
+    const commentRecordings = await tx.select({ objectPath: commentsTable.audioUrl })
+      .from(commentsTable).where(eq(commentsTable.postId, post.id));
+    const paths = [
+      ...(post.audioUrl?.startsWith("/objects/uploads/") ? [post.audioUrl] : []),
+      ...commentRecordings.map((recording) => recording.objectPath),
+    ];
+    if (paths.length) {
+      await tx.insert(objectCleanupJobsTable).values(
+        [...new Set(paths)].map((objectPath) => ({
+          objectPath,
+          scopeType: scope.type,
+          scopeId: scope.id,
+        })),
+      ).onConflictDoNothing();
+    }
+  });
+  const status = await processCleanupScope(scope, req.log);
+  res.json(DeletePostResponse.parse({ status }));
 });
 
 router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
@@ -1014,60 +1213,62 @@ router.delete("/account", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const scope: CleanupScope = { type: "account", id: userId };
   await db.transaction(async (tx) => {
-    const [founder] = await tx
-      .select()
-      .from(foundersTable)
-      .where(eq(foundersTable.userId, userId))
-      .limit(1);
-    if (founder) {
-      await tx.execute(sql`select pg_advisory_xact_lock(1, ${founder.id})`);
-    }
+    await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+    await tx.update(usersTable).set({ deletionStatus: "deleting" }).where(eq(usersTable.id, userId));
+    const [founder] = await tx.select().from(foundersTable).where(eq(foundersTable.userId, userId)).limit(1);
     const posts = founder
       ? await tx
-          .select({ id: postsTable.id, objectPath: postsTable.audioUrl })
-          .from(postsTable)
-          .where(eq(postsTable.authorId, founder.id))
-          .orderBy(asc(postsTable.id))
+        .select({ id: postsTable.id, objectPath: postsTable.audioUrl })
+        .from(postsTable)
+        .where(eq(postsTable.authorId, founder.id))
       : [];
-    for (const post of posts) {
-      await tx.execute(sql`select pg_advisory_xact_lock(2, ${post.id})`);
-    }
     const commentRecordings = founder
       ? await tx
-          .select({ objectPath: commentsTable.audioUrl })
-          .from(commentsTable)
-          .where(or(
-            eq(commentsTable.authorId, founder.id),
-            ...(posts.length ? [inArray(commentsTable.postId, posts.map((post) => post.id))] : []),
-          ))
+        .select({ objectPath: commentsTable.audioUrl })
+        .from(commentsTable)
+        .where(or(
+          eq(commentsTable.authorId, founder.id),
+          ...(posts.length ? [inArray(commentsTable.postId, posts.map((post) => post.id))] : []),
+        ))
       : [];
     const pendingUploads = await tx
-      .select({ objectPath: profileImageUploadsTable.objectPath })
+      .select({
+        objectPath: profileImageUploadsTable.objectPath,
+        createdAt: profileImageUploadsTable.createdAt,
+      })
       .from(profileImageUploadsTable)
       .where(eq(profileImageUploadsTable.userId, userId));
-    const accountObjects = privateUploadPaths([
-      founder?.avatarObjectPath,
-      ...posts.map((post) => post.objectPath),
-      ...commentRecordings.map((recording) => recording.objectPath),
-      ...pendingUploads.map((upload) => upload.objectPath),
-    ]);
-    if (accountObjects.length) {
-      await tx
-        .insert(privateObjectCleanupTable)
-        .values(accountObjects.map((objectPath) => ({ objectPath })))
-        .onConflictDoNothing();
+    const cleanupTimes = new Map<string, Date>();
+    const addObject = (objectPath: string, nextAttemptAt = new Date()) => {
+      const existing = cleanupTimes.get(objectPath);
+      if (!existing || existing < nextAttemptAt) cleanupTimes.set(objectPath, nextAttemptAt);
+    };
+    if (founder?.avatarObjectPath) addObject(founder.avatarObjectPath);
+    for (const recording of [...posts, ...commentRecordings]) {
+      if (recording.objectPath?.startsWith("/objects/uploads/")) addObject(recording.objectPath);
     }
-    if (founder) {
-      await tx.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+    for (const upload of pendingUploads) {
+      addObject(
+        upload.objectPath,
+        new Date(upload.createdAt.getTime() + SIGNED_UPLOAD_TTL_MS + SIGNED_UPLOAD_EXPIRY_SAFETY_MS),
+      );
     }
-    await tx
-      .delete(profileImageUploadsTable)
-      .where(eq(profileImageUploadsTable.userId, userId));
-    await tx.delete(usersTable).where(eq(usersTable.id, userId));
+    if (cleanupTimes.size) {
+      await tx.insert(objectCleanupJobsTable).values(
+        [...cleanupTimes].map(([objectPath, nextAttemptAt]) => ({
+          objectPath,
+          scopeType: scope.type,
+          scopeId: scope.id,
+          nextAttemptAt,
+        })),
+      ).onConflictDoNothing();
+    }
   });
-  clearSessionCookie(res);
-  res.status(204).send();
+  const status = await processCleanupScope(scope, req.log);
+  if (status === "completed") clearSessionCookie(res);
+  res.json(DeleteAccountResponse.parse({ status }));
 });
 
 export default router;

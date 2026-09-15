@@ -87,9 +87,17 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     deletePost.mutate(
       { postId: post.id },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
-          toast({ title: "Post deleted" })
+          toast({
+            title: result.status === "completed" ? "Post deleted" : "Post deletion queued",
+            description: result.status === "failed"
+              ? "Cleanup hit a storage error and will retry automatically."
+              : result.status === "pending"
+                ? "The post is hidden while its recording is removed."
+                : undefined,
+            variant: result.status === "failed" ? "destructive" : "default",
+          })
         },
         onError: () => {
           toast({ title: "Failed to delete", variant: "destructive" })
@@ -142,7 +150,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   }
 
   return (
-    <article 
+    <article
       id={`post-${post.id}`}
       className={cn(
         "bg-card border-b border-border/40 p-4 transition-colors hover:bg-card/50 scroll-m-20",
@@ -161,7 +169,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
         {/* Header */}
         <div className="flex items-center justify-between">
           <Link href={`/u/${post.author.handle}`} className="flex items-center gap-3 group min-w-0">
-            <div 
+            <div
               className="w-11 h-11 rounded-full overflow-hidden transition-transform group-hover:scale-105 active:scale-95 shrink-0 shadow-sm relative"
               style={{ backgroundColor: post.author.avatarColor || '#3B82F6' }}
             >
@@ -205,7 +213,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 </div>
               </div>
             ) : (
-              <p 
+              <p
                 onClick={() => {
                   if (!isDetail && !isFocused) {
                     setLocation(`/u/${post.author.handle}?shuut=${post.id}`)
@@ -320,7 +328,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               </button>
             )}
           </div>
-          
+
           {(showComments) && (
             <PostComments postId={post.id} />
           )}
