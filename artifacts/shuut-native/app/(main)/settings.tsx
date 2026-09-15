@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useColors } from '../hooks/useColors';
-import { useAuth } from '../hooks/useAuthStore';
-import { ChevronLeft, ChevronRight, LogOut, Trash2, FileText, ShieldAlert } from 'lucide-react-native';
+import { useColors } from '../../hooks/useColors';
+import { useAuth } from '../../hooks/useAuthStore';
+import { Trash2, LogOut } from 'lucide-react-native';
 import { useMobileLogout, useDeleteAccount } from '@workspace/api-client-react';
 
 export default function SettingsScreen() {
@@ -61,56 +61,58 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft color={colors.foreground} size={24} />
-        </TouchableOpacity>
         <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
-        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Account</Text>
-
-        <View style={{ borderRadius: 16, overflow: 'hidden', marginHorizontal: 16 }}>
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]} onPress={handleLogout}>
-            <View style={styles.menuItemLeft}>
-              <LogOut color={colors.foreground} size={20} />
-              <Text style={[styles.menuItemText, { color: colors.foreground }]}>Log out</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: colors.card, borderBottomWidth: 0 }]} onPress={handleDeleteAccount}>
-            <View style={styles.menuItemLeft}>
+        <View style={[styles.card, { borderColor: colors.destructive + '40', backgroundColor: colors.destructive + '05' }]}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconContainer, { backgroundColor: colors.destructive + '1A' }]}>
               <Trash2 color={colors.destructive} size={20} />
-              <Text style={[styles.menuItemText, { color: colors.destructive }]}>Delete Account</Text>
             </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Delete account</Text>
+              <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
+                Permanently delete your SHÜÜT account and all associated content. This action cannot be undone.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={[styles.destructiveBtn, { backgroundColor: colors.destructive }]} onPress={handleDeleteAccount}>
+            <Text style={styles.primaryBtnText}>Delete account</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.mutedForeground, marginTop: 32 }]}>About</Text>
+        <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.border }]} onPress={handleLogout}>
+          <LogOut color={colors.foreground} size={20} />
+          <Text style={[styles.logoutBtnText, { color: colors.foreground }]}>Log out</Text>
+        </TouchableOpacity>
 
-        <View style={{ borderRadius: 16, overflow: 'hidden', marginHorizontal: 16 }}>
-          <TouchableOpacity
-            style={[styles.menuItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
-            onPress={() => openUrl('/terms')}
-          >
-            <View style={styles.menuItemLeft}>
-              <FileText color={colors.foreground} size={20} />
-              <Text style={[styles.menuItemText, { color: colors.foreground }]}>Terms of Service</Text>
-            </View>
-            <ChevronRight color={colors.mutedForeground} size={20} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.menuItem, { backgroundColor: colors.card, borderBottomWidth: 0 }]}
-            onPress={() => openUrl('/privacy')}
-          >
-            <View style={styles.menuItemLeft}>
-              <ShieldAlert color={colors.foreground} size={20} />
-              <Text style={[styles.menuItemText, { color: colors.foreground }]}>Privacy Policy</Text>
-            </View>
-            <ChevronRight color={colors.mutedForeground} size={20} />
-          </TouchableOpacity>
+        <View style={styles.legalLinks}>
+          <View style={styles.linksRow}>
+            <TouchableOpacity onPress={() => openUrl('/about')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>About</Text></TouchableOpacity>
+            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
+            <TouchableOpacity onPress={() => openUrl('/community')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Community Guidelines</Text></TouchableOpacity>
+            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
+            <TouchableOpacity onPress={() => openUrl('/contact')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Contact</Text></TouchableOpacity>
+          </View>
+          <View style={[styles.linksRow, { marginTop: 12 }]}>
+            <TouchableOpacity onPress={() => openUrl('/terms')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Terms of Service</Text></TouchableOpacity>
+            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
+            <TouchableOpacity onPress={() => openUrl('/privacy')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Privacy Policy</Text></TouchableOpacity>
+            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
+            <TouchableOpacity onPress={() => openUrl('/cookies')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Cookie Policy</Text></TouchableOpacity>
+          </View>
+          <View style={styles.copyright}>
+            <Text style={[styles.copyrightText, { color: colors.mutedForeground }]}>
+              © {new Date().getFullYear()} SHÜÜT — A{' '}
+            </Text>
+            <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync('https://www.doubleportrait.com')} hitSlop={8}>
+              <Text style={[styles.copyrightText, styles.companyLink, { color: colors.mutedForeground }]}>DoublePortrait Labs</Text>
+            </TouchableOpacity>
+            <Text style={[styles.copyrightText, { color: colors.mutedForeground }]}>
+              {' '}Production. All rights reserved.
+            </Text>
+          </View>
         </View>
       </ScrollView>
 
@@ -152,41 +154,99 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
+    padding: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  title: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 24,
+  },
+  content: { padding: 16, gap: 16 },
+  card: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    backgroundColor: '#fff',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 16,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  cardDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  destructiveBtn: {
+    padding: 12,
+    borderRadius: 24,
+    alignItems: 'center',
+  },
+  primaryBtnText: {
+    color: '#fff',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+  },
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     padding: 16,
-    borderBottomWidth: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    gap: 8,
   },
-  backButton: { padding: 4 },
-  title: {
+  logoutBtnText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
   },
-  content: { paddingVertical: 16 },
-  sectionTitle: {
+  legalLinks: {
+    marginTop: 32,
+    alignItems: 'center',
+  },
+  linksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  link: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 13,
+    fontSize: 12,
+  },
+  separator: {
+    marginHorizontal: 12,
+    fontSize: 12,
+  },
+  copyright: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 20,
     paddingHorizontal: 24,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  copyrightText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
   },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  menuItemText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 16,
+  companyLink: {
+    textDecorationLine: 'underline',
   },
   modalOverlay: {
     flex: 1,

@@ -4,20 +4,15 @@ import { useRouter } from 'expo-router';
 import { useStartMobileAuth } from '@workspace/api-client-react';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-
-const BRAND = {
-  white: '#FFFFFF',
-  charcoal: '#111827',
-  slate: '#6B7280',
-  cloud: '#F3F4F6',
-  blue: '#3B82F6',
-  error: '#EF4444',
-};
+import { Mail, ArrowRight } from 'lucide-react-native';
+import { useColors } from '../../hooks/useColors';
+import { LegalFooter } from '../../components/LegalFooter';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const router = useRouter();
   const startAuth = useStartMobileAuth();
+  const colors = useColors();
 
   const handleContinue = () => {
     if (!email || !email.includes('@')) return;
@@ -39,7 +34,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -52,49 +47,51 @@ export default function LoginScreen() {
             contentFit="contain"
             accessibilityLabel="SHÜÜT"
           />
-          <Text style={styles.subtitle}>
-            Sign in or create an account
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Say what's on your mind
           </Text>
         </View>
 
         <View style={styles.form}>
-          <TextInput
-            style={[
-              styles.input, 
-              { 
-                backgroundColor: BRAND.cloud,
-                color: BRAND.charcoal,
-              }
-            ]}
-            placeholder="steve@apple.com"
-            placeholderTextColor={BRAND.slate}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
+          <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
+            <Mail color={colors.mutedForeground} size={20} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: colors.foreground }]}
+              placeholder="steve@apple.com"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+          </View>
 
           {startAuth.error && (
-            <Text style={styles.error}>
+            <Text style={[styles.error, { color: colors.destructive }]}>
               {startAuth.error.message || 'An error occurred'}
             </Text>
           )}
 
           <TouchableOpacity
-            style={styles.button}
+            style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
             onPress={handleContinue}
             disabled={startAuth.isPending || !email}
           >
             {startAuth.isPending ? (
-              <ActivityIndicator color={BRAND.white} />
+              <ActivityIndicator color={colors.primaryForeground} />
             ) : (
-              <Text style={styles.buttonText}>
-                Continue
-              </Text>
+              <View style={styles.buttonContent}>
+                <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+                  Continue
+                </Text>
+                <ArrowRight color={colors.primaryForeground} size={18} />
+              </View>
             )}
           </TouchableOpacity>
         </View>
+        <View style={{ flex: 1 }} />
+        <LegalFooter />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -103,30 +100,27 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BRAND.white,
   },
   content: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
     width: '100%',
-    maxWidth: 420,
     alignItems: 'center',
-    marginBottom: 36,
+    marginTop: '25%',
+    marginBottom: 48,
   },
   logo: {
-    width: 264,
-    height: 70,
-    marginBottom: 22,
+    width: 200,
+    height: 52,
+    marginBottom: 16,
   },
   subtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    lineHeight: 24,
-    color: BRAND.slate,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 18,
     textAlign: 'center',
   },
   form: {
@@ -135,33 +129,42 @@ const styles = StyleSheet.create({
     gap: 16,
     alignItems: 'stretch',
   },
-  input: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    padding: 16,
-    borderRadius: 12,
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    textAlign: 'center',
+    height: 56,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 16,
+    height: '100%',
   },
   button: {
-    padding: 16,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: BRAND.blue,
-    borderRadius: 16,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   buttonText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-    color: BRAND.white,
-    textAlign: 'center',
   },
   error: {
     fontFamily: 'Inter_400Regular',
     fontSize: 14,
     marginTop: -8,
-    color: BRAND.error,
     textAlign: 'center',
   }
 });

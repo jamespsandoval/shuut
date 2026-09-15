@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
-import { Mic, User, Home } from 'lucide-react-native';
+import { User, Home, Settings } from 'lucide-react-native';
 
 export default function MainLayout() {
   const colors = useColors();
@@ -28,16 +28,6 @@ export default function MainLayout() {
         }}
       />
       <Tabs.Screen
-        name="record"
-        options={{
-          title: 'Record',
-          tabBarShowLabel: false,
-          tabBarIcon: ({ color, size, focused }) => (
-            <Mic color={color} size={28} strokeWidth={focused ? 2.5 : 2} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -45,6 +35,23 @@ export default function MainLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <User color={color} size={28} strokeWidth={focused ? 2.5 : 2} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarShowLabel: false,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Settings color={color} size={28} strokeWidth={focused ? 2.5 : 2} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="record"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
         }}
       />
     </Tabs>

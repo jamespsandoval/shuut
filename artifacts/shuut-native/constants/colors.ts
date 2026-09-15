@@ -1,21 +1,21 @@
 const light = {
-  background: "#F3F4F6", // Cloud
+  background: "#FFFFFF", // White
   foreground: "#111827", // Charcoal
-  border: "#E1E7F0",
-  input: "#E1E7F0",
+  border: "#F3F4F6", // Cloud
+  input: "#F3F4F6", // Cloud
   ring: "#3B82F6", // Blue
-  card: "#FFFFFF", // White
+  card: "#FFFFFF",
   cardForeground: "#111827",
-  cardBorder: "#E1E7F0",
+  cardBorder: "#F3F4F6",
   popover: "#FFFFFF",
   popoverForeground: "#111827",
-  popoverBorder: "#E1E7F0",
+  popoverBorder: "#F3F4F6",
   primary: "#3B82F6",
   primaryForeground: "#FFFFFF",
   secondary: "#F3F4F6",
   secondaryForeground: "#111827",
-  muted: "#F3F4F6",
-  mutedForeground: "#65748B",
+  muted: "#F9FAFB",
+  mutedForeground: "#6B7280", // Slate
   accent: "#F3F4F6",
   accentForeground: "#111827",
   destructive: "#EF4444", // Error

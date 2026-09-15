@@ -1,10 +1,9 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import Colors from '../constants/colors';
 import { AuthProvider, useAuth } from '../hooks/useAuthStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -20,7 +19,6 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
   const { authState } = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -55,7 +53,7 @@ function RootLayoutNav() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(main)" options={{ headerShown: false }} />
@@ -78,11 +76,9 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  const colorScheme = useColorScheme();
   useEffect(() => {
-    const bgColor = colorScheme === 'dark' ? Colors.dark.background : Colors.light.background;
-    SystemUI.setBackgroundColorAsync(bgColor);
-  }, [colorScheme]);
+    SystemUI.setBackgroundColorAsync(Colors.light.background);
+  }, []);
 
   if (!loaded) {
     return null;
