@@ -17,6 +17,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _defaultCredentials: RequestCredentials = "include";
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -42,6 +43,15 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Set the credentials mode used when a request does not specify one.
+ * Native clients use bearer sessions and should set this to "omit" so a web
+ * preview cannot accidentally send browser session cookies.
+ */
+export function setDefaultCredentials(credentials: RequestCredentials): void {
+  _defaultCredentials = credentials;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -376,7 +386,7 @@ export async function customFetch<T = unknown>(
 
   const response = await fetch(input, {
     ...init,
-    credentials: init.credentials ?? "include",
+    credentials: init.credentials ?? _defaultCredentials,
     method,
     headers,
   });

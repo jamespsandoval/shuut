@@ -7,11 +7,12 @@ import { useEffect } from 'react';
 import Colors from '../constants/colors';
 import { AuthProvider, useAuth } from '../hooks/useAuthStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { setBaseUrl } from '@workspace/api-client-react';
+import { setBaseUrl, setDefaultCredentials } from '@workspace/api-client-react';
 
 // Initialize base URL
 const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
 setBaseUrl(`https://${domain}`);
+setDefaultCredentials('omit');
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
