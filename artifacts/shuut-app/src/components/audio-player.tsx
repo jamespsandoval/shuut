@@ -6,9 +6,10 @@ interface AudioPlayerProps {
   audioUrl: string
   durationSeconds: number
   className?: string
+  compact?: boolean
 }
 
-export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlayerProps) {
+export function AudioPlayer({ audioUrl, durationSeconds, className, compact = false }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [mediaDuration, setMediaDuration] = useState(durationSeconds)
@@ -69,7 +70,11 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
   })
 
   return (
-    <div className={cn("flex items-center gap-3 bg-secondary/30 p-2 rounded-xl border border-border/50", className)}>
+    <div className={cn(
+      "flex items-center bg-secondary/30 border border-border/50",
+      compact ? "gap-2 rounded-lg px-1.5 py-1" : "gap-3 rounded-xl p-2",
+      className,
+    )}>
       <audio
         ref={audioRef}
         src={audioUrl}
@@ -89,13 +94,23 @@ export function AudioPlayer({ audioUrl, durationSeconds, className }: AudioPlaye
       <button
         onClick={togglePlay}
         aria-label={isPlaying ? "Pause recording" : "Play recording"}
-        className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 hover:scale-105 active:scale-95 transition-transform shadow-sm"
+        className={cn(
+          "relative rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 hover:scale-105 active:scale-95 transition-transform shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          compact
+            ? "h-8 w-8 before:absolute before:-inset-1.5 before:rounded-full before:content-['']"
+            : "h-10 w-10",
+        )}
       >
-        {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+        {isPlaying
+          ? <Pause className={cn("fill-current", compact ? "h-4 w-4" : "h-5 w-5")} />
+          : <Play className={cn("fill-current ml-0.5", compact ? "h-4 w-4" : "h-5 w-5")} />}
       </button>
 
       <div 
-        className="flex-1 h-8 flex items-center gap-[2px] cursor-pointer group"
+        className={cn(
+          "flex-1 flex items-center gap-[2px] cursor-pointer group",
+          compact ? "h-6" : "h-8",
+        )}
         onClick={handleSeek}
       >
         {barHeights.map((height, i) => {

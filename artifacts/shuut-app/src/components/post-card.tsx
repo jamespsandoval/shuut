@@ -231,7 +231,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
           {post.audioUrl && (
             <div className="mb-2">
-              <AudioPlayer audioUrl={post.audioUrl} durationSeconds={post.durationSeconds} />
+              <AudioPlayer audioUrl={post.audioUrl} durationSeconds={post.durationSeconds} compact />
             </div>
           )}
 
