@@ -226,7 +226,13 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     <div
       className={cn(
         "bg-card border-b border-border/50 transition-[height,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden",
-        isExpanded ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]" : "h-[140px]"
+        isRecording
+          ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
+          : audioData
+            ? previewTranscript
+              ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
+              : "h-[320px] md:h-[300px]"
+            : "h-[140px]"
       )}
       data-testid="container-recorder"
     >
@@ -292,52 +298,56 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       {/* State 3: Review / Edit */}
       <div
         className={cn(
-          "flex flex-col transition-[opacity,transform] duration-200 absolute inset-0 p-4 pb-20 md:p-8",
+          "flex flex-col transition-[opacity,transform] duration-200 absolute inset-0 p-3 pb-20 md:p-5",
           audioData ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
         )}
       >
-        <div className="flex-1 flex flex-col w-full max-w-2xl mx-auto h-full justify-between gap-4 md:gap-6">
-          <div className="space-y-4 md:space-y-6 flex-1 flex flex-col min-h-0">
-            <div className="shrink-0 bg-card rounded-2xl border border-border/50 p-2 shadow-sm" data-testid="wrapper-audio-preview">
+        <div className={cn(
+          "flex w-full max-w-2xl mx-auto flex-col rounded-2xl border border-border/60 bg-secondary/10 p-3 shadow-sm md:p-4",
+          previewTranscript ? "h-full min-h-0" : "gap-3",
+        )}>
+          <div className={cn(
+            "flex flex-col min-h-0",
+            previewTranscript ? "flex-1 gap-3 md:gap-4" : "gap-3",
+          )}>
+            <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
 
             {previewTranscript ? (
-            <div className="relative flex-1 flex flex-col min-h-0 group">
-              <Textarea
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-                placeholder={transcribeAudio.isPending ? "Transcribing your voice note…" : "Edit your transcript..."}
-                className="flex-1 resize-none text-lg md:text-xl p-4 md:p-6 pb-12 bg-secondary/10 border-border/40 focus-visible:ring-primary/50 focus-visible:bg-background rounded-2xl md:rounded-3xl shadow-inner transition-colors"
-                data-testid="textarea-transcript"
-              />
-              <div className="absolute right-4 bottom-4 text-xs md:text-sm text-muted-foreground font-mono bg-background/80 px-2 py-1 rounded-md backdrop-blur-sm shadow-sm border border-border/50 transition-opacity">
-                {transcript.length} chars
-              </div>
-            </div>
-            ) : (
-              <div className="flex flex-1 items-center justify-center rounded-3xl bg-secondary/20 p-8 text-center">
-                <div>
-                  <h3 className="text-xl font-bold">Ready to SHÜÜT</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Your transcript will be created after publishing.
-                  </p>
+              <div className="relative flex-1 flex flex-col min-h-0 group">
+                <Textarea
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder={transcribeAudio.isPending ? "Transcribing your voice note…" : "Edit your transcript..."}
+                  className="flex-1 resize-none text-lg md:text-xl p-4 md:p-5 pb-12 bg-background/70 border-border/50 focus-visible:ring-primary/50 focus-visible:bg-background rounded-xl md:rounded-2xl shadow-inner transition-colors"
+                  data-testid="textarea-transcript"
+                />
+                <div className="absolute right-4 bottom-4 text-xs md:text-sm text-muted-foreground font-mono bg-background/80 px-2 py-1 rounded-md backdrop-blur-sm shadow-sm border border-border/50 transition-opacity">
+                  {transcript.length} chars
                 </div>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-background/60 px-4 py-3 text-center">
+                <h3 className="text-lg font-bold md:text-xl">Ready, Set…</h3>
               </div>
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 md:gap-4 shrink-0 pt-2 border-t border-border/30 mt-auto">
-            <Button variant="ghost" onClick={handleCancel} className="text-muted-foreground w-full sm:w-auto text-base md:text-lg h-12 md:h-14 rounded-full px-6 md:px-8 hover:bg-secondary/80" data-testid="button-cancel-recording">
+          <div className={cn(
+            "flex flex-row justify-between items-center gap-3 shrink-0 border-t border-border/40",
+            previewTranscript ? "mt-4 pt-3" : "pt-3",
+          )}>
+            <Button variant="ghost" onClick={handleCancel} className="text-muted-foreground h-11 rounded-full px-4 text-sm hover:bg-secondary/80 md:px-6 md:text-base" data-testid="button-cancel-recording">
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={createPost.isPending || !audioObjectPath || (previewTranscript && (transcribeAudio.isPending || !transcript.trim()))}
-              className="w-full sm:w-auto rounded-full px-8 md:px-12 h-12 md:h-14 text-base md:text-lg font-bold gap-2 shadow-lg shadow-primary/20 transition-all active:scale-95"
+              className="h-11 rounded-full px-7 text-base font-bold gap-2 shadow-md shadow-primary/20 transition-all active:scale-95 md:px-10"
               data-testid="button-submit-recording"
             >
-              {createPost.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              {createPost.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               SHÜÜT
             </Button>
           </div>
