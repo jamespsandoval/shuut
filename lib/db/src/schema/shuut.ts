@@ -76,6 +76,19 @@ export const profileImageUploadsTable = pgTable(
   (table) => [index("shuut_profile_image_uploads_user_idx").on(table.userId)],
 );
 
+export const privateObjectCleanupTable = pgTable(
+  "shuut_private_object_cleanup",
+  {
+    objectPath: text("object_path").primaryKey(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("shuut_private_object_cleanup_due_idx").on(table.nextAttemptAt)],
+);
+
 export const usersTable = pgTable("shuut_users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),

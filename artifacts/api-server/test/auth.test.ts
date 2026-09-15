@@ -8,6 +8,7 @@ import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
 import { hashSessionToken } from "../src/middlewares/sessionAuth";
 import { authCodeEmail } from "../src/lib/authCodeEmail";
+import { processPrivateObjectCleanup } from "../src/lib/privateObjectCleanup";
 import {
   securityNotificationEmail,
   sendSecurityNotificationEmail,
@@ -17,6 +18,7 @@ import {
   db,
   foundersTable,
   passkeysTable,
+  privateObjectCleanupTable,
   pool,
   postsTable,
   profileImageUploadsTable,
@@ -35,6 +37,7 @@ let realFetch: typeof globalThis.fetch;
 let realRegisterVerifier: typeof webauthnVerifier.verifyRegistration;
 let realAssertionVerifier: typeof webauthnVerifier.verifyAuthentication;
 let realStreamPrivate: ObjectStorageService["streamPrivate"];
+let realDeleteObject: ObjectStorageService["deleteObject"];
 let requestNumber = 0;
 
 type BrowserSession = {
@@ -229,6 +232,7 @@ before(async () => {
   realRegisterVerifier = webauthnVerifier.verifyRegistration;
   realAssertionVerifier = webauthnVerifier.verifyAuthentication;
   realStreamPrivate = ObjectStorageService.prototype.streamPrivate;
+  realDeleteObject = ObjectStorageService.prototype.deleteObject;
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -241,6 +245,7 @@ after(async () => {
   webauthnVerifier.verifyRegistration = realRegisterVerifier;
   webauthnVerifier.verifyAuthentication = realAssertionVerifier;
   ObjectStorageService.prototype.streamPrivate = realStreamPrivate;
+  ObjectStorageService.prototype.deleteObject = realDeleteObject;
   globalThis.fetch = realFetch;
   const users = await db.select({ id: usersTable.id }).from(usersTable)
     .where(like(usersTable.email, `${prefix}%`));
@@ -543,9 +548,40 @@ test("publishing requires owned audio and responses never expose private object 
     session,
   });
   assert.equal(deletion.status, 204);
+  const [queued] = await db
+    .select()
+    .from(privateObjectCleanupTable)
+    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
+  assert.ok(queued, "Account deletion must durably queue its private recording");
   assert.equal((await request("/api/auth/me", {
     headers: { cookie: session.cookie },
   })).status, 401);
+
+  let deleteAttempts = 0;
+  ObjectStorageService.prototype.deleteObject = async () => {
+    deleteAttempts += 1;
+    if (deleteAttempts === 1) throw new Error("Temporary object storage outage");
+  };
+  assert.equal(await processPrivateObjectCleanup(), 0);
+  const [retry] = await db
+    .select()
+    .from(privateObjectCleanupTable)
+    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
+  assert.equal(retry.attempts, 1);
+  assert.match(retry.lastError ?? "", /Temporary object storage outage/);
+
+  await db
+    .update(privateObjectCleanupTable)
+    .set({ nextAttemptAt: new Date(0) })
+    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
+  assert.equal(await processPrivateObjectCleanup(), 1);
+  assert.equal(deleteAttempts, 2);
+  const completed = await db
+    .select()
+    .from(privateObjectCleanupTable)
+    .where(eq(privateObjectCleanupTable.objectPath, objectPath));
+  assert.equal(completed.length, 0);
+  ObjectStorageService.prototype.deleteObject = realDeleteObject;
 });
 
 test("rich preview metadata requires an authenticated share action and signed token", async () => {

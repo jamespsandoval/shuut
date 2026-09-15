@@ -2,3 +2,4 @@
 - [Postmark sender](postmark-sender.md) — shuut.me is verified and configured for domain-wide sending in Postmark.
 - [Development preview access](development-preview-access.md) — remixes may enable Private development URL, causing Replit’s login gate before SHÜÜT.
 - [Workspace React singletons](workspace-react-singletons.md) — context libraries shared with linked packages must be deduplicated in production builds.
+- [Private object deletion](private-object-deletion.md) — remove DB references only when cleanup intent is durably queued; serialize publication with deletion.
