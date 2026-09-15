@@ -1,8 +1,11 @@
+import { escapeHtml, renderEmailHtml } from "./emailTemplate";
+
 export async function sendPostmarkEmail(input: {
   to: string;
   subject: string;
   textBody: string;
   htmlBody?: string;
+  replyTo?: string;
 }): Promise<void> {
   const token = process.env.POSTMARK_API_KEY ?? process.env.POSTMARK_SERVER_TOKEN;
   if (!token) throw new Error("Postmark is not configured");
@@ -18,6 +21,7 @@ export async function sendPostmarkEmail(input: {
     body: JSON.stringify({
       From: "admin@shuut.me",
       To: input.to,
+      ...(input.replyTo ? { ReplyTo: input.replyTo } : {}),
       Subject: input.subject,
       TextBody: input.textBody,
       ...(input.htmlBody ? { HtmlBody: input.htmlBody } : {}),
@@ -84,15 +88,6 @@ const SECURITY_NOTIFICATIONS: Record<SecurityNotificationKind, {
   },
 };
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 export function securityNotificationEmail(input: Omit<SecurityNotificationInput, "to">): {
   subject: string;
   textBody: string;
@@ -114,59 +109,32 @@ export function securityNotificationEmail(input: Omit<SecurityNotificationInput,
     "",
     content.action,
     "",
-    "SHÜÜT — Voice notes for real conversations.",
+    "SHÜÜT — Voice first. A more human feed.",
     "This inbox isn’t monitored, so please don’t reply to this email.",
   ].filter((line) => line !== null).join("\n");
-  const safePreview = escapeHtml(`${content.message} ${content.action}`);
   const safeTiming = timing ? escapeHtml(timing) : "";
-  const accent = content.urgent ? "#b94224" : "#a24728";
-  const panelBackground = content.urgent ? "#fff0ea" : "#faf4ef";
 
-  const htmlBody = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light">
-  <title>${escapeHtml(content.heading)}</title>
-</head>
-<body style="margin:0;padding:0;background-color:#f5f2ec;color:#1f1d1a;font-family:Arial,Helvetica,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${safePreview}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f5f2ec;">
-    <tr>
-      <td align="center" style="padding:28px 12px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #ded8ce;border-radius:18px;">
-          <tr>
-            <td style="padding:28px 28px 18px;border-bottom:1px solid #eee9e1;">
-              <div style="font-size:25px;line-height:30px;font-weight:800;letter-spacing:-0.6px;color:#1f1d1a;">SH<span style="color:#ef6a3a;">ÜÜ</span>T</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 28px 30px;">
-              <div style="margin:0 0 10px;color:${accent};font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.5px;">${escapeHtml(content.eyebrow)}</div>
-              <h1 style="margin:0 0 12px;color:#1f1d1a;font-size:29px;line-height:36px;font-weight:750;letter-spacing:-0.5px;">${escapeHtml(content.heading)}</h1>
-              <p style="margin:0 0 18px;color:#5f5a52;font-size:16px;line-height:25px;">${escapeHtml(content.message)}</p>
-              ${safeTiming ? `<p style="margin:0 0 22px;color:#1f1d1a;font-size:16px;line-height:25px;font-weight:700;">${safeTiming}</p>` : ""}
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:${panelBackground};border-left:4px solid ${accent};border-radius:8px;">
-                <tr>
-                  <td style="padding:16px;color:#5f5149;font-size:14px;line-height:21px;"><strong style="color:#1f1d1a;">${content.urgent ? "Act now if you don’t recognize this." : "What happens next"}</strong><br>${escapeHtml(content.action)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 28px 24px;border-top:1px solid #eee9e1;color:#827b71;font-size:12px;line-height:18px;">
-              <strong style="color:#5f5a52;">SHÜÜT</strong> — Voice notes for real conversations.<br>
-              This inbox isn’t monitored, so please don’t reply.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+  const bodyHtml = `
+    <p style="margin:0 0 16px;color:#6B7280;">${escapeHtml(content.message)}</p>
+    ${safeTiming ? `<p style="margin:0 0 24px;color:#111827;font-weight:600;">${safeTiming}</p>` : ""}
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:${content.urgent ? "#FEF2F2" : "#F3F4F6"};border-left:4px solid ${content.urgent ? "#EF4444" : "#3B82F6"};border-radius:8px;">
+      <tr>
+        <td style="padding:16px;color:#111827;font-size:14px;line-height:22px;">
+          <strong style="color:#111827;">${content.urgent ? "Act now if you don’t recognize this." : "What happens next"}</strong><br>
+          <span style="color:#6B7280;">${escapeHtml(content.action)}</span>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  const htmlBody = renderEmailHtml({
+    title: content.heading,
+    previewText: `${content.message} ${content.action}`,
+    eyebrow: content.eyebrow,
+    heading: content.heading,
+    bodyHtml,
+    urgent: content.urgent,
+  });
 
   return { subject: content.subject, textBody, htmlBody };
 }

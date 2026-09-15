@@ -33,7 +33,7 @@ import {
 
 const prefix = `auth-security-${Date.now()}`;
 const userAgent = "SHUUT security regression test";
-const sentEmails: Array<{ To: string; Subject: string; TextBody: string; HtmlBody?: string }> = [];
+const sentEmails: Array<{ To: string; Subject: string; TextBody: string; HtmlBody?: string; ReplyTo?: string }> = [];
 let baseUrl = "";
 let appOrigin = "";
 let server: ReturnType<typeof app.listen>;
@@ -70,6 +70,8 @@ test("authentication code templates are readable, branded, and safely escaped", 
     const message = authCodeEmail({ code: '12<3&"456', kind });
     assert.match(message.htmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
     assert.match(message.htmlBody, /12&lt;3&amp;&quot;456/);
+    assert.match(message.htmlBody, /#3B82F6/);
+    assert.match(message.htmlBody, /Inter/);
     assert.ok(!message.htmlBody.includes('12<3&"456'));
     assert.match(message.textBody, /This code expires in 15 minutes/);
     assert.match(message.textBody, /This inbox isn’t monitored/);
@@ -128,9 +130,36 @@ test("Postmark payloads include branded HTML and text for every security notific
     assert.ok(payload, `Expected Postmark payload for ${item.kind}`);
     assert.ok(payload.HtmlBody);
     assert.match(payload.HtmlBody, /SH<span[^>]*>ÜÜ<\/span>T/);
+    assert.match(payload.HtmlBody, /#3B82F6/);
+    assert.match(payload.HtmlBody, /Inter/);
     assert.ok(payload.HtmlBody.includes(item.phrase));
     assert.ok(payload.TextBody.includes(item.phrase));
   }
+});
+
+test("contact transport builds branded HTML emails and preserves Reply-To", async () => {
+  const email = "contact-test@example.com";
+  const response = await request("/api/contact", {
+    method: "POST",
+    json: {
+      firstName: "Test",
+      lastName: "User",
+      email,
+      message: "Hello this is a <script>alert(1)</script> test",
+      consent: true,
+    },
+  });
+  assert.equal(response.status, 200);
+
+  const payload = sentEmails.findLast(
+    (entry) => entry.To === "admin@shuut.me" && entry.Subject.includes("Test User"),
+  );
+  assert.ok(payload);
+  assert.equal(payload.ReplyTo, email);
+  assert.ok(payload.HtmlBody);
+  assert.match(payload.HtmlBody, /#3B82F6/);
+  assert.match(payload.HtmlBody, /Inter/);
+  assert.match(payload.HtmlBody, /Hello this is a &lt;script&gt;alert\(1\)&lt;\/script&gt; test/);
 });
 
 function parseSession(response: Response): BrowserSession {

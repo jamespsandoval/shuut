@@ -3,6 +3,8 @@ import {
   SendContactMessageBody,
   SendContactMessageResponse,
 } from "@workspace/api-zod";
+import { sendPostmarkEmail } from "../lib/postmark";
+import { escapeHtml, renderEmailHtml } from "../lib/emailTemplate";
 
 const router: IRouter = Router();
 const WINDOW_MS = 15 * 60 * 1000;
@@ -32,45 +34,37 @@ router.post("/", async (req, res): Promise<void> => {
   }
   attempts.set(key, [...recentAttempts, now]);
 
-  const token = process.env.POSTMARK_API_KEY ?? process.env.POSTMARK_SERVER_TOKEN;
-  if (!token) {
-    req.log.error("A Postmark server token is not configured");
-    res.status(503).json({ error: "Contact email is temporarily unavailable." });
-    return;
-  }
-
   try {
-    const response = await fetch("https://api.postmarkapp.com/email", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "X-Postmark-Server-Token": token,
-      },
-      body: JSON.stringify({
-        From: "admin@shuut.me",
-        To: "admin@shuut.me",
-        ReplyTo: body.data.email,
-        Subject: `SHÜÜT contact from ${body.data.firstName} ${body.data.lastName}`,
-        TextBody: [
-          `Name: ${body.data.firstName} ${body.data.lastName}`,
-          `Email: ${body.data.email}`,
-          "",
-          body.data.message,
-        ].join("\n"),
-        MessageStream: "outbound",
-      }),
+    const subject = `SHÜÜT contact from ${body.data.firstName} ${body.data.lastName}`;
+    const textBody = [
+      `Name: ${body.data.firstName} ${body.data.lastName}`,
+      `Email: ${body.data.email}`,
+      "",
+      body.data.message,
+    ].join("\n");
+
+    const bodyHtml = `
+      <p style="margin:0 0 8px;color:#6B7280;"><strong>Name:</strong> <span style="color:#111827;">${escapeHtml(body.data.firstName)} ${escapeHtml(body.data.lastName)}</span></p>
+      <p style="margin:0 0 24px;color:#6B7280;"><strong>Email:</strong> <span style="color:#111827;">${escapeHtml(body.data.email)}</span></p>
+      <div style="padding:20px;background-color:#F3F4F6;border-radius:12px;color:#111827;white-space:pre-wrap;font-size:15px;line-height:24px;">${escapeHtml(body.data.message)}</div>
+    `;
+
+    const htmlBody = renderEmailHtml({
+      title: subject,
+      previewText: body.data.message.slice(0, 100),
+      eyebrow: "CONTACT MESSAGE",
+      heading: "New Contact Message",
+      bodyHtml,
+      urgent: false,
     });
 
-    if (!response.ok) {
-      const postmarkError = await response.text();
-      req.log.error(
-        { statusCode: response.status, postmarkError },
-        "Postmark rejected contact email",
-      );
-      res.status(502).json({ error: "Your message could not be sent. Please try again." });
-      return;
-    }
+    await sendPostmarkEmail({
+      to: "admin@shuut.me",
+      replyTo: body.data.email,
+      subject,
+      textBody,
+      htmlBody,
+    });
 
     res.json(SendContactMessageResponse.parse({ sent: true }));
   } catch (error) {
