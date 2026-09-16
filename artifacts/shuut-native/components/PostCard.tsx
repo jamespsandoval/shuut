@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator } from 'react-native';
 import { useColors } from '../hooks/useColors';
 import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost } from '@workspace/api-client-react';
@@ -8,11 +8,23 @@ import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil } from '
 import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
 import { File } from 'expo-file-system';
-import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync } from 'expo-audio';
+import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { authenticatedImageSource } from '../lib/apiUrl';
 import { useAuth } from '../hooks/useAuthStore';
 
-export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, refetchFeed: () => void, isDetail?: boolean }) {
+export function PostCard({
+  post,
+  refetchFeed,
+  isDetail = false,
+  disableAuthorNavigation = false,
+  onReply,
+}: {
+  post: Post;
+  refetchFeed: () => void;
+  isDetail?: boolean;
+  disableAuthorNavigation?: boolean;
+  onReply?: () => void;
+}) {
   const colors = useColors();
   const router = useRouter();
   const { token } = useAuth();
@@ -30,6 +42,8 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
   // Comment composer state
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
+  const isRecordingRef = useRef(false);
+  isRecordingRef.current = recorderState.isRecording;
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -90,6 +104,10 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
         if (newPerm.status !== 'granted') return;
       }
       setRecordedUri(null);
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
       await recorder.prepareToRecordAsync();
       recorder.record();
     } catch (err) {
@@ -99,7 +117,7 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
 
   const stopRecording = async () => {
     try {
-      recorder.stop();
+      await recorder.stop();
       const uri = recorder.uri;
       if (uri) {
         setRecordedUri(uri);
@@ -110,6 +128,17 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
       console.error('Failed to stop recording', err);
     }
   };
+
+  useEffect(() => {
+    if (recorderState.isRecording && recorderState.durationMillis >= 90_000) {
+      void stopRecording();
+    }
+  }, [recorderState.durationMillis, recorderState.isRecording]);
+
+  useEffect(() => () => {
+    if (isRecordingRef.current) void recorder.stop().catch(() => undefined);
+    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+  }, [recorder]);
 
   const publishComment = async () => {
     if (!recordedUri) return;
@@ -164,7 +193,10 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
       <View style={styles.postHeader}>
         <TouchableOpacity
           style={styles.authorInfo}
-          onPress={() => router.push(`/profile/${post.author.handle}`)}
+          onPress={disableAuthorNavigation ? undefined : () => router.push(
+            post.canDelete ? '/(main)/profile' : `/profile/${post.author.handle}`,
+          )}
+          disabled={disableAuthorNavigation}
         >
           {post.author.avatarUrl ? (
             <Image source={authenticatedImageSource(post.author.avatarUrl, token)} style={styles.avatar} />
@@ -239,11 +271,13 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionBtn} onPress={() => {
-          if (isDetail) {
-            // Already showing comments below
-          } else {
-            setShowCommentComposer(!showCommentComposer);
+          if (onReply) {
+            onReply();
+            return;
           }
+          if (showCommentComposer) return;
+          setShowCommentComposer(true);
+          void startRecording();
         }}>
           <Mic color={colors.mutedForeground} size={18} />
         </TouchableOpacity>
@@ -271,7 +305,7 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
             {recordedUri ? (
               <View style={styles.composerActions}>
                 <View style={{ flex: 1, marginRight: 8 }}>
-                   <AuthenticatedAudioPlayer url={null} durationSeconds={duration} />
+                   <AuthenticatedAudioPlayer url={recordedUri} durationSeconds={duration} />
                 </View>
                 <View style={styles.composerButtonsRow}>
                   <TouchableOpacity onPress={() => setRecordedUri(null)} disabled={isUploading}>
@@ -288,13 +322,13 @@ export function PostCard({ post, refetchFeed, isDetail = false }: { post: Post, 
               </View>
             ) : (
               <View style={styles.composerActions}>
-                <TouchableOpacity style={styles.recordBtnPlaceholder} onPress={recorder.isRecording ? stopRecording : startRecording}>
+                <TouchableOpacity style={styles.recordBtnPlaceholder} onPress={recorderState.isRecording ? stopRecording : startRecording}>
                   <Mic color={colors.mutedForeground} size={16} />
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', marginLeft: 8 }}>
-                    {recorder.isRecording ? 'Recording...' : 'Add a voice comment...'}
+                    {recorderState.isRecording ? 'Recording...' : 'Add a voice comment...'}
                   </Text>
                 </TouchableOpacity>
-                {recorder.isRecording && (
+                {recorderState.isRecording && (
                    <TouchableOpacity
                     style={[styles.publishCommentBtn, { backgroundColor: colors.destructive }]}
                     onPress={stopRecording}

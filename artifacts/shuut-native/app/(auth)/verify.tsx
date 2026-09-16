@@ -15,9 +15,8 @@ import {
   MobileRecoverySession
 } from '@workspace/api-client-react';
 import { useAuth } from '../../hooks/useAuthStore';
-import { ArrowLeft, KeyRound } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import { Image } from 'expo-image';
-import { LegalFooter } from '../../components/LegalFooter';
 
 function normalizeConfirmationCode(value: string): string {
   return value.replace(/\D/g, '').slice(0, 6);
@@ -77,8 +76,8 @@ export default function VerifyScreen() {
   const isPending = verifyEmail.isPending || verifyLogin.isPending || startHandoff.isPending || exchangeHandoff.isPending || requestRecovery.isPending || sendRecoveryCode.isPending || confirmRecovery.isPending;
   const error = verifyEmail.error || verifyLogin.error || startHandoff.error || exchangeHandoff.error || requestRecovery.error || sendRecoveryCode.error || confirmRecovery.error;
 
-  const handleVerify = async () => {
-    const confirmationCode = normalizeConfirmationCode(code);
+  const handleVerify = async (codeToVerify = code) => {
+    const confirmationCode = normalizeConfirmationCode(codeToVerify);
     if (confirmationCode.length !== 6 || isPending) return;
 
     try {
@@ -140,8 +139,8 @@ export default function VerifyScreen() {
     }
   };
 
-  const handleConfirmRecovery = async () => {
-    const confirmationCode = normalizeConfirmationCode(recoveryCode);
+  const handleConfirmRecovery = async (codeToConfirm = recoveryCode) => {
+    const confirmationCode = normalizeConfirmationCode(codeToConfirm);
     if (confirmationCode.length !== 6 || isPending) return;
     try {
       const res = await confirmRecovery.mutateAsync({ data: { code: confirmationCode } });
@@ -183,11 +182,10 @@ export default function VerifyScreen() {
             <Text style={[styles.title, { color: colors.foreground }]}>
               {handoffStep ? 'Passkey Required' : 'Check your email'}
             </Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {handoffStep ? 'Complete the security check in the browser' : 'We sent a 6-digit sign-in code to'}
-            </Text>
-            {!handoffStep && (
-              <Text style={[styles.emailText, { color: colors.foreground }]}>{email}</Text>
+            {handoffStep && (
+              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+                Complete the security check in the browser
+              </Text>
             )}
           </View>
         </View>
@@ -197,7 +195,6 @@ export default function VerifyScreen() {
             <View style={styles.form}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>VERIFICATION CODE</Text>
               <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
-                <KeyRound color={colors.mutedForeground} size={20} style={styles.inputIcon} />
                 <TextInput
                   nativeID="shuut-verification-code"
                   style={[styles.input, { color: colors.foreground }]}
@@ -207,10 +204,14 @@ export default function VerifyScreen() {
                   returnKeyType="done"
                   textContentType="oneTimeCode"
                   autoComplete="one-time-code"
+                  autoFocus
                   selectTextOnFocus
-                  maxLength={6}
                   value={code}
-                  onChangeText={(value) => setCode(normalizeConfirmationCode(value))}
+                  onChangeText={(value) => {
+                    const nextCode = normalizeConfirmationCode(value);
+                    setCode(nextCode);
+                    if (nextCode.length === 6) void handleVerify(nextCode);
+                  }}
                   onSubmitEditing={() => {
                     void handleVerify();
                   }}
@@ -225,7 +226,7 @@ export default function VerifyScreen() {
 
               <TouchableOpacity
                 style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-                onPress={handleVerify}
+                onPress={() => void handleVerify()}
                 disabled={isPending || code.length < 6}
               >
                 {isPending ? (
@@ -324,17 +325,21 @@ export default function VerifyScreen() {
                         returnKeyType="done"
                         textContentType="oneTimeCode"
                         autoComplete="one-time-code"
+                        autoFocus
                         selectTextOnFocus
-                        maxLength={6}
                         value={recoveryCode}
-                        onChangeText={(value) => setRecoveryCode(normalizeConfirmationCode(value))}
+                        onChangeText={(value) => {
+                          const nextCode = normalizeConfirmationCode(value);
+                          setRecoveryCode(nextCode);
+                          if (nextCode.length === 6) void handleConfirmRecovery(nextCode);
+                        }}
                         onSubmitEditing={() => {
                           void handleConfirmRecovery();
                         }}
                       />
                       <TouchableOpacity
                         style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius, marginTop: 8 }]}
-                        onPress={handleConfirmRecovery}
+                        onPress={() => void handleConfirmRecovery()}
                         disabled={isPending || recoveryCode.length < 6}
                       >
                         <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>Confirm Recovery</Text>
@@ -347,7 +352,6 @@ export default function VerifyScreen() {
           )}
         </View>
         <View style={{ flex: 1 }} />
-        <LegalFooter />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -401,11 +405,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
   },
-  emailText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-    marginTop: 4,
-  },
   formSection: {
     width: '100%',
   },
@@ -426,15 +425,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     height: 56,
   },
-  inputIcon: {
-    marginRight: 12,
-  },
   input: {
     flex: 1,
     fontFamily: 'Inter_500Medium',
     fontSize: 24,
     letterSpacing: 8,
     height: '100%',
+    textAlign: 'center',
   },
   inputLegacy: {
     fontFamily: 'Inter_700Bold',

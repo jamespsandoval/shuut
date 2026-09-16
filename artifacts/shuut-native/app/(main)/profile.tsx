@@ -220,7 +220,9 @@ export default function MyProfileScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border, paddingTop: Platform.OS === 'web' ? 52 : 8 }]}>
         <Text style={[styles.title, { color: colors.foreground }]}>{profileData?.founder?.name}</Text>
-        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{profileData?.postCount || 0} SHÜÜTs</Text>
+        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          {profileData?.postCount ?? 0} {(profileData?.postCount ?? 0) === 1 ? 'SHÜÜT' : 'SHÜÜTs'}
+        </Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -276,7 +278,7 @@ export default function MyProfileScreen() {
 
         <View style={styles.feed}>
           {profileData?.posts?.map((post: Post) => (
-            <PostCard key={post.id} post={post} refetchFeed={refetch} />
+            <PostCard key={post.id} post={post} refetchFeed={refetch} disableAuthorNavigation />
           ))}
           {(!profileData?.posts || profileData.posts.length === 0) && (
             <Text style={{textAlign: 'center', color: colors.mutedForeground, marginTop: 32}}>No SHÜÜTs yet.</Text>
@@ -340,7 +342,7 @@ export default function MyProfileScreen() {
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>NAME</Text>
               <TextInput
                 nativeID="shuut-profile-name"
-                style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                style={[styles.input, { borderColor: `${colors.mutedForeground}40`, color: colors.foreground }]}
                 value={name}
                 onChangeText={setName}
                 placeholder="Name"
@@ -350,7 +352,7 @@ export default function MyProfileScreen() {
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>HANDLE</Text>
               <TextInput
                 nativeID="shuut-profile-handle"
-                style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                style={[styles.input, { borderColor: `${colors.mutedForeground}40`, color: colors.foreground }]}
                 value={handle}
                 onChangeText={setHandle}
                 placeholder="@handle"
@@ -361,7 +363,7 @@ export default function MyProfileScreen() {
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>BIO</Text>
               <TextInput
                 nativeID="shuut-profile-bio"
-                style={[styles.input, { borderColor: colors.border, color: colors.foreground, minHeight: 80, textAlignVertical: 'top' }]}
+                style={[styles.input, { borderColor: `${colors.mutedForeground}40`, color: colors.foreground, minHeight: 80, textAlignVertical: 'top' }]}
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Bio"
@@ -374,7 +376,7 @@ export default function MyProfileScreen() {
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>LOCATION</Text>
               <TextInput
                 nativeID="shuut-profile-location"
-                style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                style={[styles.input, { borderColor: `${colors.mutedForeground}40`, color: colors.foreground }]}
                 value={location}
                 onChangeText={setLocation}
                 placeholder="Location"
@@ -384,7 +386,7 @@ export default function MyProfileScreen() {
               <Text style={[styles.inputLabel, { color: colors.mutedForeground }]}>WEBSITE</Text>
               <TextInput
                 nativeID="shuut-profile-website"
-                style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                style={[styles.input, { borderColor: `${colors.mutedForeground}40`, color: colors.foreground }]}
                 value={website}
                 onChangeText={setWebsite}
                 placeholder="https://"
@@ -530,7 +532,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    borderWidth: 1,
+    borderWidth: 1.25,
     borderRadius: 16,
     padding: 16,
     fontFamily: 'Inter_400Regular',

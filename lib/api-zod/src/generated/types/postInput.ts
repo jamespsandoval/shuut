@@ -19,4 +19,6 @@ export interface PostInput {
      * @maximum 90
      */
   durationSeconds: number;
+  /** @maxItems 5 */
+  mentionedFounderIds?: number[];
 }

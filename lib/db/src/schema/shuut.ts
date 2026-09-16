@@ -46,6 +46,43 @@ export const postsTable = pgTable("shuut_posts", {
   deletionStatus: text("deletion_status").notNull().default("active"),
 });
 
+export const postReactionsTable = pgTable(
+  "shuut_post_reactions",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => postsTable.id, { onDelete: "cascade" }),
+    founderId: integer("founder_id")
+      .notNull()
+      .references(() => foundersTable.id, { onDelete: "cascade" }),
+    emojiType: text("emoji_type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_post_reactions_post_founder_idx").on(table.postId, table.founderId),
+    index("shuut_post_reactions_founder_idx").on(table.founderId),
+  ],
+);
+
+export const postReshuutsTable = pgTable(
+  "shuut_post_reshuuts",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id")
+      .notNull()
+      .references(() => postsTable.id, { onDelete: "cascade" }),
+    founderId: integer("founder_id")
+      .notNull()
+      .references(() => foundersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_post_reshuuts_post_founder_idx").on(table.postId, table.founderId),
+    index("shuut_post_reshuuts_founder_idx").on(table.founderId),
+  ],
+);
+
 export const commentsTable = pgTable(
   "shuut_comments",
   {
@@ -65,6 +102,39 @@ export const commentsTable = pgTable(
   (table) => [
     index("shuut_comments_post_created_idx").on(table.postId, table.createdAt),
     index("shuut_comments_author_idx").on(table.authorId),
+  ],
+);
+
+export const postMentionsTable = pgTable(
+  "shuut_post_mentions",
+  {
+    id: serial("id").primaryKey(),
+    postId: integer("post_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
+    founderId: integer("founder_id").notNull().references(() => foundersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_post_mentions_post_founder_idx").on(table.postId, table.founderId),
+    index("shuut_post_mentions_founder_idx").on(table.founderId),
+  ],
+);
+
+export const notificationsTable = pgTable(
+  "shuut_notifications",
+  {
+    id: serial("id").primaryKey(),
+    actorId: integer("actor_id").notNull().references(() => foundersTable.id, { onDelete: "cascade" }),
+    recipientId: integer("recipient_id").notNull().references(() => foundersTable.id, { onDelete: "cascade" }),
+    postId: integer("post_id").notNull().references(() => postsTable.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    reactionType: text("reaction_type"),
+    commentId: integer("comment_id").references(() => commentsTable.id, { onDelete: "cascade" }),
+    dedupeKey: text("dedupe_key").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("shuut_notifications_recipient_created_idx").on(table.recipientId, table.createdAt),
+    index("shuut_notifications_post_idx").on(table.postId),
   ],
 );
 
@@ -98,6 +168,11 @@ export const usersTable = pgTable("shuut_users", {
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletionStatus: text("deletion_status").notNull().default("active"),
+  eligibilityStatus: text("eligibility_status").notNull().default("undecided"),
+  onboardingFirstName: text("onboarding_first_name"),
+  onboardingLastName: text("onboarding_last_name"),
+  proposedHandle: text("proposed_handle"),
+  eligibilityDecidedAt: timestamp("eligibility_decided_at", { withTimezone: true }),
 });
 
 export const objectCleanupJobsTable = pgTable(
@@ -257,3 +332,4 @@ export const securityAuditEventsTable = pgTable(
 export type FounderRow = typeof foundersTable.$inferSelect;
 export type PostRow = typeof postsTable.$inferSelect;
 export type CommentRow = typeof commentsTable.$inferSelect;
+export type NotificationRow = typeof notificationsTable.$inferSelect;

@@ -23,4 +23,5 @@ export interface OnboardingInput {
      * @pattern ^[a-z0-9_]+$
      */
   handle: string;
+  eligible: boolean;
 }

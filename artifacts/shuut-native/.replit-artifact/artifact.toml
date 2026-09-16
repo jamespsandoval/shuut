@@ -1,6 +1,6 @@
 kind = "mobile"
 previewPath = "/shuut-native/"
-title = "SHÜÜT Native"
+title = "SHÜÜT"
 description = "The native iPhone and Android SHÜÜT client for securely recording, publishing, listening to, and responding to voice notes using the existing SHÜÜT service."
 version = "1.0.0"
 id = "artifacts/shuut-native"

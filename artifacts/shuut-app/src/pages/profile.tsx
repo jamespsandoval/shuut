@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
 import { PostCard } from "@/components/post-card"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Loader2, ArrowLeft, MessageSquareQuote, Camera, X, MapPin, Link as LinkIcon } from "lucide-react"
@@ -30,7 +29,6 @@ const profileSchema = z.object({
   bio: z.string().max(240, "Bio must be less than 240 characters"),
   location: z.string().max(80, "Location must be less than 80 characters").optional().default(""),
   website: z.string().max(200, "Website must be less than 200 characters").optional().default(""),
-  previewTranscript: z.boolean().default(false),
 })
 
 function csrfToken(): string | null {
@@ -63,7 +61,6 @@ function EditProfileDialog({
       bio: profile.founder.bio || "",
       location: profile.founder.location || "",
       website: profile.founder.website || "",
-      previewTranscript: profile.founder.previewTranscript ?? false,
     }
   })
 
@@ -242,28 +239,6 @@ function EditProfileDialog({
 
                   <FormField
                     control={form.control}
-                    name="previewTranscript"
-                    render={({ field }) => (
-                      <FormItem className="flex items-center justify-between gap-4 rounded-xl border border-border/60 p-4">
-                        <div>
-                          <FormLabel className="text-base font-semibold">Preview transcript before publishing</FormLabel>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Review and edit the generated text before your SHÜÜT goes live.
-                          </p>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            aria-label="Preview transcript before publishing"
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
                     name="handle"
                     render={({ field }) => (
                       <FormItem className="space-y-1">
@@ -440,7 +415,11 @@ export default function Profile() {
           <h1 className="text-xl font-bold text-foreground leading-tight">
             {profile?.founder.name || "Profile"}
           </h1>
-          {profile && <p className="text-xs text-muted-foreground">{profile.postCount} SHÜÜTs</p>}
+          {profile && (
+            <p className="text-xs text-muted-foreground">
+              {profile.postCount} {profile.postCount === 1 ? 'SHÜÜT' : 'SHÜÜTs'}
+            </p>
+          )}
         </div>
       </div>
 
@@ -483,7 +462,7 @@ export default function Profile() {
                   </Button>
                 ) : (
                   <>
-                    <Dialog.Root open={askDialogOpen} onOpenChange={resetAsk}>
+                    {profile.postCount >= 5 && <Dialog.Root open={askDialogOpen} onOpenChange={resetAsk}>
                       <Dialog.Trigger asChild>
                         <Button variant="outline" className="rounded-full gap-2 font-bold">
                           <MessageSquareQuote className="w-4 h-4" />
@@ -562,7 +541,7 @@ export default function Profile() {
                           )}
                         </Dialog.Content>
                       </Dialog.Portal>
-                    </Dialog.Root>
+                    </Dialog.Root>}
 
                     <Button 
                       onClick={handleFollowToggle}

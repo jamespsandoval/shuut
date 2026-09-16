@@ -51,10 +51,9 @@ export function authCodeEmail({
     "SHÜÜT",
     "",
     content.heading,
-    content.instruction,
-    "",
     code,
     "",
+    content.instruction,
     `This code expires in ${expiresInMinutes} minutes.`,
     "",
     content.securityNote,
@@ -64,15 +63,15 @@ export function authCodeEmail({
   ].join("\n");
 
   const bodyHtml = `
-    <p style="margin:0 0 24px;color:#6B7280;">${escapeHtml(content.instruction)}</p>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#111827;border-radius:12px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;">
       <tr>
         <td align="center" style="padding:24px 16px;">
-          <div aria-label="Your six digit code is ${safeCode}" style="color:#FFFFFF;font-family:'Courier New',Courier,monospace;font-size:38px;line-height:44px;font-weight:700;letter-spacing:8px;white-space:nowrap;">${safeCode}</div>
+          <div aria-label="Your six digit code is ${safeCode}" style="color:#111827;font-family:'Courier New',Courier,monospace;font-size:38px;line-height:44px;font-weight:700;letter-spacing:8px;white-space:nowrap;">${safeCode}</div>
         </td>
       </tr>
     </table>
-    <p style="margin:16px 0 24px;text-align:center;color:#6B7280;font-size:14px;">This code expires in <strong style="color:#111827;">${safeExpiry} minutes</strong>.</p>
+    <p style="margin:16px 0 8px;color:#6B7280;">${escapeHtml(content.instruction)}</p>
+    <p style="margin:0 0 20px;text-align:center;color:#6B7280;font-size:14px;">This code expires in <strong style="color:#111827;">${safeExpiry} minutes</strong>.</p>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#F3F4F6;border-left:4px solid #3B82F6;border-radius:8px;">
       <tr>
         <td style="padding:16px;color:#111827;font-size:14px;line-height:22px;">${escapeHtml(content.securityNote)}</td>
@@ -87,6 +86,7 @@ export function authCodeEmail({
     heading: content.heading,
     bodyHtml,
     urgent: false,
+    compact: true,
   });
 
   return { htmlBody, textBody };

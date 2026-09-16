@@ -36,12 +36,14 @@ import type {
   EmailCodeInput,
   ExchangeMobilePasskeyHandoff200,
   FollowState,
+  Founder,
   GetFeedParams,
   HealthStatus,
   LoginInput,
   MobileAuthSession,
   MobilePasskeyGrantInput,
   MobilePasskeyHandoff,
+  Notification,
   OnboardingInput,
   OpenMobilePasskeyHandoffParams,
   PasskeyDeviceList,
@@ -55,6 +57,7 @@ import type {
   ReactionInput,
   RecoveryCodeInput,
   RegistrationInput,
+  SearchProfilesParams,
   UploadUrlRequest,
   UploadUrlResponse,
   UsernameAvailability,
@@ -2541,6 +2544,77 @@ export function useGetFeed<TData = Awaited<ReturnType<typeof getFeed>>, TError =
 
 
 
+export const getGetNotificationsUrl = () => {
+
+
+
+
+  return `/api/notifications`
+}
+
+export const getNotifications = async ( options?: Parameters<typeof customFetch>[1]): Promise<Notification[]> => {
+
+  return customFetch<Notification[]>(getGetNotificationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotificationsQueryKey = () => {
+    return [
+    `/api/notifications`
+    ] as const;
+    }
+
+
+export const getGetNotificationsQueryOptions = <TData = Awaited<ReturnType<typeof getNotifications>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotificationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotifications>>> = ({ signal }) => getNotifications({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotificationsQueryResult = NonNullable<Awaited<ReturnType<typeof getNotifications>>>
+export type GetNotificationsQueryError = ErrorType<void>
+
+
+
+export function useGetNotifications<TData = Awaited<ReturnType<typeof getNotifications>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotificationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetProfileUrl = (handle: string,) => {
 
 
@@ -3011,6 +3085,84 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getCreatePostMutationOptions(options));
     }
+
+export const getSearchProfilesUrl = (params: SearchProfilesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/profiles/search?${stringifiedParams}` : `/api/profiles/search`
+}
+
+export const searchProfiles = async (params: SearchProfilesParams, options?: Parameters<typeof customFetch>[1]): Promise<Founder[]> => {
+
+  return customFetch<Founder[]>(getSearchProfilesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchProfilesQueryKey = (params?: SearchProfilesParams,) => {
+    return [
+    `/api/profiles/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchProfilesQueryOptions = <TData = Awaited<ReturnType<typeof searchProfiles>>, TError = ErrorType<unknown>>(params: SearchProfilesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchProfilesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchProfiles>>> = ({ signal }) => searchProfiles(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchProfiles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchProfilesQueryResult = NonNullable<Awaited<ReturnType<typeof searchProfiles>>>
+export type SearchProfilesQueryError = ErrorType<unknown>
+
+
+
+export function useSearchProfiles<TData = Awaited<ReturnType<typeof searchProfiles>>, TError = ErrorType<unknown>>(
+ params: SearchProfilesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchProfilesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetPostUrl = (postId: number,) => {
 

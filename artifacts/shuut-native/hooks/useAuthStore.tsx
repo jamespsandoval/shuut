@@ -41,7 +41,7 @@ interface AuthContextType {
   signIn: (session: MobileAuthSession) => Promise<void>;
   signOut: () => Promise<void>;
   completePasskeyHandoff: () => Promise<void>;
-  completeOnboarding: () => void;
+  completeOnboarding: (state: 'ready' | 'waitlisted') => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -96,7 +96,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (session: MobileAuthSession) => {
-    const nextState: PersistedAuthState = session.passkeyRequired
+    const nextState: PersistedAuthState = session.user.eligibilityStatus === 'waitlisted'
+      ? 'waitlisted'
+      : session.passkeyRequired
       ? 'passkeyPending'
       : session.user.onboardingComplete
         ? 'ready'
@@ -121,9 +123,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completeOnboarding = () => {
-    void authStorage.setItem(AUTH_STATE_KEY, 'ready');
-    setAuthState('ready');
+  const completeOnboarding = (state: 'ready' | 'waitlisted') => {
+    void authStorage.setItem(AUTH_STATE_KEY, state);
+    setAuthState(state);
   };
 
   const signOut = async () => {

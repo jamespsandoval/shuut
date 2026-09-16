@@ -3,11 +3,12 @@ import { Mic, Square, Loader2, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatTime } from "@/lib/utils"
-import { useCreatePost, useGetProfile, useTranscribeAudio } from "@workspace/api-client-react"
+import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
 import { useToast } from "@/hooks/use-toast"
 import { AudioPlayer } from "./audio-player"
+import { MentionPicker } from "./mention-picker"
 
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
@@ -18,6 +19,7 @@ export type RecorderHandle = {
 
 type RecorderProps = {
   onExpandedChange?: (isExpanded: boolean) => void
+  onReviewReady?: () => void
 }
 
 function csrfToken() {
@@ -30,7 +32,7 @@ function getSupportedRecordingType() {
 }
 
 export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recorder(
-  { onExpandedChange },
+  { onExpandedChange, onReviewReady },
   ref,
 ) {
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "")
@@ -39,6 +41,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const [audioData, setAudioData] = useState<string | null>(null)
   const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null)
   const [transcript, setTranscript] = useState("")
+  const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([])
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -88,6 +91,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         const contentType = recorderType.split(";")[0].toLowerCase()
         const blob = new Blob(chunksRef.current, { type: contentType })
         setAudioData(URL.createObjectURL(blob))
+        requestAnimationFrame(() => onReviewReady?.())
         try {
           const csrf = csrfToken()
           const uploadResponse = await fetch("/api/storage/uploads/request-url", {
@@ -173,6 +177,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     setAudioObjectPath(null)
     setTime(0)
     setTranscript("")
+    setMentionedFounders([])
   }
 
   const handleSubmit = () => {
@@ -193,6 +198,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           ...(previewTranscript ? { transcript } : {}),
           audioObjectPath,
           durationSeconds: time || 1, // Fallback if 0
+          mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
       },
       {
@@ -313,6 +319,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
+            <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
 
             {previewTranscript ? (
               <div className="relative flex-1 flex flex-col min-h-0 group">

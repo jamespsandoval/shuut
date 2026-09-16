@@ -353,6 +353,20 @@ paths:
         '200':
           description: Feed
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Post' } } } }
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Recent activity on the authenticated founder's posts
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+        '401': { description: Unauthorized }
   /profiles/{handle}:
     get:
       operationId: getProfile
@@ -418,6 +432,18 @@ paths:
         '201':
           description: Published post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+  /profiles/search:
+    get:
+      operationId: searchProfiles
+      tags: [profiles]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 30 } }
+      responses:
+        '200':
+          description: Matching active profiles
+          content:
+            application/json:
+              schema: { type: array, maxItems: 8, items: { $ref: '#/components/schemas/Founder' } }
   /posts/{postId}:
     get:
       operationId: getPost
@@ -552,12 +578,13 @@ components:
   schemas:
     AuthUser:
       type: object
-      required: [id, email, emailVerified, onboardingComplete, passkeyEnrolled, passkeyVerified]
+      required: [id, email, emailVerified, onboardingComplete, eligibilityStatus, passkeyEnrolled, passkeyVerified]
       properties:
         id: { type: string }
         email: { type: string, format: email }
         emailVerified: { type: boolean }
         onboardingComplete: { type: boolean }
+        eligibilityStatus: { type: string, enum: [undecided, eligible, waitlisted] }
         passkeyEnrolled: { type: boolean }
         passkeyVerified: { type: boolean }
     AuthSession:
@@ -650,11 +677,12 @@ components:
         message: { type: string }
     OnboardingInput:
       type: object
-      required: [firstName, lastName, handle]
+      required: [firstName, lastName, handle, eligible]
       properties:
         firstName: { type: string, minLength: 1, maxLength: 40 }
         lastName: { type: string, minLength: 1, maxLength: 40 }
         handle: { type: string, minLength: 2, maxLength: 30, pattern: '^[a-z0-9_]+$' }
+        eligible: { type: boolean }
     UsernameAvailability:
       type: object
       required: [handle, available]
@@ -765,6 +793,11 @@ components:
         transcript: { type: string, minLength: 1, maxLength: 5000 }
         audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
         durationSeconds: { type: integer, minimum: 1, maximum: 90 }
+        mentionedFounderIds:
+          type: array
+          maxItems: 5
+          uniqueItems: true
+          items: { type: integer }
     PostEditInput:
       type: object
       required: [transcript]
@@ -792,6 +825,23 @@ components:
         audioUrl: { type: string }
         durationSeconds: { type: integer }
         createdAt: { type: string, format: date-time }
+    Notification:
+      type: object
+      required: [id, eventType, actor, post, createdAt]
+      properties:
+        id: { type: integer }
+        eventType: { type: string, enum: [reaction, reshuut, comment, mention] }
+        reactionType: { type: [string, 'null'], enum: [rocket, laughing, thumbsDown, null] }
+        commentId: { type: [integer, 'null'] }
+        createdAt: { type: string, format: date-time }
+        actor: { $ref: '#/components/schemas/Founder' }
+        post:
+          type: object
+          required: [id, transcript, createdAt]
+          properties:
+            id: { type: integer }
+            transcript: { type: string }
+            createdAt: { type: string, format: date-time }
     PostShareLink:
       type: object
       required: [url]

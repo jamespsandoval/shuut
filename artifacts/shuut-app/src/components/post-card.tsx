@@ -9,7 +9,9 @@ import {
   useDeletePost,
   useUpdatePost,
   useCreatePostShareLink,
-  getGetFeedQueryKey 
+  getGetFeedQueryKey,
+  getGetPostQueryKey,
+  getGetProfileQueryKey,
 } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { AudioPlayer } from "./audio-player"
@@ -46,6 +48,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   const [editText, setEditText] = useState(post.transcript)
   const [canStillEdit, setCanStillEdit] = useState(post.canEdit)
   const [showComments, setShowComments] = useState(isDetail || isFocused)
+  const [autoStartReply, setAutoStartReply] = useState(false)
 
   useEffect(() => {
     if (isDetail || isFocused) setShowComments(true)
@@ -68,6 +71,9 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          queryClient.invalidateQueries({ queryKey: getGetPostQueryKey(post.id) })
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey(post.author.handle) })
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey("me") })
         }
       }
     )
@@ -77,7 +83,12 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     reshuutPost.mutate(
       { postId: post.id },
       {
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          queryClient.invalidateQueries({ queryKey: getGetPostQueryKey(post.id) })
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey(post.author.handle) })
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey("me") })
+        }
       }
     )
   }
@@ -168,7 +179,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       <div className="flex flex-col gap-3">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Link href={`/u/${post.author.handle}`} className="flex items-center gap-3 group min-w-0">
+          <Link href={post.canDelete ? "/u/me" : `/u/${post.author.handle}`} className="flex items-center gap-3 group min-w-0">
             <div
               className="w-11 h-11 rounded-full overflow-hidden transition-transform group-hover:scale-105 active:scale-95 shrink-0 shadow-sm relative"
               style={{ backgroundColor: post.author.avatarColor || '#3B82F6' }}
@@ -275,7 +286,11 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
             {/* Comment */}
             <button
-              onClick={() => setShowComments(prev => !prev)}
+              onClick={() => {
+                if (autoStartReply) return
+                setAutoStartReply(true)
+                setShowComments(true)
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[15px] font-medium transition-all hover:bg-secondary text-muted-foreground hover:text-foreground active:scale-95 shrink-0"
               title="Comment"
             >
@@ -331,7 +346,11 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           </div>
 
           {(showComments) && (
-            <PostComments postId={post.id} />
+            <PostComments
+              postId={post.id}
+              autoStartRecording={autoStartReply}
+              onComposerClose={() => setAutoStartReply(false)}
+            />
           )}
         </div>
       </div>

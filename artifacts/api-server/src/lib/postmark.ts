@@ -19,7 +19,7 @@ export async function sendPostmarkEmail(input: {
       "X-Postmark-Server-Token": token,
     },
     body: JSON.stringify({
-      From: "admin@shuut.me",
+      From: "James at SHÜÜT <james@shuut.me>",
       To: input.to,
       ...(input.replyTo ? { ReplyTo: input.replyTo } : {}),
       Subject: input.subject,

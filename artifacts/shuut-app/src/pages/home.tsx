@@ -29,9 +29,27 @@ export default function Home() {
     return () => observer.disconnect()
   }, [])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("record") !== "1") return
+    window.history.replaceState({}, "", `${import.meta.env.BASE_URL}feed`)
+    recorderContainerRef.current?.scrollIntoView({ block: "start" })
+    recorderRef.current?.startRecording()
+  }, [])
+
   const handleFloatingRecord = useCallback(() => {
     recorderContainerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
     recorderRef.current?.startRecording()
+  }, [])
+
+  const handleReviewReady = useCallback(() => {
+    if (!window.matchMedia("(min-width: 768px)").matches) return
+    requestAnimationFrame(() => {
+      const container = recorderContainerRef.current
+      if (!container) return
+      const top = container.getBoundingClientRect().top + window.scrollY - 72
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" })
+    })
   }, [])
 
   return (
@@ -64,7 +82,11 @@ export default function Home() {
       </div>
 
       <div ref={recorderContainerRef}>
-        <Recorder ref={recorderRef} onExpandedChange={setIsRecorderExpanded} />
+        <Recorder
+          ref={recorderRef}
+          onExpandedChange={setIsRecorderExpanded}
+          onReviewReady={handleReviewReady}
+        />
       </div>
 
       {!isRecorderTriggerVisible && !isRecorderExpanded && (
@@ -73,7 +95,7 @@ export default function Home() {
           onClick={handleFloatingRecord}
           aria-label="Record a SHÜÜT"
           data-testid="button-floating-recording"
-          className="fixed right-4 bottom-20 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:hidden animate-in fade-in zoom-in-75 duration-200"
+          className="shuut-floating-record fixed bottom-20 right-4 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:bottom-6 animate-in fade-in zoom-in-75 duration-200"
         >
           <Mic className="h-8 w-8" />
         </button>

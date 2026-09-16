@@ -7,7 +7,15 @@ import { formatDistanceToNow } from "date-fns"
 import { Link } from "wouter"
 import { Loader2 } from "lucide-react"
 
-export function PostComments({ postId }: { postId: number }) {
+export function PostComments({
+  postId,
+  autoStartRecording = false,
+  onComposerClose,
+}: {
+  postId: number
+  autoStartRecording?: boolean
+  onComposerClose?: () => void
+}) {
   const queryClient = useQueryClient()
   
   type PendingComment = { id: number; timestamp: number; failed?: boolean }
@@ -50,15 +58,18 @@ export function PostComments({ postId }: { postId: number }) {
 
   return (
     <div className="mt-4 pt-4 border-t border-border/40 flex flex-col gap-6">
-      <div className="px-1">
+      {autoStartRecording && <div className="px-1">
         <CommentComposer 
           postId={postId} 
+          autoStart={autoStartRecording}
+          onDismiss={() => onComposerClose?.()}
           onSubmitted={(submissionId) => {
             setPendingComments(prev => [...prev, { id: submissionId, timestamp: Date.now() }])
             queryClient.invalidateQueries({ queryKey: getGetPostCommentsQueryKey(postId) })
+            onComposerClose?.()
           }} 
         />
-      </div>
+      </div>}
 
       <div className="flex flex-col gap-5 px-1 pb-2">
         {isLoading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mx-auto my-4" />}

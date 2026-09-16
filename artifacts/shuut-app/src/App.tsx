@@ -27,8 +27,9 @@ import Terms from '@/pages/terms';
 import Privacy from '@/pages/privacy';
 import Cookies from '@/pages/cookies';
 import Contact from '@/pages/contact';
-import PasskeyGate from '@/pages/passkey-gate';
 import SettingsPage from '@/pages/settings';
+import NotificationsPage from '@/pages/notifications';
+import Waitlist from '@/pages/waitlist';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,8 +41,6 @@ const queryClient = new QueryClient({
 });
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-const passkeysRequired = !import.meta.env.DEV;
-
 function HomeRedirect() {
   const { user, isSignedIn, isLoading } = useAuth();
   
@@ -54,11 +53,11 @@ function HomeRedirect() {
   }
 
   if (isSignedIn) {
+    if (user?.eligibilityStatus === 'waitlisted') {
+      return <Waitlist />;
+    }
     if (!user?.onboardingComplete) {
       return <Onboarding />;
-    }
-    if (passkeysRequired && !user.passkeyVerified) {
-      return <PasskeyGate />;
     }
     return <Redirect to="/feed" />;
   }
@@ -81,11 +80,11 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
         }
 
         if (isSignedIn) {
-          if (!user?.onboardingComplete) {
+          if (user?.eligibilityStatus === 'waitlisted') {
             return <Redirect to="/" />;
           }
-          if (passkeysRequired && !user.passkeyVerified) {
-            return <Redirect to="/passkey" />;
+          if (!user?.onboardingComplete) {
+            return <Redirect to="/" />;
           }
           return <Component params={params} />;
         }
@@ -107,10 +106,9 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/cookies" component={Cookies} />
         <Route path="/contact" component={Contact} />
-        <Route path="/passkey">
-          {passkeysRequired ? <PasskeyGate /> : <Redirect to="/feed" />}
-        </Route>
+        <Route path="/passkey"><Redirect to="/feed" /></Route>
         <ProtectedRoute path="/feed" component={Home} />
+        <ProtectedRoute path="/notifications" component={NotificationsPage} />
         <ProtectedRoute path="/explore" component={Explore} />
         <ProtectedRoute path="/p/:postId" component={PostDetail} />
         <ProtectedRoute path="/u/:handle" component={Profile} />

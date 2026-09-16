@@ -6,6 +6,7 @@ type AuthUser = {
   email: string;
   emailVerified: boolean;
   onboardingComplete: boolean;
+  eligibilityStatus: 'undecided' | 'eligible' | 'waitlisted';
   passkeyEnrolled: boolean;
   passkeyVerified: boolean;
 };

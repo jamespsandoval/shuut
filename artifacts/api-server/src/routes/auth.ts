@@ -40,6 +40,7 @@ const router: IRouter = Router();
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_MS = 15 * 60 * 1000;
 const MOBILE_GRANT_MS = 5 * 60 * 1000;
+const DEVELOPMENT_VERIFICATION_CODE = "111333";
 
 router.use(passkeyRouter);
 function normalizedEmail(email: string) {
@@ -204,6 +205,9 @@ async function discardCode(userId: string, purpose: CodePurpose, hashedCode: str
 }
 
 async function consumeCode(userId: string, purpose: CodePurpose, code: string) {
+  const isDevelopmentOverride =
+    process.env.NODE_ENV === "development" &&
+    code === DEVELOPMENT_VERIFICATION_CODE;
   const [record] = await db
     .select()
     .from(authCodesTable)
@@ -211,7 +215,9 @@ async function consumeCode(userId: string, purpose: CodePurpose, code: string) {
       and(
         eq(authCodesTable.userId, userId),
         eq(authCodesTable.purpose, purpose),
-        eq(authCodesTable.codeHash, codeHash(userId, purpose, code)),
+        isDevelopmentOverride
+          ? undefined
+          : eq(authCodesTable.codeHash, codeHash(userId, purpose, code)),
         isNull(authCodesTable.consumedAt),
         gt(authCodesTable.expiresAt, new Date()),
       ),
@@ -330,6 +336,7 @@ async function sessionJson(user: typeof usersTable.$inferSelect, req?: Request) 
       email: user.email,
       emailVerified: Boolean(user.emailVerifiedAt),
       onboardingComplete: Boolean(profile),
+      eligibilityStatus: profile ? "eligible" as const : user.eligibilityStatus as "undecided" | "eligible" | "waitlisted",
       passkeyEnrolled: Boolean(passkey),
       passkeyVerified: req ? isPasskeyVerified(req) : false,
     },
@@ -776,31 +783,63 @@ router.post("/onboarding", async (req, res): Promise<void> => {
     .from(foundersTable)
     .where(eq(foundersTable.userId, userId))
     .limit(1);
+  const requestedStatus = body.data.eligible ? "eligible" : "waitlisted";
   if (existingProfile) {
+    if (!body.data.eligible) {
+      res.status(409).json({ error: "Your onboarding decision has already been recorded." });
+      return;
+    }
+    res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
+    return;
+  }
+  if (user.eligibilityStatus !== "undecided") {
+    if (user.eligibilityStatus !== requestedStatus) {
+      res.status(409).json({ error: "Your onboarding decision has already been recorded." });
+      return;
+    }
     res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
     return;
   }
   const handle = body.data.handle.trim().toLowerCase();
-  const [taken] = await db
-    .select({ id: foundersTable.id })
-    .from(foundersTable)
-    .where(eq(foundersTable.handle, handle))
-    .limit(1);
-  if (taken) {
-    res.status(409).json({ error: "That username is already taken." });
-    return;
+  try {
+    await db.transaction(async (tx) => {
+      const updated = await tx.update(usersTable).set({
+        eligibilityStatus: requestedStatus,
+        onboardingFirstName: body.data.firstName.trim(),
+        onboardingLastName: body.data.lastName.trim(),
+        proposedHandle: handle,
+        eligibilityDecidedAt: new Date(),
+      }).where(and(
+        eq(usersTable.id, userId),
+        eq(usersTable.eligibilityStatus, "undecided"),
+      )).returning({ id: usersTable.id });
+      if (!updated.length) throw new Error("ONBOARDING_DECISION_CONFLICT");
+      if (body.data.eligible) {
+        await tx.insert(foundersTable).values({
+          userId,
+          name: `${body.data.firstName.trim()} ${body.data.lastName.trim()}`,
+          handle,
+          bio: "",
+          avatarColor: "#3B82F6",
+          isFollowing: false,
+          followerCount: 0,
+          followingCount: 0,
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "ONBOARDING_DECISION_CONFLICT") {
+      res.status(409).json({ error: "Your onboarding decision has already been recorded." });
+      return;
+    }
+    if (body.data.eligible && typeof error === "object" && error && "code" in error && error.code === "23505") {
+      res.status(409).json({ error: "That username is already taken." });
+      return;
+    }
+    throw error;
   }
-  await db.insert(foundersTable).values({
-    userId,
-    name: `${body.data.firstName.trim()} ${body.data.lastName.trim()}`,
-    handle,
-    bio: "",
-    avatarColor: "#3B82F6",
-    isFollowing: false,
-    followerCount: 0,
-    followingCount: 0,
-  });
-  res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
+  const [updatedUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  res.json(CompleteOnboardingResponse.parse(await sessionJson(updatedUser, req)));
 });
 
 router.get("/usernames/:handle/availability", async (req, res): Promise<void> => {

@@ -56,6 +56,7 @@ export const VerifyEmailResponse = zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -91,6 +92,7 @@ export const VerifyLoginResponse = zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -149,6 +151,7 @@ export const VerifyMobileLoginResponse = zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -179,6 +182,7 @@ export const VerifyMobileEmailResponse = zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -243,6 +247,7 @@ export const GetCurrentUserResponse = zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -318,6 +323,7 @@ export const ConfirmPasskeyRecoveryResponse = zod.union([zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -348,7 +354,8 @@ export const completeOnboardingBodyHandleRegExp = new RegExp('^[a-z0-9_]+$');
 export const CompleteOnboardingBody = zod.object({
   "firstName": zod.string().min(1).max(completeOnboardingBodyFirstNameMax),
   "lastName": zod.string().min(1).max(completeOnboardingBodyLastNameMax),
-  "handle": zod.string().min(completeOnboardingBodyHandleMin).max(completeOnboardingBodyHandleMax).regex(completeOnboardingBodyHandleRegExp)
+  "handle": zod.string().min(completeOnboardingBodyHandleMin).max(completeOnboardingBodyHandleMax).regex(completeOnboardingBodyHandleRegExp),
+  "eligible": zod.boolean()
 })
 
 export const CompleteOnboardingResponse = zod.object({
@@ -357,6 +364,7 @@ export const CompleteOnboardingResponse = zod.object({
   "email": zod.string().email(),
   "emailVerified": zod.boolean(),
   "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
   "passkeyVerified": zod.boolean()
 })
@@ -449,6 +457,33 @@ export const GetFeedResponseItem = zod.object({
   "editableUntil": zod.coerce.date().nullable()
 })
 export const GetFeedResponse = zod.array(GetFeedResponseItem)
+
+
+export const GetNotificationsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "eventType": zod.enum(['reaction', 'reshuut', 'comment', 'mention']),
+  "reactionType": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "commentId": zod.number().int().nullish(),
+  "createdAt": zod.coerce.date(),
+  "actor": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.object({
+  "id": zod.number().int(),
+  "transcript": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+})
+export const GetNotificationsResponse = zod.array(GetNotificationsResponseItem)
 
 
 export const GetProfileParams = zod.object({
@@ -629,12 +664,15 @@ export const createPostBodyTranscriptMax = 5000;
 export const createPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const createPostBodyDurationSecondsMax = 90;
 
+export const createPostBodyMentionedFounderIdsMax = 5;
+
 
 
 export const CreatePostBody = zod.object({
   "transcript": zod.string().min(1).max(createPostBodyTranscriptMax).optional(),
   "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp),
-  "durationSeconds": zod.number().int().min(1).max(createPostBodyDurationSecondsMax)
+  "durationSeconds": zod.number().int().min(1).max(createPostBodyDurationSecondsMax),
+  "mentionedFounderIds": zod.array(zod.number().int()).max(createPostBodyMentionedFounderIdsMax).optional()
 })
 
 export const CreatePostResponse = zod.object({
@@ -668,6 +706,29 @@ export const CreatePostResponse = zod.object({
   "canDelete": zod.boolean(),
   "editableUntil": zod.coerce.date().nullable()
 })
+
+
+export const searchProfilesQueryQMax = 30;
+
+
+
+export const SearchProfilesQueryParams = zod.object({
+  "q": zod.coerce.string().min(1).max(searchProfilesQueryQMax)
+})
+
+export const SearchProfilesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+})
+export const SearchProfilesResponse = zod.array(SearchProfilesResponseItem).max(8)
 
 
 export const GetPostParams = zod.object({

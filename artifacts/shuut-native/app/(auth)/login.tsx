@@ -4,15 +4,40 @@ import { useRouter } from 'expo-router';
 import { useStartMobileAuth } from '@workspace/api-client-react';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-import { Mail, ArrowRight } from 'lucide-react-native';
+import { Mail, ArrowRight, X } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors } from '../../hooks/useColors';
 import { LegalFooter } from '../../components/LegalFooter';
 
+const RECENT_EMAILS_KEY = 'shuut.recent-emails';
+
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
+  const [recentEmails, setRecentEmails] = useState<string[]>([]);
+  const [showRecentEmails, setShowRecentEmails] = useState(false);
+  const emailInputRef = React.useRef<TextInput>(null);
   const router = useRouter();
   const startAuth = useStartMobileAuth();
   const colors = useColors();
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    void AsyncStorage.getItem(RECENT_EMAILS_KEY).then((storedEmails) => {
+      if (!storedEmails) return;
+      try {
+        const parsedEmails = JSON.parse(storedEmails);
+        if (!Array.isArray(parsedEmails)) return;
+        const validEmails = parsedEmails
+          .filter((value): value is string => typeof value === 'string' && value.includes('@'))
+          .slice(0, 2);
+        setRecentEmails(validEmails);
+        setEmail((current) => current || validEmails[0] || '');
+      } catch {
+        void AsyncStorage.removeItem(RECENT_EMAILS_KEY);
+      }
+    });
+  }, []);
 
   React.useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
@@ -39,15 +64,22 @@ export default function LoginScreen() {
   }, []);
 
   const handleContinue = () => {
-    if (!email || !email.includes('@')) return;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) return;
     
     startAuth.mutate(
-      { data: { email } },
+      { data: { email: normalizedEmail } },
       {
         onSuccess: (data) => {
+          const nextRecentEmails = [
+            normalizedEmail,
+            ...recentEmails.filter((savedEmail) => savedEmail !== normalizedEmail),
+          ].slice(0, 2);
+          setRecentEmails(nextRecentEmails);
+          void AsyncStorage.setItem(RECENT_EMAILS_KEY, JSON.stringify(nextRecentEmails));
           router.push({
             pathname: '/(auth)/verify',
-            params: { email, flow: data.flow }
+            params: { email: normalizedEmail, flow: data.flow }
           });
         },
         onError: (err) => {
@@ -80,6 +112,7 @@ export default function LoginScreen() {
           <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
             <Mail color={colors.mutedForeground} size={20} style={styles.inputIcon} />
             <TextInput
+              ref={emailInputRef}
               nativeID="shuut-login-email"
               style={[
                 styles.input,
@@ -99,10 +132,61 @@ export default function LoginScreen() {
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
               autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              importantForAutofill="yes"
               keyboardType="email-address"
+              returnKeyType="go"
               value={email}
               onChangeText={setEmail}
+              onFocus={() => setShowRecentEmails(true)}
+              onBlur={() => setShowRecentEmails(false)}
+              onSubmitEditing={handleContinue}
             />
+            {email.length > 0 && (
+              <TouchableOpacity
+                style={styles.clearEmailButton}
+                onPress={() => {
+                  setEmail('');
+                  setShowRecentEmails(true);
+                  emailInputRef.current?.focus();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear email address"
+                hitSlop={10}
+              >
+                <X color={colors.mutedForeground} size={18} strokeWidth={2.25} />
+              </TouchableOpacity>
+            )}
+            {showRecentEmails && recentEmails.length > 0 && (
+              <View
+                style={[
+                  styles.recentEmailMenu,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                {recentEmails.map((savedEmail, index) => (
+                  <TouchableOpacity
+                    key={savedEmail}
+                    style={[
+                      styles.recentEmailChoice,
+                      index < recentEmails.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
+                    ]}
+                    onPressIn={() => {
+                      setEmail(savedEmail);
+                      setShowRecentEmails(false);
+                    }}
+                  >
+                    <Text style={[styles.recentEmailText, { color: colors.foreground }]} numberOfLines={1}>
+                      {savedEmail}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
 
           {startAuth.error && (
@@ -149,7 +233,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginTop: '25%',
-    marginBottom: 48,
+    marginBottom: 96,
   },
   logo: {
     width: 200,
@@ -174,9 +258,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     height: 56,
+    zIndex: 2,
   },
   inputIcon: {
     marginRight: 12,
+  },
+  clearEmailButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 40,
   },
   input: {
     flex: 1,
@@ -187,6 +278,24 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     backgroundColor: 'transparent',
     outlineWidth: 0,
+  },
+  recentEmailMenu: {
+    position: 'absolute',
+    top: 62,
+    left: 0,
+    right: 0,
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    zIndex: 3,
+  },
+  recentEmailChoice: {
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  recentEmailText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
   },
   button: {
     height: 56,

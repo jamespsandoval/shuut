@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput, Switch, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
 import { Trash2, LogOut } from 'lucide-react-native';
 import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
 
 export default function SettingsScreen() {
   const colors = useColors();
   const router = useRouter();
   const { signOut } = useAuth();
+  const queryClient = useQueryClient();
 
   const logout = useMobileLogout();
   const deleteAccount = useDeleteAccount();
@@ -39,8 +41,9 @@ export default function SettingsScreen() {
     } catch (e) {
       console.log(e); // Proceed to sign out locally anyway
     } finally {
+      queryClient.clear();
       await signOut();
-      router.replace('/(auth)/login');
+      router.replace('/');
     }
   };
 
@@ -49,8 +52,9 @@ export default function SettingsScreen() {
     try {
       const result = await deleteAccount.mutateAsync();
       if (result.status === 'completed') {
+        queryClient.clear();
         await signOut();
-        router.replace('/(auth)/login');
+        router.replace('/');
       } else if (result.status === 'pending') {
         Alert.alert("Account Deletion", "Your account deletion is pending. It will be fully deleted soon.");
         setIsDeleteModalVisible(false);
@@ -96,7 +100,15 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            borderBottomColor: colors.border,
+            paddingTop: Platform.OS === 'web' ? 52 : 16,
+          },
+        ]}
+      >
         <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
       </View>
 
@@ -206,8 +218,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     padding: 24,
-    paddingTop: 16,
     paddingBottom: 16,
+    alignItems: 'center',
   },
   title: {
     fontFamily: 'Inter_700Bold',

@@ -4,3 +4,11 @@
 - [Workspace React singletons](workspace-react-singletons.md) — context libraries shared with linked packages must be deduplicated in production builds.
 - [Private object deletion](private-object-deletion.md) — remove DB references only when cleanup intent is durably queued; serialize publication with deletion.
 - [Native session security](native-session-security.md) — native clients use secure bearer sessions; passkeys complete through a one-time browser grant, never a token URL.
+- [Profile post search eligibility](profile-post-search-eligibility.md) — unlock search after five published, transcription-ready original SHÜÜTs; exclude reshüüts and comments.
+- [Web logout navigation](web-logout-navigation.md) — reload the homepage after logout; soft routing can race stale auth state and return users to a broken feed.
+- [Native public-page navigation](native-public-page-returns.md) — show public pages in-app with one web back control; do not use Safari chrome or load the homepage inside a web view.
+- [Native recording transition](native-recording-transition.md) — auto-record entry must paint an active source state, and the recorder destination must never render a microphone fallback.
+- [Expo QR launch branding](expo-qr-launch-branding.md) — the pre-Expo loading card can use mobile artifact registration, independently of app icon and splash configuration.
+- [Cross-platform feature parity](cross-platform-feature-parity.md) — user-facing SHÜÜT features added to native should also be represented in the desktop web app.
+- [Explicit post tagging](explicit-post-tagging.md) — select accounts manually during final audio review; do not infer tags from spoken handles.
+- [Founder eligibility gate](founder-eligibility-gate.md) — onboarding is limited to self-declared European and UK tech startup founders; No is applicant-irreversible.

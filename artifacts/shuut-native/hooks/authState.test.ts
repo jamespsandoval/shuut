@@ -9,6 +9,7 @@ test('restores an enrolled but unverified passkey session as pending', () => {
       email: 'member@example.test',
       emailVerified: true,
       onboardingComplete: true,
+      eligibilityStatus: 'eligible',
       passkeyEnrolled: true,
       passkeyVerified: false,
     },
@@ -22,8 +23,23 @@ test('checks onboarding only after passkey verification', () => {
       email: 'member@example.test',
       emailVerified: true,
       onboardingComplete: false,
+      eligibilityStatus: 'undecided',
       passkeyEnrolled: true,
       passkeyVerified: true,
     },
   }), 'onboardingPending');
+});
+
+test('restores a waitlisted account to the terminal waitlist state', () => {
+  assert.equal(resolveAuthSessionState({
+    user: {
+      id: 'member',
+      email: 'member@example.test',
+      emailVerified: true,
+      onboardingComplete: false,
+      eligibilityStatus: 'waitlisted',
+      passkeyEnrolled: false,
+      passkeyVerified: false,
+    },
+  }), 'waitlisted');
 });

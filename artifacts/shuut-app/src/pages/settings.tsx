@@ -2,19 +2,22 @@ import { useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import {
   getGetCurrentUserQueryKey,
+  getGetProfileQueryKey,
   getListPasskeyDevicesQueryKey,
   useDeleteAccount,
+  useGetProfile,
   useListPasskeyDevices,
   useLogout,
   useRemovePasskeyDevice,
+  useUpdateProfile,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Fingerprint, Loader2, ShieldCheck, Trash2 } from "lucide-react";
-import { useLocation } from "wouter";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 
 function formatDate(value: string | null) {
@@ -46,18 +49,52 @@ async function passkeyRequest(path: string, body?: unknown): Promise<any> {
 }
 
 export default function SettingsPage() {
-  const { data, isLoading, error } = useListPasskeyDevices();
+  const { data: passkeyData, isLoading, error } = useListPasskeyDevices();
+  const { data: profile } = useGetProfile("me");
   const removePasskey = useRemovePasskeyDevice();
+  const updateProfile = useUpdateProfile();
   const deleteAccount = useDeleteAccount();
   const logout = useLogout();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deletionState, setDeletionState] = useState<"pending" | "failed" | null>(null);
+
+  const setPreviewTranscript = (previewTranscript: boolean) => {
+    if (!profile) return;
+
+    updateProfile.mutate(
+      {
+        handle: "me",
+        data: {
+          name: profile.founder.name,
+          handle: profile.founder.handle,
+          bio: profile.founder.bio ?? "",
+          location: profile.founder.location ?? "",
+          website: profile.founder.website ?? "",
+          previewTranscript,
+        },
+      },
+      {
+        onSuccess: (updatedProfile) => {
+          queryClient.setQueryData(getGetProfileQueryKey("me"), updatedProfile);
+          toast({
+            title: previewTranscript ? "Transcript preview enabled" : "Transcript preview disabled",
+          });
+        },
+        onError: (caught) => {
+          toast({
+            title: "Could not update transcript preference",
+            description: caught instanceof Error ? caught.message : "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
 
   const addPasskey = async () => {
     setIsAdding(true);
@@ -125,7 +162,7 @@ export default function SettingsPage() {
         logout.mutate(undefined, {
           onSettled: () => {
             queryClient.clear();
-            setLocation("/");
+            window.location.replace(import.meta.env.BASE_URL);
           },
         });
       },
@@ -147,6 +184,21 @@ export default function SettingsPage() {
         <h1 className="text-xl font-bold">Settings</h1>
       </header>
       <section className="space-y-6 p-5">
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card p-5">
+          <div>
+            <h2 className="font-semibold">Preview transcript before publishing</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Review and edit the generated text before your SHÜÜT goes live.
+            </p>
+          </div>
+          <Switch
+            checked={profile?.founder.previewTranscript ?? false}
+            onCheckedChange={setPreviewTranscript}
+            disabled={!profile || updateProfile.isPending}
+            aria-label="Preview transcript before publishing"
+          />
+        </div>
+
         <div className="rounded-2xl border border-border/60 bg-card p-5">
           <div className="flex items-start gap-3">
             <div className="rounded-full bg-primary/10 p-2.5 text-primary">
@@ -166,11 +218,11 @@ export default function SettingsPage() {
 
           {isLoading && <Loader2 className="mx-auto my-10 h-6 w-6 animate-spin text-primary" />}
           {error && <p role="alert" className="mt-5 text-sm text-destructive">We could not load your passkeys.</p>}
-          {data?.devices.length === 0 && (
+          {passkeyData?.devices.length === 0 && (
             <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">No passkeys are currently enrolled.</p>
           )}
           <div className="mt-5 divide-y divide-border/60">
-            {data?.devices.map((device) => (
+            {passkeyData?.devices.map((device) => (
               <div key={device.id} className="flex items-center gap-3 py-4">
                 <Fingerprint className="h-5 w-5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">

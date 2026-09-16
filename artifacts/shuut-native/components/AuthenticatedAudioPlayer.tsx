@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Play, Pause } from 'lucide-react-native';
-import { useAudioPlayer } from 'expo-audio';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useAuth } from '../hooks/useAuthStore';
 import { useColors } from '../hooks/useColors';
 
@@ -18,7 +18,13 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!url || !token) return;
+    if (!url) return;
+    if (url.startsWith('file:') || url.startsWith('blob:')) {
+      setLocalUri(url);
+      setError(false);
+      return;
+    }
+    if (!token) return;
 
     let isMounted = true;
     let objectUrl: string | null = null;
@@ -80,12 +86,19 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
   }, [url, token]);
 
   const player = useAudioPlayer(localUri ? { uri: localUri } : null);
+  const status = useAudioPlayerStatus(player);
 
-  const togglePlayback = () => {
-    if (!player) return;
-    if (player.playing) {
+  const togglePlayback = async () => {
+    if (status.playing) {
       player.pause();
     } else {
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+      if (status.didJustFinish) {
+        await player.seekTo(0);
+      }
       player.play();
     }
   };
@@ -95,8 +108,8 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
     return 30 + Math.sin(i * 0.5 + durationSeconds) * 20 + Math.cos(i * 1.2) * 15;
   });
 
-  const progress = player?.currentTime ? (player.currentTime / (durationSeconds || 1)) * 100 : 0;
-  const isPlaying = player?.playing || false;
+  const progress = status.currentTime ? (status.currentTime / (status.duration || durationSeconds || 1)) * 100 : 0;
+  const isPlaying = status.playing;
 
   if (error || !url) {
     return (
@@ -120,7 +133,7 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
     <View style={[styles.container, { backgroundColor: 'rgba(0,0,0,0.03)', borderColor: colors.border }]}>
       <TouchableOpacity
         style={[styles.playButton, { backgroundColor: colors.primary }]}
-        onPress={togglePlayback}
+        onPress={() => void togglePlayback()}
         disabled={isDownloading || !player}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >

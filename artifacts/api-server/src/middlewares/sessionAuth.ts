@@ -6,8 +6,6 @@ import { auditSecurityEvent, ipPrefix, privacyHash } from "../lib/security";
 
 export const SESSION_COOKIE = "shu_session";
 export const DEVICE_COOKIE = "shu_device";
-export const PASSKEYS_REQUIRED = process.env.NODE_ENV !== "development";
-
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
@@ -153,10 +151,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  // Native sessions always enforce an enrolled passkey. Development mode may
-  // relax the browser-only requirement, but must not make mobile bearer
-  // sessions fully authorized without the user's passkey.
-  if ((PASSKEYS_REQUIRED || (isBearerRequest(req) && isPasskeyEnrolled(req))) && !isPasskeyVerified(req)) {
+  // Passkeys are optional for browser sessions. Native bearer sessions still
+  // require verification when the account has an enrolled passkey.
+  if (isBearerRequest(req) && isPasskeyEnrolled(req) && !isPasskeyVerified(req)) {
     res.status(403).json({ error: "Additional sign-in verification is required.", code: "passkey_required" });
     return;
   }

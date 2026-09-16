@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react"
 import { Link, useLocation } from "wouter"
-import { Home, User, MoreHorizontal, Settings } from "lucide-react"
+import { Bell, Home, Mic, User, MoreHorizontal, Settings } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
@@ -27,6 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/feed" },
+    { icon: Bell, label: "Notifications", href: "/notifications" },
     { icon: User, label: "Profile", href: "/u/me" },
     { icon: Settings, label: "Settings", href: "/settings" },
   ]
@@ -36,7 +37,7 @@ export function Layout({ children }: { children: ReactNode }) {
       onSettled: () => {
         queryClient.clear()
         setLogoutDialogOpen(false)
-        setLocation("/")
+        window.location.replace(import.meta.env.BASE_URL)
       }
     })
   }
@@ -131,6 +132,18 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 w-full max-w-[600px] min-h-[100dvh] pb-24 md:pb-0 mx-auto md:mx-0 relative border-x border-border/20 bg-card/30">
         {children}
       </main>
+
+      {location !== "/feed" && (
+        <button
+          type="button"
+          onClick={() => setLocation("/feed?record=1")}
+          aria-label="Record a SHÜÜT"
+          data-testid="button-global-floating-recording"
+          className="shuut-floating-record fixed bottom-20 right-4 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:bottom-6 animate-in fade-in zoom-in-75 duration-200"
+        >
+          <Mic className="h-8 w-8" />
+        </button>
+      )}
 
       {/* Mobile Bottom Nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-lg border-t border-border flex items-center justify-around z-50 pb-safe">

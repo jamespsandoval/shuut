@@ -5,12 +5,14 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+import type { AuthUserEligibilityStatus } from './authUserEligibilityStatus';
 
 export interface AuthUser {
   id: string;
   email: string;
   emailVerified: boolean;
   onboardingComplete: boolean;
+  eligibilityStatus: AuthUserEligibilityStatus;
   passkeyEnrolled: boolean;
   passkeyVerified: boolean;
 }

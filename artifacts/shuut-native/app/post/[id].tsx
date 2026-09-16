@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
@@ -8,7 +8,7 @@ import { PostCard } from '../../components/PostCard';
 import { AuthenticatedAudioPlayer } from '../../components/AuthenticatedAudioPlayer';
 import { formatDistanceToNow } from 'date-fns';
 import { File } from 'expo-file-system';
-import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync } from 'expo-audio';
+import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,6 +24,8 @@ export default function PostDetailScreen() {
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
+  const isRecordingRef = useRef(false);
+  isRecordingRef.current = recorderState.isRecording;
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -36,6 +38,10 @@ export default function PostDetailScreen() {
         if (newPerm.status !== 'granted') return;
       }
       setRecordedUri(null);
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
       await recorder.prepareToRecordAsync();
       recorder.record();
     } catch (err) {
@@ -45,7 +51,7 @@ export default function PostDetailScreen() {
 
   const stopRecording = async () => {
     try {
-      recorder.stop();
+      await recorder.stop();
       const uri = recorder.uri;
       if (uri) {
         setRecordedUri(uri);
@@ -56,6 +62,17 @@ export default function PostDetailScreen() {
       console.error('Failed to stop recording', err);
     }
   };
+
+  useEffect(() => {
+    if (recorderState.isRecording && recorderState.durationMillis >= 90_000) {
+      void stopRecording();
+    }
+  }, [recorderState.durationMillis, recorderState.isRecording]);
+
+  useEffect(() => () => {
+    if (isRecordingRef.current) void recorder.stop().catch(() => undefined);
+    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+  }, [recorder]);
 
   const publishComment = async () => {
     if (!recordedUri) return;
@@ -117,7 +134,7 @@ export default function PostDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <PostCard post={post} refetchFeed={refetch} isDetail />
+        <PostCard post={post} refetchFeed={refetch} isDetail onReply={() => void startRecording()} />
 
         <Text style={[styles.commentsTitle, { color: colors.foreground }]}>Voice Comments</Text>
 
@@ -125,7 +142,7 @@ export default function PostDetailScreen() {
           {recordedUri ? (
             <View style={styles.composerActions}>
               <View style={{ flex: 1, marginRight: 8 }}>
-                <AuthenticatedAudioPlayer url={null} durationSeconds={duration} />
+                <AuthenticatedAudioPlayer url={recordedUri} durationSeconds={duration} />
               </View>
               <View style={styles.composerButtonsRow}>
                 <TouchableOpacity onPress={() => setRecordedUri(null)} disabled={isUploading}>
@@ -142,13 +159,13 @@ export default function PostDetailScreen() {
             </View>
           ) : (
             <View style={styles.composerActions}>
-              <TouchableOpacity style={styles.recordBtnPlaceholder} onPress={recorder.isRecording ? stopRecording : startRecording}>
+              <TouchableOpacity style={styles.recordBtnPlaceholder} onPress={recorderState.isRecording ? stopRecording : startRecording}>
                 <Mic color={colors.mutedForeground} size={16} />
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', marginLeft: 8 }}>
-                  {recorder.isRecording ? 'Recording...' : 'Add a voice comment...'}
+                  {recorderState.isRecording ? 'Recording...' : 'Add a voice comment...'}
                 </Text>
               </TouchableOpacity>
-              {recorder.isRecording && (
+              {recorderState.isRecording && (
                 <TouchableOpacity
                   style={[styles.publishCommentBtn, { backgroundColor: colors.destructive }]}
                   onPress={stopRecording}

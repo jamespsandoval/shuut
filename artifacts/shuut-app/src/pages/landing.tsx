@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, ArrowRight, ArrowLeft, Mail, KeyRound } from 'lucide-react';
+import { Loader2, ArrowRight, ArrowLeft, Mail } from 'lucide-react';
 import { Footer } from '@/components/footer';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
@@ -15,12 +15,17 @@ import {
 type AuthMode = 'email' | 'verify';
 type AuthFlow = 'login' | 'register';
 
+function normalizeConfirmationCode(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 6);
+}
+
 export default function Landing() {
   const [mode, setMode] = useState<AuthMode>('email');
   const [flow, setFlow] = useState<AuthFlow | null>(null);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
   
   const queryClient = useQueryClient();
   
@@ -32,6 +37,12 @@ export default function Landing() {
     startAuthMutation.isPending ||
     verifyEmailMutation.isPending || 
     verifyLoginMutation.isPending;
+
+  useEffect(() => {
+    if (mode !== 'verify') return;
+    const frame = window.requestAnimationFrame(() => codeInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [mode]);
 
   const extractError = (err: any) => {
     return err?.message || err?.error || err?.response?.data?.message || "An unexpected error occurred.";
@@ -138,7 +149,7 @@ export default function Landing() {
 
                 <Button 
                   type="submit" 
-                  className="w-full h-14 rounded-xl text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:shadow-md"
+                  className="w-full h-14 rounded-xl bg-primary text-[16px] font-bold transition-all active:scale-[0.98] shadow-sm hover:bg-primary hover:shadow-md disabled:bg-primary disabled:opacity-100"
                   disabled={isPending || !email}
                   data-testid="button-auth-continue"
                 >
@@ -156,45 +167,32 @@ export default function Landing() {
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-              <button 
-                onClick={resetFlow}
-                type="button"
-                className="mb-8 flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                data-testid="button-auth-back"
-              >
-                <ArrowLeft className="w-4 h-4 mr-1.5" />
-                Back
-              </button>
-              
-              <h1 className="text-3xl font-extrabold tracking-tight mb-2 leading-tight" data-testid="heading-auth-code">
-                {flow === 'register' ? 'Create your account' : 'Check your email'}
+              <h1 className="text-3xl font-bold tracking-tight mb-8 leading-tight" data-testid="heading-auth-code">
+                Check your email
               </h1>
-              <p className="text-muted-foreground text-[15px] font-medium mb-8 leading-relaxed">
-                {flow === 'register'
-                  ? "We didn't find an account for this email. Enter the code we sent to continue registration."
-                  : 'We sent a 6-digit sign-in code to'}
-                <br/>
-                <span className="font-bold text-foreground">{email}</span>
-              </p>
 
               <form onSubmit={handleCodeSubmit} className="space-y-6">
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider ml-1">Verification Code</label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <KeyRound className="h-5 w-5 text-muted-foreground opacity-50" />
-                      </div>
                       <Input
+                        ref={codeInputRef}
                         type="text"
                         inputMode="numeric"
                         autoComplete="one-time-code"
                         pattern="\d{6}"
-                        maxLength={6}
                         placeholder="000000"
                         value={code}
                         onChange={(e) => {
-                          const nextCode = e.target.value.replace(/\D/g, '').slice(0, 6);
+                          const nextCode = normalizeConfirmationCode(e.target.value);
+                          setCode(nextCode);
+                          setError(null);
+                          if (nextCode.length === 6) submitCode(nextCode);
+                        }}
+                        onPaste={(e) => {
+                          e.preventDefault();
+                          const nextCode = normalizeConfirmationCode(e.clipboardData.getData('text'));
                           setCode(nextCode);
                           setError(null);
                           if (nextCode.length === 6) submitCode(nextCode);
@@ -222,6 +220,16 @@ export default function Landing() {
                      flow === 'register' ? "Verify & continue" : "Verify & sign in"
                   )}
                 </Button>
+
+                <button
+                  onClick={resetFlow}
+                  type="button"
+                  className="mx-auto flex items-center justify-center text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  data-testid="button-auth-back"
+                >
+                  <ArrowLeft className="mr-1.5 h-4 w-4" />
+                  Back
+                </button>
               </form>
             </div>
           )}

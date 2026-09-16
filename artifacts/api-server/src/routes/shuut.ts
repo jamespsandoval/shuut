@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { Readable } from "stream";
-import { and, asc, desc, eq, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import {
   AskFounderBody,
   AskFounderParams,
@@ -41,12 +41,19 @@ import {
   GetPostCommentsParams,
   GetPostCommentsResponse,
   GetCommentAudioParams,
+  GetNotificationsResponse,
+  SearchProfilesQueryParams,
+  SearchProfilesResponse,
 } from "@workspace/api-zod";
 import {
   db,
   foundersTable,
   postsTable,
+  postReactionsTable,
+  postReshuutsTable,
   commentsTable,
+  notificationsTable,
+  postMentionsTable,
   profileImageUploadsTable,
   usersTable,
   objectCleanupJobsTable,
@@ -66,6 +73,7 @@ import { createPostShareToken } from "../lib/postShareToken";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 
 const router: IRouter = Router();
+const ASK_MINIMUM_POSTS = 5;
 const objectStorage = new ObjectStorageService();
 const POST_EDIT_WINDOW_MS = 30 * 1000;
 const CLEANUP_RETRY_BASE_MS = 5_000;
@@ -93,11 +101,41 @@ async function finalizeCleanupScope(scope: CleanupScope) {
     if (scope.type === "post") {
       await tx.delete(postsTable).where(eq(postsTable.id, Number(scope.id)));
     } else if (scope.type === "account") {
+      await tx.execute(sql`select id from shuut_users where id = ${scope.id} for update`);
       const [founder] = await tx.select({ id: foundersTable.id })
         .from(foundersTable)
         .where(eq(foundersTable.userId, scope.id))
         .limit(1);
-      if (founder) await tx.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+      if (founder) {
+        const reactions = await tx.select().from(postReactionsTable)
+          .where(eq(postReactionsTable.founderId, founder.id));
+        const authoredPosts = await tx.select({ id: postsTable.id })
+          .from(postsTable)
+          .where(eq(postsTable.authorId, founder.id));
+        const postIdsToLock = [...new Set([
+          ...reactions.map((reaction) => reaction.postId),
+          ...authoredPosts.map((post) => post.id),
+        ])].sort((left, right) => left - right);
+        for (const postId of postIdsToLock) {
+          await tx.execute(sql`select id from shuut_posts where id = ${postId} for update`);
+        }
+        for (const reaction of reactions) {
+          if (reaction.emojiType === "rocket") {
+            await tx.update(postsTable)
+              .set({ rocket: sql`greatest(0, ${postsTable.rocket} - 1)` })
+              .where(eq(postsTable.id, reaction.postId));
+          } else if (reaction.emojiType === "laughing") {
+            await tx.update(postsTable)
+              .set({ laughing: sql`greatest(0, ${postsTable.laughing} - 1)` })
+              .where(eq(postsTable.id, reaction.postId));
+          } else if (reaction.emojiType === "thumbsDown") {
+            await tx.update(postsTable)
+              .set({ thumbsDown: sql`greatest(0, ${postsTable.thumbsDown} - 1)` })
+              .where(eq(postsTable.id, reaction.postId));
+          }
+        }
+        await tx.delete(foundersTable).where(eq(foundersTable.id, founder.id));
+      }
       await tx.delete(profileImageUploadsTable).where(eq(profileImageUploadsTable.userId, scope.id));
       await tx.delete(usersTable).where(eq(usersTable.id, scope.id));
     }
@@ -238,7 +276,13 @@ function founderJson(founder: FounderRow) {
   };
 }
 
-function postJson(post: PostRow, author: FounderRow, viewerFounderId?: number | null) {
+function postJson(
+  post: PostRow,
+  author: FounderRow,
+  viewerFounderId?: number | null,
+  viewerReaction?: string | null,
+  viewerReshuuted = false,
+) {
   const storedAudio = post.audioUrl;
   const audioUrl = storedAudio?.startsWith("/objects/uploads/")
     ? `/api/posts/${post.id}/audio`
@@ -256,11 +300,11 @@ function postJson(post: PostRow, author: FounderRow, viewerFounderId?: number | 
       laughing: post.laughing,
       thumbsDown: post.thumbsDown,
     },
-    viewerReaction: ["rocket", "laughing", "thumbsDown"].includes(post.viewerReaction ?? "")
-      ? post.viewerReaction as "rocket" | "laughing" | "thumbsDown"
+    viewerReaction: ["rocket", "laughing", "thumbsDown"].includes(viewerReaction ?? "")
+      ? viewerReaction as "rocket" | "laughing" | "thumbsDown"
       : null,
-    isReshuuted: post.isReshuuted,
-    reshuutedBy: post.reshuutedBy,
+    isReshuuted: viewerReshuuted,
+    reshuutedBy: viewerReshuuted ? "You" : null,
     canEdit:
       post.transcriptionStatus === "ready" &&
       viewerFounderId === post.authorId &&
@@ -282,6 +326,28 @@ function commentJson(comment: CommentRow, author: FounderRow) {
     durationSeconds: comment.durationSeconds,
     createdAt: comment.createdAt,
   };
+}
+
+async function recordNotification(input: {
+  actorId: number;
+  recipientId: number;
+  postId: number;
+  eventType: "reaction" | "reshuut" | "comment" | "mention";
+  reactionType?: string | null;
+  commentId?: number | null;
+}) {
+  if (input.actorId === input.recipientId) return;
+  await db.insert(notificationsTable).values({
+    actorId: input.actorId,
+    recipientId: input.recipientId,
+    postId: input.postId,
+    eventType: input.eventType,
+    reactionType: input.reactionType ?? null,
+    commentId: input.commentId ?? null,
+    dedupeKey: input.eventType === "comment"
+      ? `comment:${input.commentId}`
+      : `${input.eventType}:${input.actorId}:${input.postId}:${input.reactionType ?? ""}`,
+  }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
 }
 
 async function activeFounders(founders: FounderRow[]) {
@@ -306,10 +372,54 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
     .from(foundersTable)
     .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))])));
   const byId = new Map(founders.map((founder) => [founder.id, founder]));
+  const viewerReactions = viewerFounderId
+    ? await db.select().from(postReactionsTable).where(and(
+        eq(postReactionsTable.founderId, viewerFounderId),
+        inArray(postReactionsTable.postId, rows.map((row) => row.id)),
+      ))
+    : [];
+  const reactionByPostId = new Map(viewerReactions.map((reaction) => [reaction.postId, reaction.emojiType]));
+  const viewerReshuuts = viewerFounderId
+    ? await db.select({ postId: postReshuutsTable.postId }).from(postReshuutsTable).where(and(
+        eq(postReshuutsTable.founderId, viewerFounderId),
+        inArray(postReshuutsTable.postId, rows.map((row) => row.id)),
+      ))
+    : [];
+  const reshuutedPostIds = new Set(viewerReshuuts.map((reshuut) => reshuut.postId));
   return rows.flatMap((row) => {
     const author = byId.get(row.authorId);
-    return author ? [postJson(row, author, viewerFounderId)] : [];
+    return author ? [postJson(
+      row,
+      author,
+      viewerFounderId,
+      reactionByPostId.get(row.id),
+      reshuutedPostIds.has(row.id),
+    )] : [];
   });
+}
+
+async function viewerReactionFor(postId: number, viewerFounderId?: number | null) {
+  if (!viewerFounderId) return null;
+  const [reaction] = await db.select({ emojiType: postReactionsTable.emojiType })
+    .from(postReactionsTable)
+    .where(and(
+      eq(postReactionsTable.postId, postId),
+      eq(postReactionsTable.founderId, viewerFounderId),
+    ))
+    .limit(1);
+  return reaction?.emojiType ?? null;
+}
+
+async function viewerReshuutedPost(postId: number, viewerFounderId?: number | null) {
+  if (!viewerFounderId) return false;
+  const [reshuut] = await db.select({ id: postReshuutsTable.id })
+    .from(postReshuutsTable)
+    .where(and(
+      eq(postReshuutsTable.postId, postId),
+      eq(postReshuutsTable.founderId, viewerFounderId),
+    ))
+    .limit(1);
+  return Boolean(reshuut);
 }
 
 router.get("/feed", async (req, res): Promise<void> => {
@@ -321,7 +431,8 @@ router.get("/feed", async (req, res): Promise<void> => {
   }
   const all = (await db.select().from(postsTable).orderBy(desc(postsTable.createdAt)))
     .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
-  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const userId = getAuthenticatedUserId(req);
+  const viewer = await currentFounder(userId ?? "");
   let rows = all;
   if (params.data.view === "following") {
     const followed = await db
@@ -331,6 +442,68 @@ router.get("/feed", async (req, res): Promise<void> => {
     rows = all.filter((post) => followed.some((founder) => founder.id === post.authorId));
   }
   res.json(GetFeedResponse.parse(await hydratePosts(rows, viewer?.id)));
+});
+
+router.get("/notifications", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const viewer = await currentFounder(userId);
+  if (!viewer) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const rows = await db.select({
+    notification: notificationsTable,
+    actor: foundersTable,
+    post: postsTable,
+  }).from(notificationsTable)
+    .innerJoin(foundersTable, eq(foundersTable.id, notificationsTable.actorId))
+    .innerJoin(postsTable, eq(postsTable.id, notificationsTable.postId))
+    .where(and(
+      eq(notificationsTable.recipientId, viewer.id),
+      eq(postsTable.deletionStatus, "active"),
+      eq(postsTable.transcriptionStatus, "ready"),
+    ))
+    .orderBy(desc(notificationsTable.createdAt))
+    .limit(50);
+  const active = await activeFounders(rows.map((row) => row.actor));
+  const activeIds = new Set(active.map((founder) => founder.id));
+  res.json(GetNotificationsResponse.parse(rows
+    .filter((row) => activeIds.has(row.actor.id))
+    .map((row) => ({
+      id: row.notification.id,
+      eventType: row.notification.eventType,
+      reactionType: row.notification.reactionType,
+      commentId: row.notification.commentId,
+      createdAt: row.notification.createdAt,
+      actor: founderJson(row.actor),
+      post: {
+        id: row.post.id,
+        transcript: row.post.transcript,
+        createdAt: row.post.createdAt,
+      },
+    }))));
+});
+
+router.get("/profiles/search", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  const params = SearchProfilesQueryParams.safeParse(req.query);
+  if (!userId || !params.success) {
+    res.status(userId ? 400 : 401).json({ error: userId ? "Invalid search" : "Unauthorized" });
+    return;
+  }
+  const query = params.data.q.trim();
+  const matches = await db.select().from(foundersTable)
+    .where(or(
+      ilike(foundersTable.handle, `%${query}%`),
+      ilike(foundersTable.name, `%${query}%`),
+    ))
+    .limit(12);
+  const active = (await activeFounders(matches)).slice(0, 8);
+  res.json(SearchProfilesResponse.parse(active.map(founderJson)));
 });
 
 router.get("/profiles/:handle", async (req, res): Promise<void> => {
@@ -362,7 +535,8 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     .where(eq(postsTable.authorId, founder.id))
     .orderBy(desc(postsTable.createdAt)))
     .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
-  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const userId = getAuthenticatedUserId(req);
+  const viewer = await currentFounder(userId ?? "");
   res.json(
     GetProfileResponse.parse({
       founder: founderJson(founder),
@@ -696,6 +870,16 @@ router.post("/posts", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
+  const requestedMentionIds = body.data.mentionedFounderIds ?? [];
+  const mentionCandidates = requestedMentionIds.length
+    ? await db.select().from(foundersTable).where(inArray(foundersTable.id, requestedMentionIds))
+    : [];
+  const mentionedFounders = (await activeFounders(mentionCandidates))
+    .filter((founder) => founder.id !== author.id);
+  if (mentionedFounders.length !== requestedMentionIds.filter((id) => id !== author.id).length) {
+    res.status(400).json({ error: "One or more tagged accounts are unavailable" });
+    return;
+  }
   if (!body.data.audioObjectPath) {
     await auditSecurityEvent(req, "publish_denied", userId, { reason: "missing_audio" });
     res.status(400).json({ error: "An audio recording is required to publish." });
@@ -728,6 +912,11 @@ router.post("/posts", async (req, res): Promise<void> => {
         durationSeconds: body.data.durationSeconds,
         audioUrl: claimedUpload.objectPath,
       }).returning();
+      if (mentionedFounders.length) {
+        await tx.insert(postMentionsTable).values(
+          mentionedFounders.map((founder) => ({ postId: created.id, founderId: founder.id })),
+        );
+      }
       return { status: "created" as const, created };
     });
   } catch (error) {
@@ -749,6 +938,14 @@ router.post("/posts", async (req, res): Promise<void> => {
   const { created } = publication;
   const audioObjectPath = created.audioUrl;
   await auditSecurityEvent(req, "publish", userId, { postId: created.id });
+  for (const mentioned of mentionedFounders) {
+    await recordNotification({
+      actorId: author.id,
+      recipientId: mentioned.id,
+      postId: created.id,
+      eventType: "mention",
+    });
+  }
   res.status(201).json(CreatePostResponse.parse(postJson(created, author, author.id)));
   if (!body.data.transcript && audioObjectPath) {
     void transcribeRecording(audioObjectPath)
@@ -787,7 +984,13 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
     return;
   }
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
-  res.json(GetPostResponse.parse(postJson(post, author, viewer?.id)));
+  res.json(GetPostResponse.parse(postJson(
+    post,
+    author,
+    viewer?.id,
+    await viewerReactionFor(post.id, viewer?.id),
+    await viewerReshuutedPost(post.id, viewer?.id),
+  )));
 });
 
 router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
@@ -909,6 +1112,13 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     return;
   }
   const { created } = publication;
+  await recordNotification({
+    actorId: author.id,
+    recipientId: post.authorId,
+    postId: post.id,
+    eventType: "comment",
+    commentId: created.id,
+  });
   await auditSecurityEvent(req, "voice_comment_created", userId, {
     postId: post.id,
     commentId: created.id,
@@ -1042,7 +1252,13 @@ router.patch("/posts/:postId", async (req, res): Promise<void> => {
     .set({ transcript: body.data.transcript.trim() })
     .where(eq(postsTable.id, post.id))
     .returning();
-  res.json(UpdatePostResponse.parse(postJson(updated, founder, founder.id)));
+  res.json(UpdatePostResponse.parse(postJson(
+    updated,
+    founder,
+    founder.id,
+    await viewerReactionFor(updated.id, founder.id),
+    await viewerReshuutedPost(updated.id, founder.id),
+  )));
 });
 
 router.delete("/posts/:postId", async (req, res): Promise<void> => {
@@ -1097,35 +1313,81 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid reaction" });
     return;
   }
-  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const userId = getAuthenticatedUserId(req);
+  const viewer = await currentFounder(userId ?? "");
   if (!viewer) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const [current] = await db.select().from(postsTable).where(eq(postsTable.id, params.data.postId));
-  if (!current) {
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+    const [activeUser] = await tx.select({ deletionStatus: usersTable.deletionStatus })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId!))
+      .limit(1);
+    if (activeUser?.deletionStatus !== "active") {
+      return { status: "account_deleting" as const };
+    }
+    await tx.execute(sql`select id from shuut_posts where id = ${params.data.postId} for update`);
+    const [current] = await tx.select().from(postsTable).where(and(
+      eq(postsTable.id, params.data.postId),
+      eq(postsTable.deletionStatus, "active"),
+    ));
+    if (!current) return { status: "post_missing" as const };
+
+    const [existingReaction] = await tx.select().from(postReactionsTable).where(and(
+      eq(postReactionsTable.postId, current.id),
+      eq(postReactionsTable.founderId, viewer.id),
+    )).limit(1);
+    const counts = {
+      rocket: current.rocket,
+      laughing: current.laughing,
+      thumbsDown: current.thumbsDown,
+    };
+    const key = body.data.emojiType;
+    const old = existingReaction?.emojiType && existingReaction.emojiType in counts
+      ? existingReaction.emojiType as keyof typeof counts
+      : null;
+    if (old) counts[old] = Math.max(0, counts[old] - 1);
+    const nextReaction = old === key ? null : key;
+    if (nextReaction) counts[nextReaction] += 1;
+
+    if (existingReaction) {
+      await tx.delete(postReactionsTable).where(eq(postReactionsTable.id, existingReaction.id));
+    }
+    if (nextReaction) {
+      await tx.insert(postReactionsTable).values({
+        postId: current.id,
+        founderId: viewer.id,
+        emojiType: nextReaction,
+      });
+    }
+    const [updated] = await tx.update(postsTable)
+      .set(counts)
+      .where(eq(postsTable.id, current.id))
+      .returning();
+    return { status: "updated" as const, updated, nextReaction };
+  });
+  if (result.status === "account_deleting") {
+    res.status(409).json({ error: "Account deletion is already in progress" });
+    return;
+  }
+  if (result.status === "post_missing") {
     res.status(404).json({ error: "Post not found" });
     return;
   }
-  const counts = {
-    rocket: current.rocket,
-    laughing: current.laughing,
-    thumbsDown: current.thumbsDown,
-  };
-  const key = body.data.emojiType;
-  const old = current.viewerReaction && current.viewerReaction in counts
-    ? current.viewerReaction as keyof typeof counts
-    : null;
-  if (old) counts[old] = Math.max(0, counts[old] - 1);
-  const nextReaction = old === key ? null : key;
-  if (nextReaction) counts[nextReaction] += 1;
-  const [updated] = await db
-    .update(postsTable)
-    .set({ ...counts, viewerReaction: nextReaction })
-    .where(eq(postsTable.id, current.id))
-    .returning();
+  const { updated, nextReaction } = result;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
-  res.json(SetReactionResponse.parse(postJson(updated, author, viewer.id)));
+  if (nextReaction) {
+    await recordNotification({
+      actorId: viewer.id,
+      recipientId: updated.authorId,
+      postId: updated.id,
+      eventType: "reaction",
+      reactionType: nextReaction,
+    });
+  }
+  res.json(SetReactionResponse.parse(postJson(updated, author, viewer.id, nextReaction)));
 });
 
 router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
@@ -1134,22 +1396,59 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const userId = getAuthenticatedUserId(req);
+  const viewer = await currentFounder(userId ?? "");
   if (!viewer) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const [updated] = await db
-    .update(postsTable)
-    .set({ isReshuuted: true, reshuutedBy: viewer.name })
-    .where(eq(postsTable.id, params.data.postId))
-    .returning();
-  if (!updated) {
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+    const [activeUser] = await tx.select({ deletionStatus: usersTable.deletionStatus })
+      .from(usersTable).where(eq(usersTable.id, userId!)).limit(1);
+    if (activeUser?.deletionStatus !== "active") return { status: "account_deleting" as const };
+    await tx.execute(sql`select id from shuut_posts where id = ${params.data.postId} for update`);
+    const [post] = await tx.select().from(postsTable).where(and(
+      eq(postsTable.id, params.data.postId),
+      eq(postsTable.deletionStatus, "active"),
+    ));
+    if (!post) return { status: "post_missing" as const };
+    const [existing] = await tx.select().from(postReshuutsTable).where(and(
+      eq(postReshuutsTable.postId, post.id),
+      eq(postReshuutsTable.founderId, viewer.id),
+    )).limit(1);
+    if (existing) {
+      await tx.delete(postReshuutsTable).where(eq(postReshuutsTable.id, existing.id));
+      return { status: "updated" as const, updated: post, isReshuuted: false };
+    }
+    await tx.insert(postReshuutsTable).values({ postId: post.id, founderId: viewer.id });
+    return { status: "updated" as const, updated: post, isReshuuted: true };
+  });
+  if (result.status === "account_deleting") {
+    res.status(409).json({ error: "Account deletion is already in progress" });
+    return;
+  }
+  if (result.status === "post_missing") {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  const { updated, isReshuuted } = result;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
-  res.json(ReshuutPostResponse.parse(postJson(updated, author, viewer.id)));
+  if (isReshuuted) {
+    await recordNotification({
+      actorId: viewer.id,
+      recipientId: updated.authorId,
+      postId: updated.id,
+      eventType: "reshuut",
+    });
+  }
+  res.json(ReshuutPostResponse.parse(postJson(
+    updated,
+    author,
+    viewer.id,
+    await viewerReactionFor(updated.id, viewer.id),
+    isReshuuted,
+  )));
 });
 
 router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {
@@ -1194,13 +1493,19 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
   const posts = await db
     .select()
     .from(postsTable)
-    .where(eq(postsTable.authorId, founder.id))
+    .where(and(
+      eq(postsTable.authorId, founder.id),
+      eq(postsTable.transcriptionStatus, "ready"),
+      eq(postsTable.deletionStatus, "active"),
+    ))
     .orderBy(desc(postsTable.createdAt))
-    .limit(3);
-  const hasEnoughContext = posts.length > 0;
-  const answer = hasEnoughContext
-    ? `${founder.name.split(" ")[0]} tends to favour learning in public and turning observations into concrete next steps. In the posts available here, the recurring theme is to stay curious, make assumptions explicit, and use customer or team feedback to decide what changes next.`
-    : `${founder.name.split(" ")[0]} hasn’t posted enough yet for me to answer that without guessing.`;
+    .limit(ASK_MINIMUM_POSTS);
+  if (posts.length < ASK_MINIMUM_POSTS) {
+    res.status(403).json({ error: `Ask Me unlocks after ${ASK_MINIMUM_POSTS} published SHÜÜTs.` });
+    return;
+  }
+  const hasEnoughContext = true;
+  const answer = `${founder.name.split(" ")[0]} tends to favour learning in public and turning observations into concrete next steps. In the posts available here, the recurring theme is to stay curious, make assumptions explicit, and use customer or team feedback to decide what changes next.`;
   res.json(
     AskFounderResponse.parse({
       answer,

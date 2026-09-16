@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView, Platform, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useColors } from '../../hooks/useColors';
 import { useGetFeed, Post } from '@workspace/api-client-react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Mic } from 'lucide-react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Mic, Square } from 'lucide-react-native';
 import { PostCard } from '../../components/PostCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+
+const FLOATING_MIC_SCROLL_THRESHOLD = 112;
 
 export default function FeedScreen() {
   const [view, setView] = useState<'everyone' | 'following'>('everyone');
@@ -15,7 +17,7 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ newPostId?: string }>();
   const [showFloatingMic, setShowFloatingMic] = useState(false);
-  const largeMicBottom = useRef(0);
+  const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
 
   const { data: posts, isLoading, refetch, isRefetching } = useGetFeed(
     { view },
@@ -32,10 +34,46 @@ export default function FeedScreen() {
     }
   }, [params.newPostId, refetch]);
 
-  const openRecorder = () => router.push('/(main)/record');
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleWindowScroll = () => {
+      const shouldFloat = window.scrollY >= FLOATING_MIC_SCROLL_THRESHOLD;
+      setShowFloatingMic((current) => current === shouldFloat ? current : shouldFloat);
+    };
+
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    handleWindowScroll();
+    return () => window.removeEventListener('scroll', handleWindowScroll);
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    setIsOpeningRecorder(false);
+  }, []));
+
+  useEffect(() => {
+    if (!isOpeningRecorder) return;
+
+    let secondFrame: number | undefined;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        router.push('/compose');
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame !== undefined) cancelAnimationFrame(secondFrame);
+    };
+  }, [isOpeningRecorder, router]);
+
+  const openRecorder = () => {
+    if (isOpeningRecorder) return;
+    setIsOpeningRecorder(true);
+  };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const shouldFloat = event.nativeEvent.contentOffset.y >= largeMicBottom.current;
+    const shouldFloat = event.nativeEvent.contentOffset.y >= FLOATING_MIC_SCROLL_THRESHOLD;
     setShowFloatingMic((current) => current === shouldFloat ? current : shouldFloat);
   };
 
@@ -86,14 +124,13 @@ export default function FeedScreen() {
               />
             </View>
 
-            <View
-              style={styles.recordActionRow}
-              onLayout={(event) => {
-                const { y, height } = event.nativeEvent.layout;
-                largeMicBottom.current = y + height;
-              }}
-            >
-              <TouchableOpacity style={[styles.largeMicButton, { backgroundColor: colors.primary }]} onPress={openRecorder}>
+            <View style={styles.recordActionRow}>
+              <TouchableOpacity
+                style={[styles.largeMicButton, { backgroundColor: colors.primary }]}
+                onPress={openRecorder}
+                disabled={isOpeningRecorder}
+                accessibilityLabel="Record a SHÜÜT"
+              >
                 <Mic color="#fff" size={28} />
               </TouchableOpacity>
             </View>
@@ -117,13 +154,38 @@ export default function FeedScreen() {
             {
               backgroundColor: colors.primary,
               bottom: insets.bottom + 72,
+              ...(Platform.OS === 'web' ? { position: 'fixed' as const } : null),
             },
           ]}
           onPress={openRecorder}
+          disabled={isOpeningRecorder}
           accessibilityLabel="Record a SHÜÜT"
         >
           <Mic color="#fff" size={24} />
         </TouchableOpacity>
+      )}
+      {isOpeningRecorder && (
+        <View
+          pointerEvents="auto"
+          style={[styles.recorderTransitionCover, { backgroundColor: colors.background }]}
+        >
+          <View style={styles.transitionRecordCard}>
+            <View style={styles.transitionRecordingState}>
+              <Text style={[styles.transitionRecordingTitle, { color: colors.destructive }]}>
+                RECORDING
+              </Text>
+              <Text style={[styles.transitionTimerText, { color: colors.foreground }]}>
+                0:00
+              </Text>
+              <Text style={[styles.transitionTimerLimit, { color: colors.mutedForeground }]}>
+                / 1:30
+              </Text>
+            </View>
+            <View style={[styles.transitionRecordButton, { backgroundColor: colors.destructive }]}>
+              <Square color={colors.primaryForeground} size={32} />
+            </View>
+          </View>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -199,8 +261,43 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 6,
-    zIndex: 20,
+    elevation: 12,
+    zIndex: 100,
+  },
+  recorderTransitionCover: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  transitionRecordCard: {
+    alignItems: 'center',
+    gap: 32,
+  },
+  transitionRecordingState: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  transitionRecordingTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 20,
+    letterSpacing: 2,
+  },
+  transitionTimerText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 64,
+    fontVariant: ['tabular-nums'],
+  },
+  transitionTimerLimit: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 16,
+  },
+  transitionRecordButton: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   empty: {
     padding: 48,

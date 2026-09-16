@@ -5,11 +5,21 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+export type AuthUserEligibilityStatus = typeof AuthUserEligibilityStatus[keyof typeof AuthUserEligibilityStatus];
+
+
+export const AuthUserEligibilityStatus = {
+  undecided: 'undecided',
+  eligible: 'eligible',
+  waitlisted: 'waitlisted',
+} as const;
+
 export interface AuthUser {
   id: string;
   email: string;
   emailVerified: boolean;
   onboardingComplete: boolean;
+  eligibilityStatus: AuthUserEligibilityStatus;
   passkeyEnrolled: boolean;
   passkeyVerified: boolean;
 }
@@ -126,6 +136,7 @@ export interface OnboardingInput {
      * @pattern ^[a-z0-9_]+$
      */
   handle: string;
+  eligible: boolean;
 }
 
 export interface UsernameAvailability {
@@ -319,6 +330,8 @@ export interface PostInput {
      * @maximum 90
      */
   durationSeconds: number;
+  /** @maxItems 5 */
+  mentionedFounderIds?: number[];
 }
 
 export interface PostEditInput {
@@ -358,6 +371,46 @@ export interface VoiceComment {
   audioUrl: string;
   durationSeconds: number;
   createdAt: string;
+}
+
+export type NotificationEventType = typeof NotificationEventType[keyof typeof NotificationEventType];
+
+
+export const NotificationEventType = {
+  reaction: 'reaction',
+  reshuut: 'reshuut',
+  comment: 'comment',
+  mention: 'mention',
+} as const;
+
+/**
+ * @nullable
+ */
+export type NotificationReactionType = typeof NotificationReactionType[keyof typeof NotificationReactionType] | null;
+
+
+export const NotificationReactionType = {
+  rocket: 'rocket',
+  laughing: 'laughing',
+  thumbsDown: 'thumbsDown',
+} as const;
+
+export type NotificationPost = {
+  id: number;
+  transcript: string;
+  createdAt: string;
+};
+
+export interface Notification {
+  id: number;
+  eventType: NotificationEventType;
+  /** @nullable */
+  reactionType?: NotificationReactionType;
+  /** @nullable */
+  commentId?: number | null;
+  createdAt: string;
+  actor: Founder;
+  post: NotificationPost;
 }
 
 export interface PostShareLink {
@@ -438,4 +491,12 @@ export const GetFeedView = {
   everyone: 'everyone',
   following: 'following',
 } as const;
+
+export type SearchProfilesParams = {
+/**
+ * @minLength 1
+ * @maxLength 30
+ */
+q: string;
+};
 

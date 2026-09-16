@@ -1,8 +1,7 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import { X } from 'lucide-react-native';
+import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../../hooks/useColors';
 
@@ -16,7 +15,10 @@ const PUBLIC_PAGES = {
 } as const;
 
 type PublicPageSlug = keyof typeof PUBLIC_PAGES;
-const PUBLIC_SITE_URL = 'https://shuut.me';
+const PUBLIC_SITE_URL = __DEV__ && process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/shuut-app`
+  : 'https://shuut.me';
+const PUBLIC_SITE_HOME = new URL(PUBLIC_SITE_URL);
 
 export default function PublicContentScreen() {
   const colors = useColors();
@@ -24,40 +26,10 @@ export default function PublicContentScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ slug?: string }>();
   const slug = params.slug && params.slug in PUBLIC_PAGES ? params.slug as PublicPageSlug : 'about';
-  const url = `${PUBLIC_SITE_URL}/${slug}`;
-
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-
-    let mounted = true;
-    void WebBrowser.openBrowserAsync(url).finally(() => {
-      if (mounted) router.back();
-    });
-    return () => {
-      mounted = false;
-    };
-  }, [router, url]);
+  const url = `${PUBLIC_SITE_URL}/${slug}?native=1`;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View
-        style={[
-          styles.header,
-          {
-            borderBottomColor: colors.border,
-            paddingTop: insets.top + 10,
-          },
-        ]}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeButton} accessibilityLabel="Close">
-          <X color={colors.foreground} size={24} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
-          {PUBLIC_PAGES[slug]}
-        </Text>
-        <View style={styles.closeButton} />
-      </View>
-
       {Platform.OS === 'web'
         ? React.createElement('iframe', {
             src: url,
@@ -70,9 +42,38 @@ export default function PublicContentScreen() {
             },
           })
         : (
-          <View style={styles.loading}>
-            <ActivityIndicator color={colors.primary} />
-          </View>
+          <WebView
+            source={{ uri: url }}
+            style={[
+              styles.webView,
+              {
+                backgroundColor: colors.background,
+                marginTop: insets.top,
+                marginBottom: insets.bottom,
+              },
+            ]}
+            contentInsetAdjustmentBehavior="never"
+            startInLoadingState
+            renderLoading={() => (
+              <View style={[styles.loading, { backgroundColor: colors.background }]}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            )}
+            onShouldStartLoadWithRequest={(request) => {
+              try {
+                const requestedUrl = new URL(request.url);
+                const requestedPath = requestedUrl.pathname.replace(/\/+$/, '');
+                const homePath = PUBLIC_SITE_HOME.pathname.replace(/\/+$/, '');
+                if (requestedUrl.origin === PUBLIC_SITE_HOME.origin && requestedPath === homePath) {
+                  router.back();
+                  return false;
+                }
+              } catch {
+                return true;
+              }
+              return true;
+            }}
+          />
         )}
     </View>
   );
@@ -82,25 +83,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    minHeight: 60,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
+  webView: {
     flex: 1,
-    textAlign: 'center',
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 17,
   },
   loading: {
     flex: 1,

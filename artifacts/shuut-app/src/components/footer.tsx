@@ -11,7 +11,7 @@ export function Footer() {
   ];
 
   return (
-    <footer className="w-full py-10 px-6 border-t border-gray-100 bg-white z-10 shrink-0">
+    <footer className="w-full px-6 pt-10 pb-[calc(2.5rem+env(safe-area-inset-bottom))] border-t border-gray-100 bg-white z-10 shrink-0">
       <div className="max-w-screen-lg mx-auto flex flex-col items-center gap-6">
         <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-3 text-[13px] text-gray-500 font-medium">
           {footerLinks.map((link, i) => (

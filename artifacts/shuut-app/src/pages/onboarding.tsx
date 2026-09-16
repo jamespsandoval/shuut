@@ -38,12 +38,13 @@ function errorMessage(error: unknown) {
 }
 
 export default function Onboarding() {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [handle, setHandle] = useState("");
   const [debouncedHandle, setDebouncedHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [decision, setDecision] = useState<boolean | null>(null);
   const queryClient = useQueryClient();
   const completeOnboarding = useCompleteOnboarding();
   const validHandle = /^[a-z0-9_]{2,30}$/.test(handle);
@@ -74,23 +75,27 @@ export default function Onboarding() {
     setStep(2);
   };
 
-  const finish = (event: React.FormEvent) => {
-    event.preventDefault();
+  const decide = (eligible: boolean) => {
     const normalizedHandle = handle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30);
     setHandle(normalizedHandle);
     setError(null);
+    setDecision(eligible);
     completeOnboarding.mutate(
       {
         data: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           handle: normalizedHandle,
+          eligible,
         },
       },
       {
         onSuccess: () =>
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() }),
-        onError: (requestError) => setError(errorMessage(requestError)),
+        onError: (requestError) => {
+          setDecision(null);
+          setError(errorMessage(requestError));
+        },
       },
     );
   };
@@ -107,7 +112,7 @@ export default function Onboarding() {
 
         <section className="w-full">
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-primary">
-            Step {step} of 2
+            Step {step} of 3
           </p>
 
           {step === 1 ? (
@@ -156,8 +161,8 @@ export default function Onboarding() {
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </form>
-          ) : (
-            <form onSubmit={finish} className="space-y-5">
+          ) : step === 2 ? (
+            <form onSubmit={(event) => { event.preventDefault(); setError(null); setStep(3); }} className="space-y-5">
               <button
                 type="button"
                 onClick={() => {
@@ -235,12 +240,44 @@ export default function Onboarding() {
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
                   <>
-                    Finish
+                    Continue
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </>
                 )}
               </Button>
             </form>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">
+                  Are you the founder of a technology startup based in Europe (including the UK)?
+                </h1>
+                <p className="mt-2 text-[15px] font-medium text-muted-foreground">
+                  SHÜÜT is currently available to founders of European and UK technology startups. Your answer is final.
+                </p>
+              </div>
+              {error && (
+                <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+              )}
+              <div className="space-y-3" role="radiogroup" aria-label="Founder eligibility">
+                {[{ label: "Yes, I am", value: true }, { label: "No, I’m not", value: false }].map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={decision === option.value}
+                    disabled={completeOnboarding.isPending}
+                    onClick={() => decide(option.value)}
+                    className="flex h-16 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-5 text-left text-[16px] font-bold shadow-sm transition hover:border-primary disabled:opacity-60"
+                  >
+                    {option.label}
+                    {decision === option.value && completeOnboarding.isPending
+                      ? <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      : <span className="h-5 w-5 rounded-full border-2 border-slate-400" />}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </section>
       </main>

@@ -18,8 +18,19 @@ function getSupportedRecordingType() {
   return RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
 }
 
-export function CommentComposer({ postId, onSubmitted }: { postId: number, onSubmitted: (id: number) => void }) {
+export function CommentComposer({
+  postId,
+  onSubmitted,
+  onDismiss,
+  autoStart = false,
+}: {
+  postId: number
+  onSubmitted: (id: number) => void
+  onDismiss: () => void
+  autoStart?: boolean
+}) {
   const [isRecording, setIsRecording] = useState(false)
+  const [isStarting, setIsStarting] = useState(autoStart)
   const [time, setTime] = useState(0)
   const [audioData, setAudioData] = useState<string | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
@@ -28,6 +39,7 @@ export function CommentComposer({ postId, onSubmitted }: { postId: number, onSub
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<number | null>(null)
+  const autoStartedRef = useRef(false)
   
   const createComment = useCreatePostComment()
   const { toast } = useToast()
@@ -51,6 +63,7 @@ export function CommentComposer({ postId, onSubmitted }: { postId: number, onSub
 
   const startRecording = useCallback(async () => {
     if (isRecording || audioData) return
+    setIsStarting(true)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const supportedType = getSupportedRecordingType()
@@ -74,6 +87,7 @@ export function CommentComposer({ postId, onSubmitted }: { postId: number, onSub
       
       mediaRecorderRef.current.start()
       setIsRecording(true)
+      setIsStarting(false)
       setTime(0)
       setAudioData(null)
       setBlob(null)
@@ -82,6 +96,8 @@ export function CommentComposer({ postId, onSubmitted }: { postId: number, onSub
         setTime(prev => prev + 1)
       }, 1000)
     } catch (err) {
+      setIsStarting(false)
+      onDismiss()
       console.error("Failed to start recording:", err)
       toast({
         title: "Microphone access denied",
@@ -91,11 +107,23 @@ export function CommentComposer({ postId, onSubmitted }: { postId: number, onSub
     }
   }, [audioData, isRecording, toast])
 
+  useEffect(() => () => {
+    if (timerRef.current) window.clearInterval(timerRef.current)
+    mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
+  }, [])
+
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return
+    autoStartedRef.current = true
+    void startRecording()
+  }, [autoStart, startRecording])
+
   const handleCancel = () => {
     if (audioData) URL.revokeObjectURL(audioData)
     setAudioData(null)
     setBlob(null)
     setTime(0)
+    onDismiss()
   }
 
   const handleSubmit = async () => {
@@ -160,32 +188,16 @@ export function CommentComposer({ postId, onSubmitted }: { postId: number, onSub
     }
   }
 
-  if (!isRecording && !audioData) {
-    return (
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-secondary/80 flex items-center justify-center shrink-0 border border-border/50">
-          <Mic className="w-4 h-4 text-muted-foreground" />
-        </div>
-        <button 
-          onClick={startRecording}
-          className="flex-1 text-left bg-secondary/30 hover:bg-secondary/60 text-muted-foreground text-[15px] px-4 py-2.5 rounded-full transition-colors border border-border/50"
-        >
-          Add a voice comment...
-        </button>
-      </div>
-    )
-  }
-
   return (
     <div className="bg-secondary/20 rounded-3xl p-4 border border-border/50 animate-in fade-in zoom-in-95 shadow-sm">
-      {isRecording ? (
+      {isStarting || isRecording ? (
         <div className="flex items-center justify-between gap-4 px-2">
           <div className="flex items-center gap-4">
             <div className="w-4 h-4 rounded-full bg-destructive animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
             <div className="font-mono text-xl tracking-tight text-foreground">{formatTime(time)}</div>
             <div className="text-muted-foreground text-sm font-mono">/ 1:30</div>
           </div>
-          <Button size="icon" variant="destructive" className="rounded-full w-12 h-12 shadow-lg shadow-destructive/20 hover:scale-105 active:scale-95 transition-all" onClick={stopRecording}>
+          <Button size="icon" variant="destructive" className="rounded-full w-12 h-12 shadow-lg shadow-destructive/20 hover:scale-105 active:scale-95 transition-all" onClick={stopRecording} disabled={isStarting}>
             <Square className="w-5 h-5 fill-current" />
           </Button>
         </div>

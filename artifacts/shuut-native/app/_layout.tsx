@@ -3,11 +3,13 @@ import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_7
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
+import { setAudioModeAsync } from 'expo-audio';
 import { useEffect } from 'react';
 import Colors from '../constants/colors';
 import { AuthProvider, useAuth } from '../hooks/useAuthStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setBaseUrl, setDefaultCredentials } from '@workspace/api-client-react';
+import { GlobalRecordButton } from '../components/GlobalRecordButton';
 
 // Initialize base URL
 const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
@@ -59,8 +61,17 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(main)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="compose"
+          options={{
+            headerShown: false,
+            animation: 'none',
+            gestureEnabled: false,
+          }}
+        />
         <Stack.Screen name="public/[slug]" options={{ headerShown: false }} />
       </Stack>
+      {authState === 'ready' && <GlobalRecordButton />}
     </ThemeProvider>
   );
 }
@@ -81,6 +92,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(Colors.light.background);
+    void setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+    });
   }, []);
 
   if (!loaded) {

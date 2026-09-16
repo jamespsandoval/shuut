@@ -8,12 +8,14 @@ import { Image } from 'expo-image';
 import { authenticatedImageSource } from '../../lib/apiUrl';
 import { useAuth } from '../../hooks/useAuthStore';
 import { PostCard } from '../../components/PostCard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
   const { handle } = useLocalSearchParams<{ handle: string }>();
   const colors = useColors();
   const router = useRouter();
   const { token } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const { data: profileData, isLoading, refetch } = useGetProfile(handle, { query: { queryKey: ['profile', handle] } });
   const toggleFollow = useToggleFollow();
@@ -34,13 +36,15 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border, paddingTop: Math.max(insets.top, 8) }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ChevronLeft color={colors.foreground} size={24} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
           <Text style={[styles.title, { color: colors.foreground }]}>{profileData?.founder?.name}</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{profileData?.postCount || 0} SHÜÜTs</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            {profileData?.postCount ?? 0} {(profileData?.postCount ?? 0) === 1 ? 'SHÜÜT' : 'SHÜÜTs'}
+          </Text>
         </View>
         <View style={{ width: 24 }} />
       </View>
@@ -126,7 +130,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    paddingTop: 8,
     borderBottomWidth: 1,
   },
   backButton: { padding: 4 },

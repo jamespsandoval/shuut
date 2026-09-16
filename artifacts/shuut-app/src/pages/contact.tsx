@@ -8,6 +8,8 @@ import { Loader2 } from "lucide-react";
 const MAX_MESSAGE_LENGTH = 1000;
 
 export default function Contact() {
+  const isNativeApp = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('native') === '1';
   const sendMessage = useSendContactMessage();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -58,9 +60,11 @@ export default function Contact() {
   return (
     <PublicLayout>
       <div className="mb-9">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 mb-3">
-          Get in touch
-        </p>
+        {!isNativeApp && (
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 mb-3">
+            Get in touch
+          </p>
+        )}
         <h1 className="text-4xl font-extrabold tracking-tight text-gray-950 mb-3">
           Contact SHÜÜT
         </h1>

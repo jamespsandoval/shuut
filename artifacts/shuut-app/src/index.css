@@ -67,6 +67,25 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+@media (min-width: 768px) {
+  .shuut-floating-record {
+    right: auto;
+    left: calc(100vw - 360px);
+  }
+}
+
+@media (min-width: 880px) {
+  .shuut-floating-record {
+    left: 800px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .shuut-floating-record {
+    left: calc((100vw - 1280px) / 2 + 800px);
+  }
+}
+
 /* LIGHT MODE */
 :root {
   --button-outline: rgba(0, 0, 0, 0.1);

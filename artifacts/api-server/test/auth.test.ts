@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import { eq, inArray, like } from "drizzle-orm";
+import { desc, eq, inArray, like } from "drizzle-orm";
 import app from "../src/app";
 import { retryDueCleanupJobs } from "../src/routes/shuut";
 import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
@@ -18,6 +18,8 @@ import {
 import {
   db,
   commentsTable,
+  notificationsTable,
+  postMentionsTable,
   foundersTable,
   passkeyRecoveriesTable,
   objectCleanupJobsTable,
@@ -75,6 +77,10 @@ test("authentication code templates are readable, branded, and safely escaped", 
     assert.ok(!message.htmlBody.includes('12<3&"456'));
     assert.match(message.textBody, /This code expires in 15 minutes/);
     assert.match(message.textBody, /This inbox isn’t monitored/);
+    assert.ok(
+      message.htmlBody.indexOf("12&lt;3&amp;&quot;456") < message.htmlBody.lastIndexOf(expectations[kind][1]),
+      "Expected the authentication code to appear before explanatory copy",
+    );
     for (const phrase of expectations[kind]) {
       assert.ok(message.htmlBody.includes(phrase));
       assert.ok(message.textBody.includes(phrase));
@@ -82,9 +88,139 @@ test("authentication code templates are readable, branded, and safely escaped", 
   }
 });
 
+test("111333 verifies active codes only in development", async () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const developmentEmail = `${prefix}-dev-code@example.test`;
+  const productionEmail = `${prefix}-prod-code@example.test`;
+  try {
+    await request("/api/auth/register", {
+      method: "POST",
+      json: { email: developmentEmail },
+    });
+    process.env.NODE_ENV = "development";
+    const developmentVerification = await request("/api/auth/verify-email", {
+      method: "POST",
+      json: { email: developmentEmail, code: "111333" },
+    });
+    assert.equal(developmentVerification.status, 200);
+
+    await request("/api/auth/register", {
+      method: "POST",
+      json: { email: productionEmail },
+    });
+    process.env.NODE_ENV = "production";
+    const productionVerification = await request("/api/auth/verify-email", {
+      method: "POST",
+      json: { email: productionEmail, code: "111333" },
+    });
+    assert.equal(productionVerification.status, 400);
+  } finally {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+});
+
+test("onboarding eligibility atomically admits founders or permanently waitlists applicants", async () => {
+  const waitlistEmail = `${prefix}-waitlisted@example.test`;
+  const waitlistSession = await register(waitlistEmail);
+  const waitlistPayload = {
+    firstName: "Jamie",
+    lastName: "Outside",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}wo`,
+    eligible: false,
+  };
+  const waitlisted = await request("/api/auth/onboarding", {
+    method: "POST",
+    session: waitlistSession,
+    json: waitlistPayload,
+  });
+  assert.equal(waitlisted.status, 200);
+  assert.equal((await waitlisted.json() as { user: { eligibilityStatus: string } }).user.eligibilityStatus, "waitlisted");
+  const repeated = await request("/api/auth/onboarding", {
+    method: "POST",
+    session: waitlistSession,
+    json: waitlistPayload,
+  });
+  assert.equal(repeated.status, 200);
+  const conflicting = await request("/api/auth/onboarding", {
+    method: "POST",
+    session: waitlistSession,
+    json: { ...waitlistPayload, eligible: true },
+  });
+  assert.equal(conflicting.status, 409);
+  const [waitlistUser] = await db.select().from(usersTable).where(eq(usersTable.email, waitlistEmail));
+  assert.equal(waitlistUser.eligibilityStatus, "waitlisted");
+  assert.equal(waitlistUser.onboardingFirstName, "Jamie");
+  assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.userId, waitlistUser.id))).length, 0);
+
+  const founderEmail = `${prefix}-eligible@example.test`;
+  const founderSession = await register(founderEmail);
+  const founderHandle = `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}eu`;
+  const eligible = await request("/api/auth/onboarding", {
+    method: "POST",
+    session: founderSession,
+    json: { firstName: "Alex", lastName: "Europe", handle: founderHandle, eligible: true },
+  });
+  assert.equal(eligible.status, 200);
+  const eligibleBody = await eligible.json() as { user: { onboardingComplete: boolean; eligibilityStatus: string } };
+  assert.equal(eligibleBody.user.onboardingComplete, true);
+  assert.equal(eligibleBody.user.eligibilityStatus, "eligible");
+  const [founderUser] = await db.select().from(usersTable).where(eq(usersTable.email, founderEmail));
+  assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.userId, founderUser.id))).length, 1);
+});
+
 test("post delete controls follow the explicit server permission", () => {
   assert.equal(canShowPostDeleteAction({ canDelete: true }), true);
   assert.equal(canShowPostDeleteAction({ canDelete: false }), false);
+});
+
+test("Ask Me stays locked until a profile has five active transcribed posts", async (t) => {
+  const viewerEmail = `${prefix}-ask-viewer@example.test`;
+  const viewerSession = await register(viewerEmail);
+  const [viewerUser] = await db.select().from(usersTable).where(eq(usersTable.email, viewerEmail));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, viewerUser.id));
+  const [viewerFounder] = await db.insert(foundersTable).values({
+    userId: viewerUser.id,
+    name: "Ask Viewer",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}av`,
+    bio: "",
+    avatarColor: "#444444",
+  }).returning();
+  const [founder] = await db.insert(foundersTable).values({
+    name: "Ask Threshold",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-19)}ask`,
+    bio: "",
+    avatarColor: "#333333",
+  }).returning();
+  t.after(async () => {
+    await db.delete(foundersTable).where(inArray(foundersTable.id, [viewerFounder.id, founder.id]));
+    await db.delete(usersTable).where(eq(usersTable.id, viewerUser.id));
+  });
+  await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "First qualifying post",
+    durationSeconds: 2,
+  });
+  const locked = await request(`/api/profiles/${founder.handle}/ask`, {
+    method: "POST",
+    session: viewerSession,
+    json: { question: "What are you learning?" },
+  });
+  assert.equal(locked.status, 403);
+
+  await db.insert(postsTable).values(
+    Array.from({ length: 4 }, (_, index) => ({
+      authorId: founder.id,
+      transcript: `Qualifying post ${index + 2}`,
+      durationSeconds: 2,
+    })),
+  );
+  const unlocked = await request(`/api/profiles/${founder.handle}/ask`, {
+    method: "POST",
+    session: viewerSession,
+    json: { question: "What are you learning?" },
+  });
+  assert.equal(unlocked.status, 200);
 });
 
 test("Postmark payloads include branded HTML and text for every security notification", async () => {
@@ -283,19 +419,9 @@ after(async () => {
   await pool.end();
 });
 
-test("email verification creates a pending session blocked from protected data and audio actions", async () => {
+test("email verification creates a browser session without a passkey gate", async () => {
   const session = await register(`${prefix}-pending@example.test`);
-  for (const [path, method, json] of [
-    ["/api/feed", "GET", undefined],
-    ["/api/posts/1/audio", "GET", undefined],
-    ["/api/storage/uploads/request-url", "POST", { size: 10, contentType: "audio/webm" }],
-    ["/api/transcriptions", "POST", { audioObjectPath: "/objects/uploads/not-owned" }],
-    ["/api/posts", "POST", { transcript: "No bypass", durationSeconds: 2, audioObjectPath: "/objects/uploads/not-owned" }],
-  ] as const) {
-    const response = await request(path, { method, json, session });
-    assert.equal(response.status, 403, `${method} ${path}`);
-    assert.equal((await response.json() as { code?: string }).code, "passkey_required");
-  }
+  assert.equal((await request("/api/feed", { session })).status, 200);
 });
 
 test("CSRF and Origin checks protect pending passkey requests", async () => {
@@ -435,6 +561,19 @@ test("mobile sessions for passkey users remain pending until passkey handoff", a
   // The mobile bearer is deliberately not accepted as a fully verified
   // browser session, while the original browser session remains revocable.
   assert.equal((await request("/api/auth/me", { session: browser })).status, 401);
+});
+
+test("browser sessions do not require an enrolled passkey", async () => {
+  const email = `${prefix}-browser-passkey-optional@example.test`;
+  const browser = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.insert(passkeysTable).values({
+    credentialId: `${prefix}-browser-optional-credential`,
+    userId: user.id,
+    publicKey: Buffer.from([1, 2, 3]).toString("base64"),
+    counter: 0,
+  });
+  assert.equal((await request("/api/feed", { session: browser })).status, 200);
 });
 
 test("browser passkey handoff serves a ceremony page and cannot consume an unapproved grant", async () => {
@@ -803,24 +942,67 @@ test("publishing requires owned audio and responses never expose private object 
     session,
     json: { emojiType: "rocket" },
   });
-  assert.equal((await ownerReaction.json() as { canDelete: boolean }).canDelete, true);
+  const ownerReactionBody = await ownerReaction.json() as {
+    canDelete: boolean;
+    viewerReaction: string | null;
+    reactions: { rocket: number };
+  };
+  assert.equal(ownerReactionBody.canDelete, true);
+  assert.equal(ownerReactionBody.viewerReaction, "rocket");
+  assert.equal(ownerReactionBody.reactions.rocket, 1);
   const otherReaction = await request(`/api/posts/${post.id}/reaction`, {
     method: "PUT",
     session: otherSession,
-    json: { emojiType: "laughing" },
+    json: { emojiType: "rocket" },
   });
-  assert.equal((await otherReaction.json() as { canDelete: boolean }).canDelete, false);
+  const otherReactionBody = await otherReaction.json() as {
+    canDelete: boolean;
+    viewerReaction: string | null;
+    reactions: { rocket: number };
+  };
+  assert.equal(otherReactionBody.canDelete, false);
+  assert.equal(otherReactionBody.viewerReaction, "rocket");
+  assert.equal(otherReactionBody.reactions.rocket, 2);
+
+  const ownerPostAfterOtherReaction = await request(`/api/posts/${post.id}`, { session });
+  const ownerPostBody = await ownerPostAfterOtherReaction.json() as {
+    viewerReaction: string | null;
+    reactions: { rocket: number };
+  };
+  assert.equal(ownerPostBody.viewerReaction, "rocket");
+  assert.equal(ownerPostBody.reactions.rocket, 2);
 
   const ownerReshuut = await request(`/api/posts/${post.id}/reshuut`, {
     method: "POST",
     session,
   });
-  assert.equal((await ownerReshuut.json() as { canDelete: boolean }).canDelete, true);
+  const ownerReshuutBody = await ownerReshuut.json() as { canDelete: boolean; isReshuuted: boolean };
+  assert.equal(ownerReshuutBody.canDelete, true);
+  assert.equal(ownerReshuutBody.isReshuuted, true);
   const otherReshuut = await request(`/api/posts/${post.id}/reshuut`, {
     method: "POST",
     session: otherSession,
   });
-  assert.equal((await otherReshuut.json() as { canDelete: boolean }).canDelete, false);
+  const otherReshuutBody = await otherReshuut.json() as { canDelete: boolean; isReshuuted: boolean };
+  assert.equal(otherReshuutBody.canDelete, false);
+  assert.equal(otherReshuutBody.isReshuuted, true);
+
+  const ownerPostAfterOtherReshuut = await request(`/api/posts/${post.id}`, { session });
+  assert.equal(
+    (await ownerPostAfterOtherReshuut.json() as { isReshuuted: boolean }).isReshuuted,
+    true,
+  );
+
+  const otherRemovesOwnReshuut = await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST",
+    session: otherSession,
+  });
+  assert.equal(
+    (await otherRemovesOwnReshuut.json() as { isReshuuted: boolean }).isReshuuted,
+    false,
+  );
+  const ownerStillReshuuted = await request(`/api/posts/${post.id}`, { session });
+  assert.equal((await ownerStillReshuuted.json() as { isReshuuted: boolean }).isReshuuted, true);
 
   const forbiddenDelete = await request(`/api/posts/${post.id}`, {
     method: "DELETE",
@@ -849,6 +1031,177 @@ test("publishing requires owned audio and responses never expose private object 
   assert.equal((await request("/api/auth/me", {
     headers: { cookie: session.cookie },
   })).status, 401);
+});
+
+test("notifications require authentication and capture attributed activity without self-actions", async () => {
+  assert.equal((await request("/api/notifications")).status, 401);
+
+  const ownerEmail = `${prefix}-notifications-owner@example.test`;
+  const actorEmail = `${prefix}-notifications-actor@example.test`;
+  const ownerSession = await register(ownerEmail);
+  const actorSession = await register(actorEmail);
+  const [ownerUser] = await db.select().from(usersTable).where(eq(usersTable.email, ownerEmail));
+  const [actorUser] = await db.select().from(usersTable).where(eq(usersTable.email, actorEmail));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(inArray(sessionsTable.userId, [ownerUser.id, actorUser.id]));
+  const [owner] = await db.insert(foundersTable).values({
+    userId: ownerUser.id,
+    name: "Notification Owner",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}notifowner`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+  const [actor] = await db.insert(foundersTable).values({
+    userId: actorUser.id,
+    name: "Notification Actor",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}notifactor`,
+    bio: "",
+    avatarColor: "#111111",
+  }).returning();
+  const [post] = await db.insert(postsTable).values({
+    authorId: owner.id,
+    transcript: "A post that receives activity",
+    durationSeconds: 3,
+  }).returning();
+
+  // Self-actions are accepted, but must never create owner-to-owner activity.
+  assert.equal((await request(`/api/posts/${post.id}/reaction`, {
+    method: "PUT", session: ownerSession, json: { emojiType: "rocket" },
+  })).status, 200);
+  assert.equal((await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST", session: ownerSession,
+  })).status, 200);
+  const selfNotifications = await db.select().from(notificationsTable)
+    .where(eq(notificationsTable.recipientId, owner.id));
+  assert.equal(selfNotifications.length, 0);
+
+  assert.equal((await request(`/api/posts/${post.id}/reaction`, {
+    method: "PUT", session: actorSession, json: { emojiType: "laughing" },
+  })).status, 200);
+  assert.equal((await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST", session: actorSession,
+  })).status, 200);
+
+  const objectPath = `/objects/uploads/${prefix}-notification-comment`;
+  await db.insert(profileImageUploadsTable).values({ objectPath, userId: actorUser.id });
+  const realPublishAudio = ObjectStorageService.prototype.publishAudio;
+  const realReadAudio = ObjectStorageService.prototype.readAudio;
+  const previousFetch = globalThis.fetch;
+  ObjectStorageService.prototype.publishAudio = async () => {};
+  ObjectStorageService.prototype.readAudio = async () => ({
+    data: Buffer.from("test audio"),
+    contentType: "audio/webm",
+  });
+  globalThis.fetch = async (input, init) => {
+    if (String(input) === "https://api.elevenlabs.io/v1/speech-to-text") {
+      return new Response(JSON.stringify({ text: "A voice comment" }), { status: 200 });
+    }
+    return previousFetch(input, init);
+  };
+  try {
+    assert.equal((await request(`/api/posts/${post.id}/comments`, {
+      method: "POST",
+      session: actorSession,
+      json: { audioObjectPath: objectPath, durationSeconds: 2 },
+    })).status, 202);
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const [comment] = await db.select({ transcriptionStatus: commentsTable.transcriptionStatus })
+        .from(commentsTable).where(eq(commentsTable.postId, post.id))
+        .orderBy(desc(commentsTable.createdAt)).limit(1);
+      if (comment?.transcriptionStatus === "ready") break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  } finally {
+    ObjectStorageService.prototype.publishAudio = realPublishAudio;
+    ObjectStorageService.prototype.readAudio = realReadAudio;
+    globalThis.fetch = previousFetch;
+  }
+
+  const notifications = await db.select().from(notificationsTable)
+    .where(eq(notificationsTable.recipientId, owner.id));
+  assert.equal(notifications.length, 3);
+  assert.deepEqual(
+    notifications.map((notification) => notification.eventType).sort(),
+    ["comment", "reaction", "reshuut"],
+  );
+  for (const notification of notifications) {
+    assert.equal(notification.actorId, actor.id);
+    assert.equal(notification.recipientId, owner.id);
+    assert.equal(notification.postId, post.id);
+  }
+  const reaction = notifications.find((notification) => notification.eventType === "reaction");
+  assert.equal(reaction?.reactionType, "laughing");
+  assert.ok(notifications.find((notification) => notification.eventType === "comment")?.commentId);
+  const response = await request("/api/notifications", { session: ownerSession });
+  assert.equal(response.status, 200);
+  const body = await response.json() as Array<{
+    actor: { id: number; name: string };
+    post: { id: number; transcript: string };
+    eventType: string;
+  }>;
+  assert.equal(body.length, 3);
+  assert.ok(body.every((item) => item.actor.id === actor.id));
+  assert.ok(body.every((item) => item.post.id === post.id));
+  assert.ok(body.every((item) => item.post.transcript === post.transcript));
+});
+
+test("post review tags searchable accounts and notifies each selected person once", async () => {
+  assert.equal((await request("/api/profiles/search?q=test")).status, 401);
+  const authorEmail = `${prefix}-mention-author@example.test`;
+  const targetEmail = `${prefix}-mention-target@example.test`;
+  const authorSession = await register(authorEmail);
+  await register(targetEmail);
+  const [authorUser] = await db.select().from(usersTable).where(eq(usersTable.email, authorEmail));
+  const [targetUser] = await db.select().from(usersTable).where(eq(usersTable.email, targetEmail));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
+    .where(eq(sessionsTable.userId, authorUser.id));
+  const [author] = await db.insert(foundersTable).values({
+    userId: authorUser.id,
+    name: "Mention Author",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-15)}ma`,
+    bio: "",
+    avatarColor: "#111111",
+  }).returning();
+  const [target] = await db.insert(foundersTable).values({
+    userId: targetUser.id,
+    name: "Mention Target",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-15)}mt`,
+    bio: "",
+    avatarColor: "#222222",
+  }).returning();
+
+  const search = await request(`/api/profiles/search?q=${target.handle.slice(-6)}`, { session: authorSession });
+  assert.equal(search.status, 200);
+  assert.ok((await search.json() as Array<{ id: number }>).some((founder) => founder.id === target.id));
+
+  const objectPath = `/objects/uploads/${prefix}-mention-recording`;
+  await db.insert(profileImageUploadsTable).values({ objectPath, userId: authorUser.id });
+  const realPublishAudio = ObjectStorageService.prototype.publishAudio;
+  ObjectStorageService.prototype.publishAudio = async () => {};
+  let response: Response;
+  try {
+    response = await request("/api/posts", {
+      method: "POST",
+      session: authorSession,
+      json: {
+        transcript: "A tagged SHÜÜT",
+        durationSeconds: 3,
+        audioObjectPath: objectPath,
+        mentionedFounderIds: [author.id, target.id],
+      },
+    });
+  } finally {
+    ObjectStorageService.prototype.publishAudio = realPublishAudio;
+  }
+  assert.equal(response.status, 201);
+  const post = await response.json() as { id: number };
+  const mentions = await db.select().from(postMentionsTable).where(eq(postMentionsTable.postId, post.id));
+  assert.deepEqual(mentions.map((mention) => mention.founderId), [target.id]);
+  const notifications = await db.select().from(notificationsTable).where(eq(notificationsTable.postId, post.id));
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0]?.actorId, author.id);
+  assert.equal(notifications[0]?.recipientId, target.id);
+  assert.equal(notifications[0]?.eventType, "mention");
 });
 
 test("failed post recording cleanup remains durable and retries to completion", async () => {

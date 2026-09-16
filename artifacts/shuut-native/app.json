@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SHÜÜT Native",
+    "name": "SHÜÜT",
     "slug": "shuut-native",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,11 @@
     "scheme": "shuut-native",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.doubleportrait.shuut",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "SHÜÜT needs microphone access so you can record and publish voice notes."
+      }
     },
     "android": {},
     "web": {
