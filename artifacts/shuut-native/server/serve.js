@@ -79,6 +79,10 @@ function serveManifest(platform, res) {
     'content-type': 'application/json',
     'expo-protocol-version': '1',
     'expo-sfv-version': '0',
+    'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+    pragma: 'no-cache',
+    expires: '0',
+    vary: 'expo-platform',
   });
   res.end(manifest);
 }
@@ -96,7 +100,12 @@ function serveLandingPage(req, res, landingPageTemplate, appName) {
     .replace(/EXPS_URL_JSON_PLACEHOLDER/g, toScriptString(expsUrl))
     .replace(/APP_NAME_PLACEHOLDER/g, escapeHtml(appName));
 
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store, no-cache, must-revalidate, max-age=0',
+    pragma: 'no-cache',
+    expires: '0',
+  });
   res.end(html);
 }
 
