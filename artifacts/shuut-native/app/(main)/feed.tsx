@@ -29,9 +29,13 @@ export default function FeedScreen() {
   );
 
   useEffect(() => {
-    if (params.newPostId) {
-      void refetch();
-    }
+    if (!params.newPostId) return;
+
+    void refetch();
+    const retries = [2500, 6000, 12000, 24000].map((delay) =>
+      setTimeout(() => void refetch(), delay)
+    );
+    return () => retries.forEach(clearTimeout);
   }, [params.newPostId, refetch]);
 
   useEffect(() => {

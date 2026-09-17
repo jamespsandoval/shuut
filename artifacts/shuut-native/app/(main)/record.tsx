@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
-import { Founder, getPost, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
+import { Founder, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
 import { Pause, Play, Send, Square } from 'lucide-react-native';
 import { useAuth } from '../../hooks/useAuthStore';
 import { MentionPicker } from '../../components/MentionPicker';
@@ -18,7 +18,7 @@ export default function RecordScreen() {
   const recorderState = useAudioRecorderState(recorder);
   const isRecordingRef = useRef(false);
   const isStoppingRef = useRef(false);
-  isRecordingRef.current = recorderState.isRecording;
+  const isScreenActiveRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isStarting, setIsStarting] = useState(true);
   const [reviewRecording, setReviewRecording] = useState<{ uri: string; duration: number } | null>(null);
@@ -76,6 +76,7 @@ export default function RecordScreen() {
       await recorder.prepareToRecordAsync();
       if (!shouldContinue()) return;
       recorder.record();
+      isRecordingRef.current = true;
     } catch (err) {
       console.error('Failed to start recording', err);
     } finally {
@@ -85,6 +86,7 @@ export default function RecordScreen() {
 
   useFocusEffect(useCallback(() => {
     let isActive = true;
+    isScreenActiveRef.current = true;
     setIsProcessing(false);
     setIsStarting(true);
     setReviewRecording(null);
@@ -103,6 +105,7 @@ export default function RecordScreen() {
     void beginRecording();
     return () => {
       isActive = false;
+      isScreenActiveRef.current = false;
       setIsProcessing(false);
       setIsStarting(true);
     };
@@ -129,6 +132,7 @@ export default function RecordScreen() {
   const stopRecording = async () => {
     if (isStoppingRef.current || !isRecordingRef.current) return;
     isStoppingRef.current = true;
+    isRecordingRef.current = false;
     try {
       setIsProcessing(true);
       const finalDuration = Math.max(1, Math.round((recorderState?.durationMillis || 0) / 1000));
@@ -160,7 +164,11 @@ export default function RecordScreen() {
   }, [recorderState.durationMillis, recorderState.isRecording, isProcessing]);
 
   useEffect(() => () => {
-    if (isRecordingRef.current) void recorder.stop().catch(() => undefined);
+    if (isRecordingRef.current && !isStoppingRef.current) {
+      isRecordingRef.current = false;
+      isStoppingRef.current = true;
+      void recorder.stop().catch(() => undefined);
+    }
     previewPlayer.pause();
     void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
   }, [previewPlayer, recorder]);
@@ -281,22 +289,12 @@ export default function RecordScreen() {
           mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
       });
-
-      for (let attempt = 0; attempt < 90; attempt += 1) {
-        const post = await getPost(createdPost.id);
-        if (post.transcriptionStatus === 'ready') {
-          router.replace({
-            pathname: '/(main)/feed',
-            params: { newPostId: String(post.id) },
-          });
-          return;
-        }
-        if (post.transcriptionStatus === 'failed') {
-          throw new Error('Transcription failed');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (isScreenActiveRef.current) {
+        router.replace({
+          pathname: '/(main)/feed',
+          params: { newPostId: String(createdPost.id) },
+        });
       }
-      throw new Error('Transcription timed out');
     } catch (err) {
       console.error('Failed to publish', err);
       throw err;
