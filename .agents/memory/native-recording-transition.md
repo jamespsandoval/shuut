@@ -14,3 +14,9 @@ After a successful post-creation response, navigate away from the recorder immed
 **Why:** Keeping the recorder mounted during repeated transcription polling leaves iOS audio-session, recorder, and preview-player cleanup coupled to eventual navigation. The post can publish successfully while that native lifecycle transition crashes the client.
 
 **How to apply:** Treat successful post creation as the recorder's completion boundary. Do not make navigation depend on transcription readiness, whether transcript preview is enabled or disabled. Make recorder stop and unmount cleanup idempotent.
+
+Do not call preview-player source replacement with `null` when the native recording screen mounts. Leave an empty player untouched until a real recording URI exists.
+
+**Why:** The TypeScript API accepts a nullable source, but invoking source replacement with `null` during iOS screen initialization can terminate the TestFlight app before microphone recording begins.
+
+**How to apply:** Initialize the player without a source and only call source replacement after review audio exists. Avoid unnecessary player calls in empty-source mount and cleanup paths.

@@ -37,12 +37,8 @@ export default function RecordScreen() {
   const previewTranscript = profile?.founder.previewTranscript ?? false;
 
   useEffect(() => {
-    if (reviewRecording) {
-      previewPlayer.replace({ uri: reviewRecording.uri });
-    } else {
-      previewPlayer.pause();
-      previewPlayer.replace(null);
-    }
+    if (!reviewRecording) return;
+    previewPlayer.replace({ uri: reviewRecording.uri });
   }, [previewPlayer, reviewRecording]);
 
   const startRecording = useCallback(async (
@@ -169,9 +165,8 @@ export default function RecordScreen() {
       isStoppingRef.current = true;
       void recorder.stop().catch(() => undefined);
     }
-    previewPlayer.pause();
     void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
-  }, [previewPlayer, recorder]);
+  }, [recorder]);
 
   const togglePreview = async () => {
     if (previewStatus.playing) {
