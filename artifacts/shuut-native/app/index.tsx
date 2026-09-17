@@ -16,7 +16,6 @@ export default function IndexScreen() {
   }
 
   if (authState === 'ready') return <Redirect href="/(main)/feed" />;
-  if (authState === 'passkeyPending') return <Redirect href="/(auth)/verify?flow=pending" />;
   if (authState === 'onboardingPending') return <Redirect href="/(auth)/onboarding" />;
   if (authState === 'waitlisted') return <Redirect href="/(auth)/waitlist" />;
   

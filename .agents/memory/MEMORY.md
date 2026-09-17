@@ -3,7 +3,7 @@
 - [Development preview access](development-preview-access.md) — remixes may enable Private development URL, causing Replit’s login gate before SHÜÜT.
 - [Workspace React singletons](workspace-react-singletons.md) — context libraries shared with linked packages must be deduplicated in production builds.
 - [Private object deletion](private-object-deletion.md) — remove DB references only when cleanup intent is durably queued; serialize publication with deletion.
-- [Native session security](native-session-security.md) — native clients use secure bearer sessions; passkeys complete through a one-time browser grant, never a token URL.
+- [Native session security](native-session-security.md) — native clients use secure bearer sessions and email verification; passkeys must not gate any SHÜÜT client.
 - [Profile post search eligibility](profile-post-search-eligibility.md) — unlock search after five published, transcription-ready original SHÜÜTs; exclude reshüüts and comments.
 - [Web logout navigation](web-logout-navigation.md) — reload the homepage after logout; soft routing can race stale auth state and return users to a broken feed.
 - [Native public-page navigation](native-public-page-returns.md) — show public pages in-app with one web back control; do not use Safari chrome or load the homepage inside a web view.

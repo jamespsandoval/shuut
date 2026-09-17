@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import { and, eq, gt } from "drizzle-orm";
-import { db, passkeysTable, sessionsTable } from "@workspace/db";
+import { db, sessionsTable } from "@workspace/db";
 import { auditSecurityEvent, ipPrefix, privacyHash } from "../lib/security";
 
 export const SESSION_COOKIE = "shu_session";
@@ -26,7 +26,6 @@ type AuthenticatedRequest = Request & {
   sessionPasskeyVerifiedAt?: Date | null;
   sessionTokenHash?: string;
   authTransport?: "cookie" | "bearer";
-  passkeyEnrolled?: boolean;
 };
 
 function cookieValue(req: Request, name: string): string | null {
@@ -53,10 +52,6 @@ export function getAuthenticatedUserId(req: Request): string | null {
 
 export function isPasskeyVerified(req: Request): boolean {
   return Boolean((req as AuthenticatedRequest).sessionPasskeyVerifiedAt);
-}
-
-export function isPasskeyEnrolled(req: Request): boolean {
-  return Boolean((req as AuthenticatedRequest).passkeyEnrolled);
 }
 
 export function getSessionTokenHash(req: Request): string | null {
@@ -107,12 +102,6 @@ export async function sessionAuth(req: Request, _res: Response, next: NextFuncti
         authReq.sessionTokenHash = session.tokenHash;
         authReq.sessionPasskeyVerifiedAt = session.passkeyVerifiedAt;
         authReq.authTransport = "bearer";
-        const [passkey] = await db
-          .select({ credentialId: passkeysTable.credentialId })
-          .from(passkeysTable)
-          .where(eq(passkeysTable.userId, session.userId))
-          .limit(1);
-        authReq.passkeyEnrolled = Boolean(passkey);
         next();
         return;
       }
@@ -149,12 +138,6 @@ export async function sessionAuth(req: Request, _res: Response, next: NextFuncti
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!getAuthenticatedUserId(req)) {
     res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  // Passkeys are optional for browser sessions. Native bearer sessions still
-  // require verification when the account has an enrolled passkey.
-  if (isBearerRequest(req) && isPasskeyEnrolled(req) && !isPasskeyVerified(req)) {
-    res.status(403).json({ error: "Additional sign-in verification is required.", code: "passkey_required" });
     return;
   }
   next();

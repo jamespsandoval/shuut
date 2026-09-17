@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { resolveAuthSessionState } from './authState';
 
-test('restores an enrolled but unverified passkey session as pending', () => {
+test('restores an enrolled account without requiring passkey verification', () => {
   assert.equal(resolveAuthSessionState({
     user: {
       id: 'member',
@@ -13,10 +13,10 @@ test('restores an enrolled but unverified passkey session as pending', () => {
       passkeyEnrolled: true,
       passkeyVerified: false,
     },
-  }), 'passkeyPending');
+  }), 'ready');
 });
 
-test('checks onboarding only after passkey verification', () => {
+test('checks onboarding independently of legacy passkey fields', () => {
   assert.equal(resolveAuthSessionState({
     user: {
       id: 'member',

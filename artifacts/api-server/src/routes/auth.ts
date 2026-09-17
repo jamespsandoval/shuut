@@ -325,11 +325,6 @@ async function sessionJson(user: typeof usersTable.$inferSelect, req?: Request) 
     .from(foundersTable)
     .where(eq(foundersTable.userId, user.id))
     .limit(1);
-  const [passkey] = await db
-    .select({ credentialId: passkeysTable.credentialId })
-    .from(passkeysTable)
-    .where(eq(passkeysTable.userId, user.id))
-    .limit(1);
   return {
     user: {
       id: user.id,
@@ -337,8 +332,8 @@ async function sessionJson(user: typeof usersTable.$inferSelect, req?: Request) 
       emailVerified: Boolean(user.emailVerifiedAt),
       onboardingComplete: Boolean(profile),
       eligibilityStatus: profile ? "eligible" as const : user.eligibilityStatus as "undecided" | "eligible" | "waitlisted",
-      passkeyEnrolled: Boolean(passkey),
-      passkeyVerified: req ? isPasskeyVerified(req) : false,
+      passkeyEnrolled: false,
+      passkeyVerified: false,
     },
   };
 }
@@ -359,7 +354,7 @@ async function mobileSessionJson(
     accessToken: token,
     tokenType: "Bearer" as const,
     expiresAt: session?.expiresAt.toISOString(),
-    passkeyRequired: body.user.passkeyEnrolled && !session?.passkeyVerifiedAt,
+    passkeyRequired: false,
   };
 }
 
@@ -766,17 +761,6 @@ router.post("/onboarding", async (req, res): Promise<void> => {
   if (!user) {
     res.status(401).json({ error: "Unauthorized" });
     return;
-  }
-  if (isBearerRequest(req) && !isPasskeyVerified(req)) {
-    const [enrolled] = await db
-      .select({ credentialId: passkeysTable.credentialId })
-      .from(passkeysTable)
-      .where(eq(passkeysTable.userId, userId))
-      .limit(1);
-    if (enrolled) {
-      res.status(403).json({ error: "Additional sign-in verification is required.", code: "passkey_required" });
-      return;
-    }
   }
   const [existingProfile] = await db
     .select({ id: foundersTable.id })

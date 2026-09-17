@@ -37,10 +37,6 @@ function RootLayoutNav() {
       if (!inAuthGroup && !inPublicContent) {
         router.replace('/(auth)/login');
       }
-    } else if (authState === 'passkeyPending') {
-      if (currentRoute !== '(auth)/verify') {
-        router.replace({ pathname: '/(auth)/verify', params: { flow: 'pending' } });
-      }
     } else if (authState === 'onboardingPending') {
       if (currentRoute !== '(auth)/onboarding') {
         router.replace('/(auth)/onboarding');

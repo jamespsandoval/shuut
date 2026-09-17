@@ -7,8 +7,6 @@ type AuthUser = {
   emailVerified: boolean;
   onboardingComplete: boolean;
   eligibilityStatus: 'undecided' | 'eligible' | 'waitlisted';
-  passkeyEnrolled: boolean;
-  passkeyVerified: boolean;
 };
 
 type AuthContextType = {

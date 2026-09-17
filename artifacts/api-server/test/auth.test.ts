@@ -533,7 +533,7 @@ test("mobile auth returns an explicit bearer session without cookies and revokes
   })).status, 401);
 });
 
-test("mobile sessions for passkey users remain pending until passkey handoff", async () => {
+test("mobile sessions do not require an enrolled passkey", async () => {
   const email = `${prefix}-mobile-passkey@example.test`;
   const browser = await register(email);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
@@ -554,12 +554,10 @@ test("mobile sessions for passkey users remain pending until passkey handoff", a
   });
   assert.equal(verified.status, 200);
   const body = await verified.json() as { accessToken: string; passkeyRequired: boolean };
-  assert.equal(body.passkeyRequired, true);
+  assert.equal(body.passkeyRequired, false);
   assert.equal((await request("/api/feed", {
     headers: { authorization: `Bearer ${body.accessToken}` },
-  })).status, 403);
-  // The mobile bearer is deliberately not accepted as a fully verified
-  // browser session, while the original browser session remains revocable.
+  })).status, 200);
   assert.equal((await request("/api/auth/me", { session: browser })).status, 401);
 });
 
@@ -642,7 +640,7 @@ test("browser passkey handoff serves a ceremony page and cannot consume an unapp
     headers: { authorization: `Bearer ${accessToken}` },
   });
   assert.equal(mobileMe.status, 200);
-  assert.equal((await mobileMe.json() as { user: { passkeyVerified: boolean } }).user.passkeyVerified, true);
+  assert.equal((await mobileMe.json() as { user: { passkeyVerified: boolean } }).user.passkeyVerified, false);
   assert.equal((await request("/api/auth/mobile/passkey/handoff/exchange", {
     method: "POST",
     headers: { authorization: `Bearer ${accessToken}` },

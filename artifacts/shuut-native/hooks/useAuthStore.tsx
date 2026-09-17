@@ -40,7 +40,6 @@ interface AuthContextType {
   authState: AuthState;
   signIn: (session: MobileAuthSession) => Promise<void>;
   signOut: () => Promise<void>;
-  completePasskeyHandoff: () => Promise<void>;
   completeOnboarding: (state: 'ready' | 'waitlisted') => void;
 }
 
@@ -73,9 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await authStorage.setItem(AUTH_STATE_KEY, nextState);
           setAuthState(nextState);
         } catch (err: any) {
-          if (err?.status === 403 || err?.code === 'passkey_required') {
-            setAuthState('passkeyPending');
-          } else if (err?.status === 401) {
+          if (err?.status === 401) {
             await Promise.all([
               authStorage.deleteItem(TOKEN_KEY),
               authStorage.deleteItem(AUTH_STATE_KEY),
@@ -98,8 +95,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (session: MobileAuthSession) => {
     const nextState: PersistedAuthState = session.user.eligibilityStatus === 'waitlisted'
       ? 'waitlisted'
-      : session.passkeyRequired
-      ? 'passkeyPending'
       : session.user.onboardingComplete
         ? 'ready'
         : 'onboardingPending';
@@ -109,18 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     setToken(session.accessToken);
     setAuthState(nextState);
-  };
-
-  const completePasskeyHandoff = async () => {
-    setAuthState('loading');
-    try {
-      const session = await getCurrentUser();
-      const nextState = resolveAuthSessionState(session);
-      await authStorage.setItem(AUTH_STATE_KEY, nextState);
-      setAuthState(nextState);
-    } catch (err) {
-      setAuthState('passkeyPending');
-    }
   };
 
   const completeOnboarding = (state: 'ready' | 'waitlisted') => {
@@ -144,7 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authState,
         signIn,
         signOut,
-        completePasskeyHandoff,
         completeOnboarding
       }}
     >

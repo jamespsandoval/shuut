@@ -1,18 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../../hooks/useColors';
 import {
   useVerifyMobileEmail,
   useVerifyMobileLogin,
-  useStartMobilePasskeyHandoff,
-  useExchangeMobilePasskeyHandoff,
-  useGetPasskeyRecoveryStatus,
-  useRequestPasskeyRecovery,
-  useSendPasskeyRecoveryCode,
-  useConfirmPasskeyRecovery,
-  MobileRecoverySession
 } from '@workspace/api-client-react';
 import { useAuth } from '../../hooks/useAuthStore';
 import { ArrowLeft } from 'lucide-react-native';
@@ -27,16 +19,10 @@ export default function VerifyScreen() {
   const [code, setCode] = useState('');
   const colors = useColors();
   const router = useRouter();
-  const { signIn, completePasskeyHandoff, signOut } = useAuth();
+  const { signIn } = useAuth();
 
   const verifyEmail = useVerifyMobileEmail();
   const verifyLogin = useVerifyMobileLogin();
-  const startHandoff = useStartMobilePasskeyHandoff();
-  const exchangeHandoff = useExchangeMobilePasskeyHandoff();
-
-  const [handoffStep, setHandoffStep] = useState(flow === 'pending');
-  const [showRecovery, setShowRecovery] = useState(false);
-  const [recoveryCode, setRecoveryCode] = useState('');
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
@@ -62,19 +48,8 @@ export default function VerifyScreen() {
     return () => style.remove();
   }, []);
 
-  useEffect(() => {
-    if (flow === 'pending') {
-      setHandoffStep(true);
-    }
-  }, [flow]);
-
-  const recoveryStatus = useGetPasskeyRecoveryStatus({ query: { enabled: handoffStep, queryKey: ['recoveryStatus'] } });
-  const requestRecovery = useRequestPasskeyRecovery();
-  const sendRecoveryCode = useSendPasskeyRecoveryCode();
-  const confirmRecovery = useConfirmPasskeyRecovery();
-
-  const isPending = verifyEmail.isPending || verifyLogin.isPending || startHandoff.isPending || exchangeHandoff.isPending || requestRecovery.isPending || sendRecoveryCode.isPending || confirmRecovery.isPending;
-  const error = verifyEmail.error || verifyLogin.error || startHandoff.error || exchangeHandoff.error || requestRecovery.error || sendRecoveryCode.error || confirmRecovery.error;
+  const isPending = verifyEmail.isPending || verifyLogin.isPending;
+  const error = verifyEmail.error || verifyLogin.error;
 
   const handleVerify = async (codeToVerify = code) => {
     const confirmationCode = normalizeConfirmationCode(codeToVerify);
@@ -89,66 +64,6 @@ export default function VerifyScreen() {
       }
 
       await signIn(session);
-
-      if (session.passkeyRequired) {
-        setHandoffStep(true);
-        await performPasskeyHandoff();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const performPasskeyHandoff = async () => {
-    try {
-      const { handoffUrl } = await startHandoff.mutateAsync();
-      const grantMatch = handoffUrl.match(/grant=([^&]+)/);
-      const grant = grantMatch ? grantMatch[1] : null;
-
-      if (!grant) {
-        throw new Error("No grant found in handoff URL");
-      }
-
-      await WebBrowser.openBrowserAsync(handoffUrl);
-
-      const { verified } = await exchangeHandoff.mutateAsync({ data: { grant } });
-
-      if (verified) {
-        await completePasskeyHandoff();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleRequestRecovery = async () => {
-    try {
-      await requestRecovery.mutateAsync();
-      recoveryStatus.refetch();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleSendRecoveryCode = async () => {
-    try {
-      await sendRecoveryCode.mutateAsync();
-      recoveryStatus.refetch();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleConfirmRecovery = async (codeToConfirm = recoveryCode) => {
-    const confirmationCode = normalizeConfirmationCode(codeToConfirm);
-    if (confirmationCode.length !== 6 || isPending) return;
-    try {
-      const res = await confirmRecovery.mutateAsync({ data: { code: confirmationCode } });
-      if (res && 'accessToken' in res) {
-        await signIn(res as MobileRecoverySession);
-      } else if (res.recovered) {
-        await completePasskeyHandoff();
-      }
     } catch (err) {
       console.error(err);
     }
@@ -180,176 +95,58 @@ export default function VerifyScreen() {
 
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.foreground }]}>
-              {handoffStep ? 'Passkey Required' : 'Check your email'}
+              Check your email
             </Text>
-            {handoffStep && (
-              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-                Complete the security check in the browser
-              </Text>
-            )}
           </View>
         </View>
 
         <View style={styles.formSection}>
-          {!handoffStep ? (
-            <View style={styles.form}>
-              <Text style={[styles.label, { color: colors.mutedForeground }]}>VERIFICATION CODE</Text>
-              <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
-                <TextInput
-                  nativeID="shuut-verification-code"
-                  style={[styles.input, { color: colors.foreground }]}
-                  placeholder="0 0 0 0 0 0"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="number-pad"
-                  returnKeyType="done"
-                  textContentType="oneTimeCode"
-                  autoComplete="one-time-code"
-                  autoFocus
-                  selectTextOnFocus
-                  value={code}
-                  onChangeText={(value) => {
-                    const nextCode = normalizeConfirmationCode(value);
-                    setCode(nextCode);
-                    if (nextCode.length === 6) void handleVerify(nextCode);
-                  }}
-                  onSubmitEditing={() => {
-                    void handleVerify();
-                  }}
-                />
-              </View>
-
-              {error && (
-                <Text style={[styles.error, { color: colors.destructive }]}>
-                  {error.message || 'Invalid code'}
-                </Text>
-              )}
-
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-                onPress={() => void handleVerify()}
-                disabled={isPending || code.length < 6}
-              >
-                {isPending ? (
-                  <ActivityIndicator color={colors.primaryForeground} />
-                ) : (
-                  <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
-                    Verify & sign in
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.form}>
-              {error && (
-                <Text style={[styles.error, { color: colors.destructive }]}>
-                  {error.message || 'Verification failed. Try again.'}
-                </Text>
-              )}
-
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-                onPress={performPasskeyHandoff}
-                disabled={isPending}
-              >
-                {isPending ? (
-                  <ActivityIndicator color={colors.primaryForeground} />
-                ) : (
-                  <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
-                    Retry Passkey
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.buttonOutline, { borderColor: colors.border, borderRadius: colors.radius }]}
-                onPress={async () => {
-                  await signOut();
+          <View style={styles.form}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>VERIFICATION CODE</Text>
+            <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              <TextInput
+                nativeID="shuut-verification-code"
+                style={[styles.input, { color: colors.foreground }]}
+                placeholder="0 0 0 0 0 0"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                textContentType="oneTimeCode"
+                autoComplete="one-time-code"
+                autoFocus
+                selectTextOnFocus
+                value={code}
+                onChangeText={(value) => {
+                  const nextCode = normalizeConfirmationCode(value);
+                  setCode(nextCode);
+                  if (nextCode.length === 6) void handleVerify(nextCode);
                 }}
-                disabled={isPending}
-              >
-                <Text style={[styles.buttonOutlineText, { color: colors.foreground }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              {!showRecovery && (
-                <TouchableOpacity
-                  style={{ marginTop: 24, alignItems: 'center' }}
-                  onPress={() => setShowRecovery(true)}
-                >
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }}>Cannot use passkey?</Text>
-                </TouchableOpacity>
-              )}
-
-              {showRecovery && (
-                <View style={[styles.recoveryBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.recoveryTitle, { color: colors.foreground }]}>Account Recovery</Text>
-
-                  {!recoveryStatus.data?.pending && (
-                    <TouchableOpacity
-                      style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-                      onPress={handleRequestRecovery}
-                      disabled={isPending}
-                    >
-                      <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>Start Recovery Delay</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {recoveryStatus.data?.pending && !recoveryStatus.data?.availableAt && (
-                    <Text style={[styles.recoveryText, { color: colors.mutedForeground }]}>Recovery requested. A mandatory security delay is active.</Text>
-                  )}
-
-                  {recoveryStatus.data?.availableAt && !recoveryStatus.data?.codeExpiresAt && (
-                    <View>
-                      <Text style={[styles.recoveryText, { color: colors.mutedForeground }]}>Delay completed. Send recovery code to your email.</Text>
-                      <TouchableOpacity
-                        style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius, marginTop: 8 }]}
-                        onPress={handleSendRecoveryCode}
-                        disabled={isPending}
-                      >
-                        <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>Send Code</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {recoveryStatus.data?.codeExpiresAt && (
-                    <View>
-                      <TextInput
-                        style={[
-                          styles.inputLegacy,
-                          { backgroundColor: colors.input, color: colors.foreground, borderColor: colors.border, fontSize: 24, padding: 12 }
-                        ]}
-                        placeholder="000000"
-                        placeholderTextColor={colors.mutedForeground}
-                        keyboardType="number-pad"
-                        returnKeyType="done"
-                        textContentType="oneTimeCode"
-                        autoComplete="one-time-code"
-                        autoFocus
-                        selectTextOnFocus
-                        value={recoveryCode}
-                        onChangeText={(value) => {
-                          const nextCode = normalizeConfirmationCode(value);
-                          setRecoveryCode(nextCode);
-                          if (nextCode.length === 6) void handleConfirmRecovery(nextCode);
-                        }}
-                        onSubmitEditing={() => {
-                          void handleConfirmRecovery();
-                        }}
-                      />
-                      <TouchableOpacity
-                        style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius, marginTop: 8 }]}
-                        onPress={() => void handleConfirmRecovery()}
-                        disabled={isPending || recoveryCode.length < 6}
-                      >
-                        <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>Confirm Recovery</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              )}
+                onSubmitEditing={() => {
+                  void handleVerify();
+                }}
+              />
             </View>
-          )}
+
+            {error && (
+              <Text style={[styles.error, { color: colors.destructive }]}>
+                {error.message || 'Invalid code'}
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
+              onPress={() => void handleVerify()}
+              disabled={isPending || code.length < 6}
+            >
+              {isPending ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+                  Verify & sign in
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={{ flex: 1 }} />
       </KeyboardAvoidingView>
@@ -401,10 +198,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     marginBottom: 8,
   },
-  subtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-  },
   formSection: {
     width: '100%',
   },
@@ -433,15 +226,6 @@ const styles = StyleSheet.create({
     height: '100%',
     textAlign: 'center',
   },
-  inputLegacy: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 32,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    textAlign: 'center',
-    letterSpacing: 8,
-  },
   button: {
     height: 56,
     alignItems: 'center',
@@ -451,34 +235,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-  },
-  buttonOutline: {
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    marginTop: 8,
-  },
-  buttonOutlineText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-  },
-  recoveryBox: {
-    marginTop: 24,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  recoveryTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 18,
-    marginBottom: 8,
-  },
-  recoveryText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
   },
   error: {
     fontFamily: 'Inter_400Regular',

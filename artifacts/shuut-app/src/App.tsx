@@ -106,7 +106,6 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/cookies" component={Cookies} />
         <Route path="/contact" component={Contact} />
-        <Route path="/passkey"><Redirect to="/feed" /></Route>
         <ProtectedRoute path="/feed" component={Home} />
         <ProtectedRoute path="/notifications" component={NotificationsPage} />
         <ProtectedRoute path="/explore" component={Explore} />
