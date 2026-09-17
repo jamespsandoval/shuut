@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
-import { Founder, getPost, useRequestUploadUrl, useCreatePost } from '@workspace/api-client-react';
+import { Founder, getPost, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
 import { Pause, Play, Send, Square } from 'lucide-react-native';
 import { useAuth } from '../../hooks/useAuthStore';
 import { MentionPicker } from '../../components/MentionPicker';
@@ -17,17 +17,33 @@ export default function RecordScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
   const isRecordingRef = useRef(false);
+  const isStoppingRef = useRef(false);
   isRecordingRef.current = recorderState.isRecording;
   const [isProcessing, setIsProcessing] = useState(false);
   const [isStarting, setIsStarting] = useState(true);
   const [reviewRecording, setReviewRecording] = useState<{ uri: string; duration: number } | null>(null);
+  const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState('');
+  const [isPreparingTranscript, setIsPreparingTranscript] = useState(false);
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([]);
   const spinnerRotation = useRef(new Animated.Value(0)).current;
-  const previewPlayer = useAudioPlayer(reviewRecording ? { uri: reviewRecording.uri } : null);
+  const previewPlayer = useAudioPlayer(null);
   const previewStatus = useAudioPlayerStatus(previewPlayer);
 
   const requestUploadUrl = useRequestUploadUrl();
   const createPost = useCreatePost();
+  const transcribeAudio = useTranscribeAudio();
+  const { data: profile } = useGetProfile('me');
+  const previewTranscript = profile?.founder.previewTranscript ?? false;
+
+  useEffect(() => {
+    if (reviewRecording) {
+      previewPlayer.replace({ uri: reviewRecording.uri });
+    } else {
+      previewPlayer.pause();
+      previewPlayer.replace(null);
+    }
+  }, [previewPlayer, reviewRecording]);
 
   const startRecording = useCallback(async (
     knownPermission?: PermissionResponse | null,
@@ -72,7 +88,11 @@ export default function RecordScreen() {
     setIsProcessing(false);
     setIsStarting(true);
     setReviewRecording(null);
+    setAudioObjectPath(null);
+    setTranscript('');
+    setIsPreparingTranscript(false);
     setMentionedFounders([]);
+    isStoppingRef.current = false;
 
     const beginRecording = async () => {
       const permission = await getRecordingPermissionsAsync();
@@ -107,6 +127,8 @@ export default function RecordScreen() {
   }, [isProcessing, spinnerRotation]);
 
   const stopRecording = async () => {
+    if (isStoppingRef.current || !isRecordingRef.current) return;
+    isStoppingRef.current = true;
     try {
       setIsProcessing(true);
       const finalDuration = Math.max(1, Math.round((recorderState?.durationMillis || 0) / 1000));
@@ -119,10 +141,15 @@ export default function RecordScreen() {
       });
       setReviewRecording({ uri, duration: finalDuration });
       setIsProcessing(false);
+      if (previewTranscript) {
+        void prepareTranscript(uri);
+      }
     } catch (err) {
       console.error('Failed to stop recording', err);
       setIsProcessing(false);
       Alert.alert('Could not publish', 'Your SHÜÜT could not be processed. Please try again.');
+    } finally {
+      isStoppingRef.current = false;
     }
   };
 
@@ -152,12 +179,19 @@ export default function RecordScreen() {
   const cancelReview = () => {
     previewPlayer.pause();
     setReviewRecording(null);
+    setAudioObjectPath(null);
+    setTranscript('');
+    setIsPreparingTranscript(false);
     setMentionedFounders([]);
     router.replace('/(main)/feed');
   };
 
   const publishReview = async () => {
-    if (!reviewRecording || isProcessing) return;
+    if (!reviewRecording || isProcessing || isPreparingTranscript) return;
+    if (previewTranscript && !transcript.trim()) {
+      Alert.alert('Transcript not ready', 'Wait for the transcript or edit it before publishing.');
+      return;
+    }
     previewPlayer.pause();
     setIsProcessing(true);
     try {
@@ -168,74 +202,82 @@ export default function RecordScreen() {
     }
   };
 
+  const uploadRecording = async (recordingUri: string): Promise<string> => {
+    if (audioObjectPath) return audioObjectPath;
+    let nativeFile: File | null = null;
+    let browserBlob: Blob | null = null;
+    let fileSize = 0;
+    let contentType: 'audio/webm' | 'audio/mp4' | 'audio/mpeg' | 'audio/ogg' = 'audio/mp4';
+    let fileName = 'audio.m4a';
+
+    if (Platform.OS === 'web') {
+      const recordingResponse = await fetch(recordingUri);
+      if (!recordingResponse.ok) throw new Error('Recorded browser audio could not be read');
+      browserBlob = await recordingResponse.blob();
+      fileSize = browserBlob.size;
+      const browserType = browserBlob.type.split(';')[0];
+      if (browserType === 'audio/webm' || browserType === 'audio/mp4' || browserType === 'audio/mpeg' || browserType === 'audio/ogg') {
+        contentType = browserType;
+      } else {
+        contentType = 'audio/webm';
+      }
+      fileName = contentType === 'audio/webm' ? 'audio.webm' : 'audio.m4a';
+    } else {
+      nativeFile = new File(recordingUri);
+      if (!nativeFile.exists) throw new Error('Recorded file does not exist');
+      fileSize = nativeFile.size;
+    }
+
+    const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
+      data: { name: fileName, size: fileSize, contentType },
+    });
+    const domain = process.env.EXPO_PUBLIC_DOMAIN || 'localhost:80';
+    const fullUrl = uploadURL.startsWith('http') ? uploadURL : `https://${domain}${uploadURL}`;
+
+    if (Platform.OS === 'web') {
+      const uploadResponse = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: browserBlob,
+        credentials: 'omit',
+      });
+      if (!uploadResponse.ok) throw new Error(`Failed to upload file: ${uploadResponse.status}`);
+    } else {
+      const uploadResult = await nativeFile!.upload(fullUrl, {
+        httpMethod: 'PUT',
+        headers: { 'Content-Type': contentType },
+      });
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        throw new Error(`Failed to upload file: ${uploadResult.status}`);
+      }
+    }
+
+    setAudioObjectPath(objectPath);
+    return objectPath;
+  };
+
+  const prepareTranscript = async (recordingUri: string) => {
+    setIsPreparingTranscript(true);
+    try {
+      const objectPath = await uploadRecording(recordingUri);
+      const result = await transcribeAudio.mutateAsync({ data: { audioObjectPath: objectPath } });
+      setTranscript(result.transcript);
+    } catch (err) {
+      console.error('Failed to prepare transcript', err);
+      Alert.alert('Transcription failed', 'Your recording is safe. Tap “Try transcription again” to retry.');
+    } finally {
+      setIsPreparingTranscript(false);
+    }
+  };
+
   const publishPost = async (recordingUri: string, recordingDuration: number) => {
     try {
-      let nativeFile: File | null = null;
-      let browserBlob: Blob | null = null;
-      let fileSize = 0;
-      let contentType: 'audio/webm' | 'audio/mp4' | 'audio/mpeg' | 'audio/ogg' = 'audio/mp4';
-      let fileName = 'audio.m4a';
-
-      if (Platform.OS === 'web') {
-        const recordingResponse = await fetch(recordingUri);
-        if (!recordingResponse.ok) {
-          throw new Error('Recorded browser audio could not be read');
-        }
-        browserBlob = await recordingResponse.blob();
-        fileSize = browserBlob.size;
-        const browserType = browserBlob.type.split(';')[0];
-        if (browserType === 'audio/webm' || browserType === 'audio/mp4' || browserType === 'audio/mpeg' || browserType === 'audio/ogg') {
-          contentType = browserType;
-        } else {
-          contentType = 'audio/webm';
-        }
-        fileName = contentType === 'audio/webm' ? 'audio.webm' : 'audio.m4a';
-      } else {
-        nativeFile = new File(recordingUri);
-        if (!nativeFile.exists) {
-          throw new Error('Recorded file does not exist');
-        }
-        fileSize = nativeFile.size;
-      }
-
-      // 1. Request Upload URL
-      const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
-        data: {
-          name: fileName,
-          size: fileSize,
-          contentType,
-        }
-      });
-
-      // 2. Upload to storage
-      const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-      const fullUrl = uploadURL.startsWith('http') ? uploadURL : `https://${domain}${uploadURL}`;
-
-      if (Platform.OS === 'web') {
-        const uploadResponse = await fetch(fullUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': contentType },
-          body: browserBlob,
-          credentials: 'omit',
-        });
-        if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload file: ${uploadResponse.status}`);
-        }
-      } else {
-        const uploadResult = await nativeFile!.upload(fullUrl, {
-          httpMethod: 'PUT',
-          headers: { 'Content-Type': contentType },
-        });
-        if (uploadResult.status !== 200) {
-          throw new Error(`Failed to upload file: ${uploadResult.status}`);
-        }
-      }
-
-      // 3. Create Post
+      const objectPath = await uploadRecording(recordingUri);
       const createdPost = await createPost.mutateAsync({
         data: {
           audioObjectPath: objectPath,
           durationSeconds: recordingDuration,
+          ...(previewTranscript ? { transcript: transcript.trim() } : {}),
           mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
       });
@@ -327,6 +369,43 @@ export default function RecordScreen() {
                   {reviewRecording.duration} sec
                 </Text>
               </View>
+              {previewTranscript && (
+                <View style={styles.transcriptSection}>
+                  <Text style={[styles.transcriptLabel, { color: colors.foreground }]}>Transcript</Text>
+                  {isPreparingTranscript ? (
+                    <View style={styles.transcriptLoading}>
+                      <Animated.Image
+                        source={require('../../assets/images/transcription-spinner.png')}
+                        style={styles.transcriptSpinner}
+                        resizeMode="contain"
+                      />
+                      <Text style={[styles.transcriptStatus, { color: colors.mutedForeground }]}>
+                        Preparing your draft…
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <TextInput
+                        style={[styles.transcriptInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                        value={transcript}
+                        onChangeText={setTranscript}
+                        multiline
+                        textAlignVertical="top"
+                        placeholder="Your transcript will appear here."
+                        placeholderTextColor={colors.mutedForeground}
+                      />
+                      {!transcript.trim() && (
+                        <TouchableOpacity
+                          style={[styles.retryTranscriptButton, { borderColor: colors.border }]}
+                          onPress={() => reviewRecording && void prepareTranscript(reviewRecording.uri)}
+                        >
+                          <Text style={[styles.retryTranscriptText, { color: colors.primary }]}>Try transcription again</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </View>
+              )}
               <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
               <View style={[styles.reviewActions, { borderTopColor: colors.border }]}>
                 <TouchableOpacity
@@ -339,7 +418,9 @@ export default function RecordScreen() {
                 <TouchableOpacity
                   style={[styles.shuutButton, { backgroundColor: colors.primary }]}
                   onPress={() => void publishReview()}
+                  disabled={isPreparingTranscript || (previewTranscript && !transcript.trim())}
                   accessibilityLabel="Publish SHÜÜT"
+                  accessibilityState={{ disabled: isPreparingTranscript || (previewTranscript && !transcript.trim()) }}
                 >
                   <Send color={colors.primaryForeground} size={18} />
                   <Text style={[styles.shuutText, { color: colors.primaryForeground }]}>SHÜÜT</Text>
@@ -456,6 +537,48 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
     fontVariant: ['tabular-nums'],
+  },
+  transcriptSection: {
+    gap: 10,
+  },
+  transcriptLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+  },
+  transcriptLoading: {
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  transcriptSpinner: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+  },
+  transcriptStatus: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+  },
+  transcriptInput: {
+    minHeight: 130,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 16,
+    lineHeight: 23,
+  },
+  retryTranscriptButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 22,
+  },
+  retryTranscriptText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
   },
   reviewActions: {
     flexDirection: 'row',
