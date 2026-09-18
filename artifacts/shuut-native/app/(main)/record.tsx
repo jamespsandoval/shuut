@@ -8,6 +8,7 @@ import { Founder, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscri
 import { Pause, Play, Send, Square } from 'lucide-react-native';
 import { useAuth } from '../../hooks/useAuthStore';
 import { MentionPicker } from '../../components/MentionPicker';
+import { KeyboardAwareScrollViewCompat } from '../../components/KeyboardAwareScrollViewCompat';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -301,7 +302,14 @@ export default function RecordScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
+      <KeyboardAwareScrollViewCompat
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        bottomOffset={72}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.recordingArea}>
           {isProcessing ? (
             <View style={styles.processingState}>
@@ -445,13 +453,14 @@ export default function RecordScreen() {
             </View>
           )}
         </View>
-      </View>
+      </KeyboardAwareScrollViewCompat>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  scrollView: { flex: 1 },
   header: {
     padding: 16,
     borderBottomWidth: 1,
@@ -461,7 +470,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     padding: 24,
   },
   recordingArea: {

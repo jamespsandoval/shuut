@@ -10,6 +10,8 @@ import { AuthProvider, useAuth } from '../hooks/useAuthStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setBaseUrl, setDefaultCredentials } from '@workspace/api-client-react';
 import { GlobalRecordButton } from '../components/GlobalRecordButton';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Initialize base URL
 const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
@@ -99,10 +101,14 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RootLayoutNav />
-      </AuthProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <RootLayoutNav />
+          </AuthProvider>
+        </QueryClientProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
