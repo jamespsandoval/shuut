@@ -6,9 +6,10 @@ import { useGetPost, useGetPostComments, useCreatePostComment, useRequestUploadU
 import { ChevronLeft, Mic, Square, Send } from 'lucide-react-native';
 import { PostCard } from '../../components/PostCard';
 import { AuthenticatedAudioPlayer } from '../../components/AuthenticatedAudioPlayer';
-import { formatDistanceToNow } from 'date-fns';
 import { File } from 'expo-file-system';
-import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
+import { formatApproximateTimeAgo } from '../../lib/relativeTime';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,7 +23,7 @@ export default function PostDetailScreen() {
   const requestUploadUrl = useRequestUploadUrl();
   const createComment = useCreatePostComment();
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
   const recorderState = useAudioRecorderState(recorder);
   const isRecordingRef = useRef(false);
   isRecordingRef.current = recorderState.isRecording;
@@ -188,7 +189,7 @@ export default function PostDetailScreen() {
                 <View style={styles.commentHeader}>
                   <Text style={[styles.commentAuthor, { color: colors.foreground }]}>{comment.author.name}</Text>
                   <Text style={[styles.time, { color: colors.mutedForeground }]}>
-                    {formatDistanceToNow(new Date(comment.createdAt))} ago
+                    {formatApproximateTimeAgo(comment.createdAt)}
                   </Text>
                 </View>
                 {comment.transcript ? (

@@ -3,14 +3,15 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, A
 import { useColors } from '../hooks/useColors';
 import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost } from '@workspace/api-client-react';
 import { useRouter } from 'expo-router';
-import { formatDistanceToNow } from 'date-fns';
 import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil } from 'lucide-react-native';
 import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
 import { File } from 'expo-file-system';
-import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { authenticatedImageSource } from '../lib/apiUrl';
 import { useAuth } from '../hooks/useAuthStore';
+import { SPEECH_RECORDING_OPTIONS } from '../lib/audioRecording';
+import { formatApproximateTimeAgo } from '../lib/relativeTime';
 
 export function PostCard({
   post,
@@ -40,7 +41,7 @@ export function PostCard({
   const [editText, setEditText] = useState(post.transcript);
 
   // Comment composer state
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
   const recorderState = useAudioRecorderState(recorder);
   const isRecordingRef = useRef(false);
   isRecordingRef.current = recorderState.isRecording;
@@ -211,7 +212,7 @@ export function PostCard({
           </View>
         </TouchableOpacity>
         <Text style={[styles.time, { color: colors.mutedForeground }]}>
-          {formatDistanceToNow(new Date(post.createdAt))} ago
+          {formatApproximateTimeAgo(post.createdAt)}
         </Text>
       </View>
 
@@ -348,7 +349,7 @@ export function PostCard({
                 <View style={styles.commentHeader}>
                   <Text style={[styles.commentAuthor, { color: colors.foreground }]}>{comment.author.name}</Text>
                   <Text style={[styles.time, { color: colors.mutedForeground }]}>
-                    {formatDistanceToNow(new Date(comment.createdAt))} ago
+                    {formatApproximateTimeAgo(comment.createdAt)}
                   </Text>
                 </View>
                 <AuthenticatedAudioPlayer url={comment.audioUrl} durationSeconds={comment.durationSeconds} />
