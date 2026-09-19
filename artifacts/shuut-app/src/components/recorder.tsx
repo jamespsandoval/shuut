@@ -236,7 +236,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
           : audioData
             ? previewTranscript
-              ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
+              ? "h-[min(680px,calc(100dvh-8rem))] md:h-[60vh]"
               : "h-[320px] md:h-[300px]"
             : "h-[140px]"
       )}

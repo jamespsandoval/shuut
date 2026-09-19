@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
-    padding: 24,
+    padding: 16,
   },
   recordingArea: {
     flex: 1,
@@ -513,8 +513,8 @@ const styles = StyleSheet.create({
     maxWidth: 560,
     borderWidth: 1,
     borderRadius: 20,
-    padding: 16,
-    gap: 18,
+    padding: 14,
+    gap: 12,
   },
   reviewTitle: {
     fontFamily: 'Inter_700Bold',
@@ -554,7 +554,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   transcriptSection: {
-    gap: 10,
+    gap: 8,
   },
   transcriptLabel: {
     fontFamily: 'Inter_600SemiBold',
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   transcriptInput: {
-    minHeight: 130,
+    minHeight: 96,
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,

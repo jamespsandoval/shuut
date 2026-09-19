@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useRouter, useSegments } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Mic, Square } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../hooks/useColors';
@@ -9,11 +9,11 @@ export function GlobalRecordButton() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const segments = useSegments();
+  const pathname = usePathname();
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
-  const currentRoute = segments.join('/');
-  const isFeed = currentRoute === '(main)/feed';
-  const isCompose = currentRoute === 'compose' || currentRoute === '(main)/record';
+  const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
+  const isFeed = normalizedPathname === '/feed';
+  const isCompose = normalizedPathname === '/compose' || normalizedPathname === '/record';
 
   useEffect(() => {
     if (isCompose) setIsOpeningRecorder(false);

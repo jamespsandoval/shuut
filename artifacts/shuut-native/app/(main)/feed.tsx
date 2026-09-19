@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useColors } from '../../hooks/useColors';
 import { useGetFeed, Post } from '@workspace/api-client-react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -8,7 +8,7 @@ import { PostCard } from '../../components/PostCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 
-const FLOATING_MIC_SCROLL_THRESHOLD = 112;
+const DEFAULT_FLOATING_MIC_SCROLL_THRESHOLD = 180;
 
 export default function FeedScreen() {
   const [view, setView] = useState<'everyone' | 'following'>('everyone');
@@ -18,6 +18,7 @@ export default function FeedScreen() {
   const params = useLocalSearchParams<{ newPostId?: string }>();
   const [showFloatingMic, setShowFloatingMic] = useState(false);
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
+  const floatingMicScrollThreshold = useRef(DEFAULT_FLOATING_MIC_SCROLL_THRESHOLD);
 
   const { data: posts, isLoading, refetch } = useGetFeed(
     { view },
@@ -63,7 +64,7 @@ export default function FeedScreen() {
     if (Platform.OS !== 'web') return;
 
     const handleWindowScroll = () => {
-      const shouldFloat = window.scrollY >= FLOATING_MIC_SCROLL_THRESHOLD;
+      const shouldFloat = window.scrollY >= floatingMicScrollThreshold.current;
       setShowFloatingMic((current) => current === shouldFloat ? current : shouldFloat);
     };
 
@@ -98,8 +99,12 @@ export default function FeedScreen() {
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const shouldFloat = event.nativeEvent.contentOffset.y >= FLOATING_MIC_SCROLL_THRESHOLD;
+    const shouldFloat = event.nativeEvent.contentOffset.y >= floatingMicScrollThreshold.current;
     setShowFloatingMic((current) => current === shouldFloat ? current : shouldFloat);
+  };
+
+  const handleRecorderHeaderLayout = (event: LayoutChangeEvent) => {
+    floatingMicScrollThreshold.current = event.nativeEvent.layout.height;
   };
 
   return (
@@ -133,6 +138,7 @@ export default function FeedScreen() {
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
         ListHeaderComponent={
           <View
+            onLayout={handleRecorderHeaderLayout}
             style={[
               styles.headerContainer,
               {

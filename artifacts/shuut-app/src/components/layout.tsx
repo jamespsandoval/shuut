@@ -24,6 +24,8 @@ export function Layout({ children }: { children: ReactNode }) {
     },
   })
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
+  const normalizedLocation = location.split("?")[0].replace(/\/+$/, "") || "/"
+  const isFeedRoute = normalizedLocation === "/feed"
 
   const navItems = [
     { icon: Home, label: "Feed", href: "/feed" },
@@ -133,7 +135,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {location !== "/feed" && (
+      {!isFeedRoute && (
         <button
           type="button"
           onClick={() => setLocation("/feed?record=1")}

@@ -19,10 +19,10 @@ export default function Home() {
     if (!trigger) return
 
     const observer = new IntersectionObserver(
-      ([entry]) => setIsRecorderTriggerVisible(entry.intersectionRatio >= 0.99),
+      ([entry]) => setIsRecorderTriggerVisible(entry.isIntersecting),
       {
         rootMargin: "-54px 0px 0px 0px",
-        threshold: [0, 0.99, 1],
+        threshold: 0,
       },
     )
     observer.observe(trigger)
