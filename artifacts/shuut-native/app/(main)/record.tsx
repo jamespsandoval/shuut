@@ -4,16 +4,18 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
-import { Founder, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
+import { Founder, Post, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
 import { Pause, Play, Send, Square } from 'lucide-react-native';
 import { useAuth } from '../../hooks/useAuthStore';
 import { MentionPicker } from '../../components/MentionPicker';
 import { KeyboardAwareScrollViewCompat } from '../../components/KeyboardAwareScrollViewCompat';
 import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function RecordScreen() {
   const colors = useColors();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { token } = useAuth();
 
   const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
@@ -188,7 +190,7 @@ export default function RecordScreen() {
     setTranscript('');
     setIsPreparingTranscript(false);
     setMentionedFounders([]);
-    router.replace('/(main)/feed');
+    router.dismissTo('/(main)/feed');
   };
 
   const publishReview = async () => {
@@ -287,7 +289,17 @@ export default function RecordScreen() {
         }
       });
       if (isScreenActiveRef.current) {
-        router.replace({
+        if (createdPost.transcriptionStatus === 'ready') {
+          queryClient.setQueriesData<Post[]>({ queryKey: ['feed'] }, (current) => {
+            if (!current) return [createdPost];
+            if (current.some((post) => post.id === createdPost.id)) {
+              return current.map((post) => post.id === createdPost.id ? createdPost : post);
+            }
+            return [createdPost, ...current];
+          });
+        }
+
+        router.dismissTo({
           pathname: '/(main)/feed',
           params: { newPostId: String(createdPost.id) },
         });

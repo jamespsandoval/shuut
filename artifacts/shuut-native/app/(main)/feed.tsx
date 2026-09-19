@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, SafeAreaView, Platform, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useColors } from '../../hooks/useColors';
 import { useGetFeed, Post } from '@workspace/api-client-react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,7 +18,6 @@ export default function FeedScreen() {
   const params = useLocalSearchParams<{ newPostId?: string }>();
   const [showFloatingMic, setShowFloatingMic] = useState(false);
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const { data: posts, isLoading, refetch } = useGetFeed(
     { view },
@@ -32,8 +31,33 @@ export default function FeedScreen() {
   useEffect(() => {
     if (!params.newPostId) return;
 
-    void refetch();
-  }, [params.newPostId, refetch]);
+    const newPostId = Number(params.newPostId);
+    if (posts?.some((post) => post.id === newPostId)) {
+      router.setParams({ newPostId: undefined });
+      return;
+    }
+
+    let isCancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const pollForPublishedPost = async () => {
+      const result = await refetch();
+      if (isCancelled) return;
+
+      if (result.data?.some((post) => post.id === newPostId)) {
+        router.setParams({ newPostId: undefined });
+        return;
+      }
+
+      pollTimer = setTimeout(() => void pollForPublishedPost(), 2_000);
+    };
+
+    pollTimer = setTimeout(() => void pollForPublishedPost(), 1_000);
+    return () => {
+      isCancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [params.newPostId, posts, refetch, router]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -71,15 +95,6 @@ export default function FeedScreen() {
   const openRecorder = () => {
     if (isOpeningRecorder) return;
     setIsOpeningRecorder(true);
-  };
-
-  const handlePullRefresh = async () => {
-    setIsPullRefreshing(true);
-    try {
-      await refetch();
-    } finally {
-      setIsPullRefreshing(false);
-    }
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -152,13 +167,6 @@ export default function FeedScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={isPullRefreshing}
-            onRefresh={() => void handlePullRefresh()}
-            tintColor={colors.primary}
-          />
         }
         ListEmptyComponent={
           !isLoading ? (
