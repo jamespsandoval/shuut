@@ -39,7 +39,7 @@ export function GlobalRecordButton() {
         style={[
           styles.button,
           {
-            backgroundColor: colors.primary,
+            backgroundColor: isOpeningRecorder ? colors.destructive : colors.primary,
             bottom: insets.bottom + 76,
             ...(Platform.OS === 'web' ? { position: 'fixed' as const } : null),
           },
@@ -48,7 +48,11 @@ export function GlobalRecordButton() {
         disabled={isOpeningRecorder}
         accessibilityLabel="Record a SHÜÜT"
       >
-        <Mic color={colors.primaryForeground} size={24} />
+        {isOpeningRecorder ? (
+          <Square color={colors.primaryForeground} size={24} />
+        ) : (
+          <Mic color={colors.primaryForeground} size={24} />
+        )}
       </TouchableOpacity>
       {isOpeningRecorder && (
         <View

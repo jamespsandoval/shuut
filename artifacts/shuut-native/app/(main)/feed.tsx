@@ -18,8 +18,9 @@ export default function FeedScreen() {
   const params = useLocalSearchParams<{ newPostId?: string }>();
   const [showFloatingMic, setShowFloatingMic] = useState(false);
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
-  const { data: posts, isLoading, refetch, isRefetching } = useGetFeed(
+  const { data: posts, isLoading, refetch } = useGetFeed(
     { view },
     { query: { queryKey: ['feed', view] } }
   );
@@ -32,10 +33,6 @@ export default function FeedScreen() {
     if (!params.newPostId) return;
 
     void refetch();
-    const retries = [2500, 6000, 12000, 24000].map((delay) =>
-      setTimeout(() => void refetch(), delay)
-    );
-    return () => retries.forEach(clearTimeout);
   }, [params.newPostId, refetch]);
 
   useEffect(() => {
@@ -74,6 +71,15 @@ export default function FeedScreen() {
   const openRecorder = () => {
     if (isOpeningRecorder) return;
     setIsOpeningRecorder(true);
+  };
+
+  const handlePullRefresh = async () => {
+    setIsPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -130,18 +136,29 @@ export default function FeedScreen() {
 
             <View style={styles.recordActionRow}>
               <TouchableOpacity
-                style={[styles.largeMicButton, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.largeMicButton,
+                  { backgroundColor: isOpeningRecorder ? colors.destructive : colors.primary },
+                ]}
                 onPress={openRecorder}
                 disabled={isOpeningRecorder}
                 accessibilityLabel="Record a SHÜÜT"
               >
-                <Mic color="#fff" size={28} />
+                {isOpeningRecorder ? (
+                  <Square color={colors.primaryForeground} size={28} />
+                ) : (
+                  <Mic color={colors.primaryForeground} size={28} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
         }
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={isPullRefreshing}
+            onRefresh={() => void handlePullRefresh()}
+            tintColor={colors.primary}
+          />
         }
         ListEmptyComponent={
           !isLoading ? (
@@ -156,7 +173,7 @@ export default function FeedScreen() {
           style={[
             styles.floatingMicButton,
             {
-              backgroundColor: colors.primary,
+              backgroundColor: isOpeningRecorder ? colors.destructive : colors.primary,
               bottom: insets.bottom + 72,
               ...(Platform.OS === 'web' ? { position: 'fixed' as const } : null),
             },
@@ -165,7 +182,11 @@ export default function FeedScreen() {
           disabled={isOpeningRecorder}
           accessibilityLabel="Record a SHÜÜT"
         >
-          <Mic color="#fff" size={24} />
+          {isOpeningRecorder ? (
+            <Square color={colors.primaryForeground} size={24} />
+          ) : (
+            <Mic color={colors.primaryForeground} size={24} />
+          )}
         </TouchableOpacity>
       )}
       {isOpeningRecorder && (
