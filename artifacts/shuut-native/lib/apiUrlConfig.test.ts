@@ -42,6 +42,24 @@ test('development still surfaces invalid explicit configuration', () => {
   }), /absolute HTTPS URL/);
 });
 
+test('development domain takes precedence over the embedded production API', () => {
+  assert.equal(resolveApiBaseUrl({
+    configured: undefined,
+    embedded: PRODUCTION_API_BASE_URL,
+    developmentDomain: 'workspace.example.replit.dev',
+    development: true,
+  }), 'https://workspace.example.replit.dev');
+});
+
+test('explicit development API configuration takes precedence over the development domain', () => {
+  assert.equal(resolveApiBaseUrl({
+    configured: 'https://api.example.test',
+    embedded: PRODUCTION_API_BASE_URL,
+    developmentDomain: 'workspace.example.replit.dev',
+    development: true,
+  }), 'https://api.example.test');
+});
+
 test('normalization rejects credentials, query parameters, and fragments', () => {
   assert.throws(() => normalizeApiBaseUrl('https://user:pass@shuut.me'), /credentials/);
   assert.throws(() => normalizeApiBaseUrl('https://shuut.me?x=1'), /query parameters/);

@@ -43,7 +43,20 @@ export function resolveApiBaseUrl({
   developmentDomain,
   development,
 }: ApiBaseUrlInputs): string {
-  const candidates = [configured, embedded]
+  const configuredValue = configured?.trim();
+  if (configuredValue) {
+    try {
+      return normalizeApiBaseUrl(configuredValue, development);
+    } catch (error) {
+      if (development) throw error;
+    }
+  }
+
+  if (development && developmentDomain?.trim()) {
+    return normalizeApiBaseUrl(`https://${developmentDomain.trim()}`, true);
+  }
+
+  const candidates = [embedded]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
 
