@@ -13,10 +13,10 @@ Connect form; every ASC checkbox remains manual:
 
 | Data family | Collected | Linked | Tracking | Purpose(s) | Vendor | Retention/deletion evidence | Manual ASC/vendor/legal check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Email/account/authentication | Yes | Yes | No | App functionality, authentication, support | SHÜÜT; Postmark | Account deletion cleanup; provider schedule not verified | ☐ ASC ☐ Postmark terms |
-| Name/profile/avatar | Yes | Yes | No | App functionality, personalization, safety | SHÜÜT; Replit App Storage/Google Cloud | Avatar/profile cleanup queued on deletion; backups not verified | ☐ ASC ☐ storage terms |
-| Voice recordings and comments | Yes | Yes | No | App functionality, moderation, appeals | SHÜÜT storage; ElevenLabs after consent | Active-content lifecycle; 30-day appeal hold for moderation-removed source audio | ☐ ASC ☐ ElevenLabs terms |
-| Transcript text | Yes | Yes | No | App functionality, safety | SHÜÜT; OpenAI via Replit-managed integrations | Removed with content/account after cleanup; provider schedule not verified | ☐ ASC ☐ AI terms |
+| Email/account/authentication | Yes | Yes | No | App functionality, authentication, support | SHÜÜT; Postmark | Account deletion cleanup; Postmark default 45-day message/activity retention, with suppression/aggregate and backup/legal exceptions | ☐ ASC ☐ capture Postmark account settings |
+| Name/profile/avatar | Yes | Yes | No | App functionality, personalization, safety | SHÜÜT; Replit App Storage/Google Cloud | Avatar/profile cleanup queued on deletion; no public project-applicable backup purge or object-deletion SLA | ☐ ASC ☐ capture deployment/storage terms |
+| Voice recordings and comments | Yes | Yes | No | App functionality; Other Purposes (provider model improvement unless opt-out evidenced); moderation and appeals | SHÜÜT storage; ElevenLabs after consent | Active-content lifecycle; 30-day SHÜÜT appeal hold; no self-serve inactivity deletion promise or public numeric backup purge period | ☐ ASC ☐ obtain applicable UK/EEA terms and account data-use setting |
+| Transcript text | Yes | Yes | No | App functionality; safety; Other Purposes where provider terms permit model improvement | SHÜÜT; OpenAI via Replit-managed integrations; ElevenLabs transcript output | Removed from SHÜÜT after cleanup; default upstream abuse logs may retain content up to 30 days, but managed-integration controls are not publicly proven | ☐ ASC ☐ capture Replit AI terms/settings |
 | Reports/moderation/security/legal records | Yes when generated | Usually yes | No | Safety, fraud prevention, legal compliance | SHÜÜT and relevant providers | May be retained/anonymized as needed | ☐ ASC ☐ legal review |
 | Technical/usage data | Yes as generated | May be | No | App functionality, security | SHÜÜT infrastructure | Schedule requires operational confirmation | ☐ ASC ☐ hosting review |
 
@@ -83,6 +83,12 @@ verification cell above remains **unchecked** until manually evidenced.
 - ☐ TestFlight build installed on a physical iPhone; no development bypass.
 - ☐ Production API, auth, email OTP, microphone permission, and legal URLs pass.
 - ☐ Vendor contracts/retention/deletion and international processing reviewed.
+- ☐ Account-level evidence in `provider-privacy-verification.md` captured; no
+  optional DPA, region, deletion API, training opt-out, or zero-retention
+  control inferred from public availability alone.
+- ☐ ElevenLabs UK/EEA business terms, applicable DPA, plan, and Data use
+  setting supplied; the uploaded non-EEA terms are not sufficient for a UK
+  operator.
 - ☐ Apple privacy label columns reconciled with current ASC UI.
 - ☐ Accessibility, crash-free launch, and network/offline behavior reviewed.
 - ☐ Physical-iPhone interruption matrix in

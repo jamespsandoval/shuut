@@ -4,11 +4,11 @@ import type { Request, Response } from "express";
 import { getAuthenticatedUserId } from "../middlewares/sessionAuth";
 
 export const CURRENT_LEGAL_POLICY_VERSIONS = {
-  terms: "2026-09-14",
+  terms: "2026-09-20",
   communityGuidelines: "2026-09-20",
 } as const;
 export const CURRENT_LEGAL_POLICY_CONTENT_HASHES = {
-  terms: "sha256:8b2397c36ede1b7312831806ee5a167dec815e48a1ec182cd314a82507d9f360",
+  terms: "sha256:94d4b3c13c4ae1b8ad25f72ad956da9f8c6e0423b31eff560162238c8653ce93",
   communityGuidelines: "sha256:ba8c263b3d84df6a8a9b1173c46fd4db0d2fe183c29c4fe2bc4ed61897ca8a0a",
 } as const;
 

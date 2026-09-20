@@ -19,18 +19,18 @@ export default function Privacy() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">3. Transcription & AI Processing</h2>
-          <p>When you grant voice-AI consent and submit a recording, SHÜÜT sends the audio to ElevenLabs for speech-to-text. SHÜÜT sends transcript text to automated safety classification using OpenAI models through Replit-managed AI integrations. These steps can happen asynchronously after recording or upload. They support transcription and safety moderation; automated results can be wrong and may be reviewed or acted on under our policies. Revoking consent stops future voice processing and we send no new audio after revocation, but revocation does not retract content already submitted or processed.</p>
+          <p>When you grant voice-AI consent and submit a recording, SHÜÜT sends the audio to ElevenLabs for speech-to-text. SHÜÜT sends transcript text to automated safety classification using OpenAI models through Replit-managed AI integrations. These steps can happen asynchronously after recording or upload. They support transcription and safety moderation; depending on the provider terms and account settings in force, providers may also use submitted data to improve their models or services. Automated results can be wrong and may be reviewed or acted on under our policies. Revoking consent stops future voice processing and we send no new audio after revocation, but revocation does not retract content already submitted or processed or affect provider use that occurred before revocation.</p>
         </section>
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">4. Data Sharing & Vendors</h2>
-          <p>Service providers process information only to support SHÜÜT’s operation, including Replit-managed infrastructure and AI integrations, ElevenLabs speech-to-text, Postmark email processing, and Replit App Storage backed by Google Cloud infrastructure. Processing may occur in North America and internationally. We do not sell personal data, serve advertising, or use tracking.</p>
+          <p>Service providers process information to support SHÜÜT’s operation, including Replit-managed infrastructure and AI integrations, ElevenLabs speech-to-text, Postmark email processing, and Replit App Storage backed by Google Cloud infrastructure. Depending on their applicable terms and account settings, voice and AI providers may also use submitted data to improve their models or services. Processing may occur in the United States and other countries where these providers and their subprocessors operate. We do not sell personal data, serve advertising, or use tracking.</p>
         </section>
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">5. Retention & Deletion</h2>
           <p>Private recordings and transcripts are retained while the related content and account are active. Unlinked private uploads are cleaned up after signed-upload expiry and retry handling. When moderation removes content, its source audio is retained for 30 days to support an appeal. Report evidence, moderation actions and sanctions, and security, audit, or legal records may be retained or anonymized where needed for safety or legal purposes.</p>
-          <p>Account deletion queues private audio and avatar cleanup and removes your profile, posts, comments, transcripts, current automated moderation jobs, and consent records after cleanup succeeds. Backups and copies held by providers follow their applicable processor or legal schedules. Current provider calls expose no per-request deletion ID, so SHÜÜT cannot promise immediate provider-side erasure; this does not change our commitment to send no new audio after consent is revoked.</p>
+          <p>Account deletion queues private audio and avatar cleanup and removes your profile, posts, comments, transcripts, current automated moderation jobs, and consent records after cleanup succeeds. Providers may retain limited copies under their service, backup, security, suppression, or legal schedules. Current voice and AI provider calls expose no per-request deletion ID, so SHÜÜT cannot promise immediate provider-side erasure or that every provider copy is deleted at the same time; this does not change our commitment to send no new audio after consent is revoked.</p>
         </section>
 
         <section>
@@ -40,7 +40,7 @@ export default function Privacy() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">7. Security & International Transfers</h2>
-          <p>We implement reasonable technical and organizational safeguards to protect your data. Our primary deployment is in North America, and providers may process information internationally. Where required by applicable law, we use appropriate safeguards for international processing. We do not describe a specific transfer mechanism unless it has been verified for the relevant provider.</p>
+          <p>We implement reasonable technical and organizational safeguards to protect your data. Replit and other providers and their subprocessors may process information in the United States and other countries. Where required by applicable law, international processing is covered by the safeguards applicable under our provider agreements, which may include adequacy arrangements or contractual protections. We do not promise that data remains in one region.</p>
         </section>
 
         <section>

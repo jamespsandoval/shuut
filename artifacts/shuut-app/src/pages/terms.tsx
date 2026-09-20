@@ -4,12 +4,12 @@ export default function Terms() {
   return (
     <PublicLayout>
       <h1 className="text-3xl font-extrabold tracking-tight mb-2">Terms of Service</h1>
-      <p className="text-sm font-medium text-gray-400 mb-10 uppercase tracking-wider">Effective: 14 September 2026</p>
+      <p className="text-sm font-medium text-gray-400 mb-10 uppercase tracking-wider">Effective: 20 September 2026</p>
       
       <div className="space-y-8 text-[15px] text-gray-700 leading-relaxed">
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">1. Introduction</h2>
-          <p>Welcome to SHÜÜT. These Terms of Service govern your access to and use of the SHÜÜT platform, operated by DoublePortrait Labs in England and Wales. For this deployment, the published app, database, and object storage are hosted in North America. This describes the location of our hosting infrastructure and does not change where DoublePortrait Labs is operated. By accessing or using our service, you agree to be bound by these Terms.</p>
+          <p>Welcome to SHÜÜT. These Terms of Service govern your access to and use of the SHÜÜT platform, operated by DoublePortrait Labs in England and Wales. By accessing or using our service, you agree to be bound by these Terms.</p>
         </section>
 
         <section>
@@ -51,7 +51,7 @@ export default function Terms() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">7. Service Changes & Third Parties</h2>
-          <p>We are constantly evolving and may modify or discontinue parts of the service at any time. We also rely on third-party providers (such as hosting, authentication, storage, email delivery, and transcription services) to operate SHÜÜT. Our primary hosting infrastructure for this deployment is configured in North America, and individual third-party providers may have their own processing locations and terms.</p>
+          <p>We are constantly evolving and may modify or discontinue parts of the service at any time. We also rely on third-party providers (such as hosting, authentication, storage, email delivery, and transcription services) to operate SHÜÜT. Those providers and their subprocessors may process information in multiple countries under their applicable terms.</p>
         </section>
 
         <section>
