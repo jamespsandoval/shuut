@@ -32,6 +32,13 @@ export default function PublicContentScreen() {
   const returnTo = typeof params.returnTo === 'string' && params.returnTo.startsWith('/')
     ? params.returnTo
     : '/(main)/settings';
+  const returnToPreviousScreen = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(returnTo as never);
+    }
+  };
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -39,7 +46,7 @@ export default function PublicContentScreen() {
       if (canGoBack) {
         webViewRef.current?.goBack();
       } else {
-        router.replace(returnTo as never);
+        returnToPreviousScreen();
       }
       return true;
     });
@@ -89,7 +96,7 @@ export default function PublicContentScreen() {
                 const requestedPath = requestedUrl.pathname.replace(/\/+$/, '');
                 const homePath = PUBLIC_SITE_HOME.pathname.replace(/\/+$/, '');
                 if (requestedUrl.origin === PUBLIC_SITE_HOME.origin && requestedPath === homePath) {
-                  router.replace(returnTo as never);
+                  returnToPreviousScreen();
                   return false;
                 }
               } catch {

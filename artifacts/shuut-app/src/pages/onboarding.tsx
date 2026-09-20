@@ -10,7 +10,9 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Footer } from "@/components/footer";
+import { useAuth } from "@/hooks/use-auth";
 
 function usernameFromName(firstName: string, lastName: string) {
   return `${firstName}_${lastName}`
@@ -45,6 +47,8 @@ export default function Onboarding() {
   const [debouncedHandle, setDebouncedHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [decision, setDecision] = useState<boolean | null>(null);
+  const [acceptedLegalPolicies, setAcceptedLegalPolicies] = useState(false);
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const completeOnboarding = useCompleteOnboarding();
   const validHandle = /^[a-z0-9_]{2,30}$/.test(handle);
@@ -76,6 +80,7 @@ export default function Onboarding() {
   };
 
   const decide = (eligible: boolean) => {
+    if (!acceptedLegalPolicies) return;
     const normalizedHandle = handle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30);
     setHandle(normalizedHandle);
     setError(null);
@@ -87,6 +92,9 @@ export default function Onboarding() {
           lastName: lastName.trim(),
           handle: normalizedHandle,
           eligible,
+          acceptedLegalPolicies: true,
+          termsVersion: user?.legalPolicyConsent.terms.currentVersion ?? "",
+          communityGuidelinesVersion: user?.legalPolicyConsent.communityGuidelines.currentVersion ?? "",
         },
       },
       {
@@ -94,6 +102,15 @@ export default function Onboarding() {
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() }),
         onError: (requestError) => {
           setDecision(null);
+          const errorValue = requestError as {
+            data?: { code?: string };
+          };
+          if (errorValue.data?.code === "LEGAL_POLICY_VERSION_MISMATCH") {
+            setAcceptedLegalPolicies(false);
+            queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
+            setError("The policies changed while you were reviewing them. Please review the current versions and check the box again.");
+            return;
+          }
           setError(errorMessage(requestError));
         },
       },
@@ -259,6 +276,19 @@ export default function Onboarding() {
               {error && (
                 <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
               )}
+              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium leading-6">
+                <Checkbox
+                  checked={acceptedLegalPolicies}
+                  onCheckedChange={(checked) => setAcceptedLegalPolicies(checked === true)}
+                  data-testid="checkbox-legal-policies"
+                  aria-label="Accept the Terms of Service and Community Guidelines"
+                  className="mt-0.5"
+                />
+                <span>
+                  I agree to the <a href={`${basePath}/terms`} target="_blank" rel="noreferrer" className="font-bold underline underline-offset-2">Terms of Service</a> and linked{" "}
+                  <a href={`${basePath}/community`} target="_blank" rel="noreferrer" className="font-bold underline underline-offset-2">Community Guidelines</a>.
+                </span>
+              </div>
               <div className="space-y-3" role="radiogroup" aria-label="Founder eligibility">
                 {[{ label: "Yes, I am", value: true }, { label: "No, I’m not", value: false }].map((option) => (
                   <button
@@ -266,7 +296,7 @@ export default function Onboarding() {
                     type="button"
                     role="radio"
                     aria-checked={decision === option.value}
-                    disabled={completeOnboarding.isPending}
+                    disabled={completeOnboarding.isPending || !acceptedLegalPolicies}
                     onClick={() => decide(option.value)}
                     className="flex h-16 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-5 text-left text-[16px] font-bold shadow-sm transition hover:border-primary disabled:opacity-60"
                   >

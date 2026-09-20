@@ -51,7 +51,7 @@ function RootLayoutNav() {
         router.replace('/(auth)/login');
       }
     } else if (authState === 'onboardingPending') {
-      if (currentRoute !== '(auth)/onboarding') {
+      if (currentRoute !== '(auth)/onboarding' && !inPublicContent) {
         router.replace('/(auth)/onboarding');
       }
     } else if (authState === 'ready') {

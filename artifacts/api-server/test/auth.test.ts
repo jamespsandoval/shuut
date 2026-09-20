@@ -133,13 +133,29 @@ test("111333 verifies active codes only in development", async () => {
 
 test("onboarding eligibility atomically admits founders or permanently waitlists applicants", async () => {
   const waitlistEmail = `${prefix}-waitlisted@example.test`;
-  const waitlistSession = await register(waitlistEmail);
+  const waitlistSession = await register(waitlistEmail, false);
   const waitlistPayload = {
     firstName: "Jamie",
     lastName: "Outside",
     handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}wo`,
     eligible: false,
+    acceptedLegalPolicies: true,
+    termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+    communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
   };
+  const stalePolicies = await request("/api/auth/onboarding", {
+    method: "POST",
+    session: waitlistSession,
+    json: { ...waitlistPayload, termsVersion: "2020-01-01" },
+  });
+  assert.equal(stalePolicies.status, 409);
+  assert.equal((await stalePolicies.json() as { code: string }).code, "LEGAL_POLICY_VERSION_MISMATCH");
+  const unchecked = await request("/api/auth/onboarding", {
+    method: "POST",
+    session: waitlistSession,
+    json: { ...waitlistPayload, acceptedLegalPolicies: false },
+  });
+  assert.equal(unchecked.status, 400);
   const waitlisted = await request("/api/auth/onboarding", {
     method: "POST",
     session: waitlistSession,
@@ -163,14 +179,30 @@ test("onboarding eligibility atomically admits founders or permanently waitlists
   assert.equal(waitlistUser.eligibilityStatus, "waitlisted");
   assert.equal(waitlistUser.onboardingFirstName, "Jamie");
   assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.userId, waitlistUser.id))).length, 0);
+  const waitlistAcceptances = await db.select().from(legalPolicyAcceptancesTable)
+    .where(eq(legalPolicyAcceptancesTable.userId, waitlistUser.id));
+  assert.equal(waitlistAcceptances.length, 2);
+  assert.deepEqual(
+    new Set(waitlistAcceptances.map((acceptance) => acceptance.policyContentHash)),
+    new Set(Object.values(CURRENT_LEGAL_POLICY_CONTENT_HASHES)),
+  );
+  assert.deepEqual(new Set(waitlistAcceptances.map((acceptance) => acceptance.source)), new Set(["web"]));
 
   const founderEmail = `${prefix}-eligible@example.test`;
-  const founderSession = await register(founderEmail);
+  const founderSession = await register(founderEmail, false);
   const founderHandle = `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}eu`;
   const eligible = await request("/api/auth/onboarding", {
     method: "POST",
     session: founderSession,
-    json: { firstName: "Alex", lastName: "Europe", handle: founderHandle, eligible: true },
+    json: {
+      firstName: "Alex",
+      lastName: "Europe",
+      handle: founderHandle,
+      eligible: true,
+      acceptedLegalPolicies: true,
+      termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+      communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
+    },
   });
   assert.equal(eligible.status, 200);
   const eligibleBody = await eligible.json() as { user: { onboardingComplete: boolean; eligibilityStatus: string } };
@@ -853,6 +885,44 @@ test("legal policy consent is reported, recorded immutably, and required for UGC
     new Set(acceptances.map((acceptance) => acceptance.policyContentHash)),
     new Set(Object.values(CURRENT_LEGAL_POLICY_CONTENT_HASHES)),
   );
+});
+
+test("routine policy updates do not require fresh consent from existing members", async () => {
+  const email = `${prefix}-routine-policy-update@example.test`;
+  const session = await register(email, false);
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, email));
+  await db.insert(legalPolicyAcceptancesTable).values([
+    {
+      userId: user.id,
+      policyKey: "terms",
+      policyVersion: "2026-01-01",
+      policyContentHash: "sha256:historical-terms",
+      source: "web",
+    },
+    {
+      userId: user.id,
+      policyKey: "communityGuidelines",
+      policyVersion: "2026-01-01",
+      policyContentHash: "sha256:historical-community",
+      source: "web",
+    },
+  ]);
+
+  const response = await request("/api/auth/me", { session });
+  assert.equal(response.status, 200);
+  const body = await response.json() as {
+    user: {
+      legalPolicyConsent: {
+        required: boolean;
+        terms: { current: boolean };
+        communityGuidelines: { current: boolean };
+      };
+    };
+  };
+  assert.equal(body.user.legalPolicyConsent.required, false);
+  assert.equal(body.user.legalPolicyConsent.terms.current, false);
+  assert.equal(body.user.legalPolicyConsent.communityGuidelines.current, false);
 });
 
 test("CSRF and Origin checks protect pending passkey requests", async () => {

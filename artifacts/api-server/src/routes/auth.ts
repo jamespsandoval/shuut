@@ -808,7 +808,20 @@ router.post("/onboarding", async (req, res): Promise<void> => {
   }
   const body = CompleteOnboardingBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "Enter your name and a valid lowercase username." });
+    res.status(400).json({
+      error: "Enter your name, choose a valid lowercase username, and accept the Terms of Service and Community Guidelines.",
+    });
+    return;
+  }
+  if (
+    body.data.termsVersion !== CURRENT_LEGAL_POLICY_VERSIONS.terms ||
+    body.data.communityGuidelinesVersion !== CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines
+  ) {
+    res.status(409).json({
+      error: "The policies changed while you were reviewing them. Review the current versions before continuing.",
+      code: "LEGAL_POLICY_VERSION_MISMATCH",
+      currentVersions: CURRENT_LEGAL_POLICY_VERSIONS,
+    });
     return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -864,6 +877,22 @@ router.post("/onboarding", async (req, res): Promise<void> => {
           followingCount: 0,
         });
       }
+      await tx.insert(legalPolicyAcceptancesTable).values([
+        {
+          userId,
+          policyKey: "terms",
+          policyVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+          policyContentHash: CURRENT_LEGAL_POLICY_CONTENT_HASHES.terms,
+          source: isBearerRequest(req) ? "native" : "web",
+        },
+        {
+          userId,
+          policyKey: "communityGuidelines",
+          policyVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
+          policyContentHash: CURRENT_LEGAL_POLICY_CONTENT_HASHES.communityGuidelines,
+          source: isBearerRequest(req) ? "native" : "web",
+        },
+      ]).onConflictDoNothing();
     });
   } catch (error) {
     if (error instanceof Error && error.message === "ONBOARDING_DECISION_CONFLICT") {

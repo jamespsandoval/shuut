@@ -24,4 +24,10 @@ export interface OnboardingInput {
      */
   handle: string;
   eligible: boolean;
+  /** Explicit acceptance of the current Terms of Service and linked Community Guidelines. */
+  acceptedLegalPolicies: true;
+  /** Exact Terms of Service version presented when the checkbox was selected. */
+  termsVersion: string;
+  /** Exact Community Guidelines version presented when the checkbox was selected. */
+  communityGuidelinesVersion: string;
 }

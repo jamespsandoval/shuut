@@ -12,6 +12,13 @@ export const CURRENT_LEGAL_POLICY_CONTENT_HASHES = {
   communityGuidelines: "sha256:ba8c263b3d84df6a8a9b1173c46fd4db0d2fe183c29c4fe2bc4ed61897ca8a0a",
 } as const;
 
+// Add a current version here only when counsel determines that an update
+// materially changes member rights or responsibilities and requires re-consent.
+export const LEGAL_POLICY_VERSIONS_REQUIRING_FRESH_CONSENT = {
+  terms: [] as string[],
+  communityGuidelines: [] as string[],
+} satisfies Record<keyof typeof CURRENT_LEGAL_POLICY_VERSIONS, string[]>;
+
 export type LegalPolicyKey = keyof typeof CURRENT_LEGAL_POLICY_VERSIONS;
 export type LegalPolicySource = "web" | "native" | "ios" | "android";
 
@@ -47,8 +54,18 @@ export async function getLegalPolicyStatus(userId: string) {
 
   const terms = policyStatus("terms");
   const communityGuidelines = policyStatus("communityGuidelines");
+  const hasAcceptedBothPolicies = Boolean(
+    latest.get("terms") && latest.get("communityGuidelines"),
+  );
+  const freshConsentRequired =
+    (LEGAL_POLICY_VERSIONS_REQUIRING_FRESH_CONSENT.terms.includes(terms.currentVersion) &&
+      !terms.current) ||
+    (LEGAL_POLICY_VERSIONS_REQUIRING_FRESH_CONSENT.communityGuidelines.includes(
+      communityGuidelines.currentVersion,
+    ) &&
+      !communityGuidelines.current);
   return {
-    required: !(terms.current && communityGuidelines.current),
+    required: !hasAcceptedBothPolicies || freshConsentRequired,
     terms,
     communityGuidelines,
   };

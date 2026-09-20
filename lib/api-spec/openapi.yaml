@@ -1294,12 +1294,22 @@ components:
         message: { type: string }
     OnboardingInput:
       type: object
-      required: [firstName, lastName, handle, eligible]
+      required: [firstName, lastName, handle, eligible, acceptedLegalPolicies, termsVersion, communityGuidelinesVersion]
       properties:
         firstName: { type: string, minLength: 1, maxLength: 40 }
         lastName: { type: string, minLength: 1, maxLength: 40 }
         handle: { type: string, minLength: 2, maxLength: 30, pattern: '^[a-z0-9_]+$' }
         eligible: { type: boolean }
+        acceptedLegalPolicies:
+          type: boolean
+          const: true
+          description: Explicit acceptance of the current Terms of Service and linked Community Guidelines.
+        termsVersion:
+          type: string
+          description: Exact Terms of Service version presented when the checkbox was selected.
+        communityGuidelinesVersion:
+          type: string
+          description: Exact Community Guidelines version presented when the checkbox was selected.
     LegalPolicyConsentInput:
       type: object
       required: [termsVersion, communityGuidelinesVersion]

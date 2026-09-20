@@ -41,7 +41,7 @@ interface AuthContextType {
   authState: AuthState;
   signIn: (session: MobileAuthSession) => Promise<void>;
   signOut: () => Promise<void>;
-  completeOnboarding: (state: 'ready' | 'waitlisted') => void;
+  completeOnboarding: (user: AuthUser) => void;
   refreshSession: () => Promise<AuthUser | null>;
 }
 
@@ -112,9 +112,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthState(nextState);
   };
 
-  const completeOnboarding = (state: 'ready' | 'waitlisted') => {
-    void authStorage.setItem(AUTH_STATE_KEY, state);
-    setAuthState(state);
+  const completeOnboarding = (completedUser: AuthUser) => {
+    const nextState = resolveAuthSessionState({ user: completedUser });
+    void authStorage.setItem(AUTH_STATE_KEY, nextState);
+    setUser(completedUser);
+    setAuthState(nextState);
   };
 
   const signOut = async () => {
