@@ -43,7 +43,10 @@ export default function SettingsScreen() {
   }, [profileData]);
 
   const openPublicPage = (slug: string) => {
-    router.push({ pathname: '/public/[slug]', params: { slug } });
+    router.push({
+      pathname: '/public/[slug]',
+      params: { slug, returnTo: '/(main)/settings' },
+    });
   };
 
   const handleLogout = async () => {

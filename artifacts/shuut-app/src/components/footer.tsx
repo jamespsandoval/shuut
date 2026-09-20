@@ -1,6 +1,15 @@
 import { Link } from 'wouter';
 
 export function Footer() {
+  const currentParams = typeof window === 'undefined'
+    ? null
+    : new URLSearchParams(window.location.search);
+  const preservedParams = new URLSearchParams();
+  if (currentParams?.get('native') === '1') preservedParams.set('native', '1');
+  const returnToApp = currentParams?.get('returnToApp');
+  if (returnToApp) preservedParams.set('returnToApp', returnToApp);
+  const preservedSearch = preservedParams.size > 0 ? `?${preservedParams.toString()}` : '';
+
   const footerLinks = [
     { label: "About", href: "/about" },
     { label: "Community Guidelines", href: "/community" },
@@ -16,7 +25,7 @@ export function Footer() {
         <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-3 text-[13px] text-gray-500 font-medium">
           {footerLinks.map((link, i) => (
             <div key={link.label} className="flex items-center gap-3">
-              <Link href={link.href} className="hover:text-gray-900 transition-colors">
+              <Link href={`${link.href}${preservedSearch}`} className="hover:text-gray-900 transition-colors">
                 {link.label}
               </Link>
               {i < footerLinks.length - 1 && (

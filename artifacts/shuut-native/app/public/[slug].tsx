@@ -33,11 +33,10 @@ export default function PublicContentScreen() {
     ? params.returnTo
     : '/(main)/settings';
   const returnToPreviousScreen = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace(returnTo as never);
-    }
+    // Never rely on the root stack here. It can still contain the login route
+    // from before authentication, which makes a public-page return appear to
+    // sign the user out even though the secure session remains valid.
+    router.replace(returnTo as never);
   };
 
   useEffect(() => {
