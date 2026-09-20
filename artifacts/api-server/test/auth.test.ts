@@ -1340,6 +1340,13 @@ test("publishing requires owned audio and responses never expose private object 
     audioUrl: objectPath,
     moderationStatus: "approved",
   }).returning();
+  const [pendingPost] = await db.insert(postsTable).values({
+    authorId: founder.id,
+    transcript: "Pending moderation but still visible to its author",
+    durationSeconds: 2,
+    audioUrl: objectPath,
+    moderationStatus: "pending",
+  }).returning();
   await db.delete(profileImageUploadsTable)
     .where(eq(profileImageUploadsTable.objectPath, objectPath));
   const feed = await request("/api/feed", { session });
@@ -1347,6 +1354,8 @@ test("publishing requires owned audio and responses never expose private object 
   const feedBody = await feed.json() as Array<{ id: number; canDelete: boolean }>;
   const ownPost = feedBody.find((entry) => entry.id === post.id);
   assert.equal(ownPost?.canDelete, true);
+  assert.equal(feedBody.find((entry) => entry.id === pendingPost.id)?.canDelete, true);
+  assert.equal(feed.headers.get("cache-control"), "private, no-store");
   const feedText = JSON.stringify(feedBody);
   assert.ok(!feedText.includes(objectPath));
   assert.ok(feedText.includes(`/api/posts/${post.id}/audio`));
@@ -1366,6 +1375,7 @@ test("publishing requires owned audio and responses never expose private object 
   const otherFeed = await request("/api/feed", { session: otherSession });
   const otherFeedBody = await otherFeed.json() as Array<{ id: number; canDelete: boolean }>;
   assert.equal(otherFeedBody.find((entry) => entry.id === post.id)?.canDelete, false);
+  assert.equal(otherFeedBody.find((entry) => entry.id === pendingPost.id), undefined);
 
   const ownerReaction = await request(`/api/posts/${post.id}/reaction`, {
     method: "PUT",

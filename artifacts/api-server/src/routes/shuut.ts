@@ -569,10 +569,20 @@ router.get("/feed", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const all = await distributablePosts(await db.select().from(postsTable).orderBy(desc(postsTable.createdAt)));
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
-  let rows = all;
+  const all = await db.select().from(postsTable).orderBy(desc(postsTable.createdAt));
+  const rowsVisibleToModeration: PostRow[] = [];
+  for (const post of all) {
+    const ownPendingPost =
+      viewer?.id === post.authorId &&
+      post.transcriptionStatus === "ready" &&
+      post.deletionStatus === "active";
+    if (ownPendingPost || await canDistributePost(post.id)) {
+      rowsVisibleToModeration.push(post);
+    }
+  }
+  let rows = rowsVisibleToModeration;
   if (viewer) {
     const visible: PostRow[] = [];
     for (const post of rows) if (await visibleToViewer(viewer.id, post.authorId)) visible.push(post);
@@ -589,6 +599,7 @@ router.get("/feed", async (req, res): Promise<void> => {
       rows = rows.filter((post) => followedIds.has(post.authorId));
     }
   }
+  res.setHeader("Cache-Control", "private, no-store");
   res.json(GetFeedResponse.parse(await hydratePosts(rows, viewer?.id)));
 });
 
