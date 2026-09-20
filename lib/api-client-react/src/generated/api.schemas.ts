@@ -5,6 +5,289 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+export type ModerationCaseTargetType = typeof ModerationCaseTargetType[keyof typeof ModerationCaseTargetType];
+
+
+export const ModerationCaseTargetType = {
+  post: 'post',
+  comment: 'comment',
+  profile: 'profile',
+} as const;
+
+export type ModerationCaseStatus = typeof ModerationCaseStatus[keyof typeof ModerationCaseStatus];
+
+
+export const ModerationCaseStatus = {
+  open: 'open',
+  in_review: 'in_review',
+  escalated: 'escalated',
+  resolved: 'resolved',
+  appealed: 'appealed',
+} as const;
+
+export type ModerationCasePriority = typeof ModerationCasePriority[keyof typeof ModerationCasePriority];
+
+
+export const ModerationCasePriority = {
+  normal: 'normal',
+  high: 'high',
+} as const;
+
+export interface ModerationCase {
+  id: number;
+  targetType: ModerationCaseTargetType;
+  targetId: number;
+  status: ModerationCaseStatus;
+  priority: ModerationCasePriority;
+  dueAt: string;
+  /** @nullable */
+  assignedOperatorId?: string | null;
+  version: number;
+  /** @nullable */
+  resolution?: string | null;
+  ageHours: number;
+  slaHours: number;
+  overdue: boolean;
+}
+
+export interface ModerationCaseList {
+  cases: ModerationCase[];
+}
+
+export interface ModerationCaseClaimResponse {
+  case: ModerationCase;
+}
+
+export type ModerationRetryResponseStatus = typeof ModerationRetryResponseStatus[keyof typeof ModerationRetryResponseStatus];
+
+
+export const ModerationRetryResponseStatus = {
+  queued: 'queued',
+} as const;
+
+export interface ModerationRetryResponse {
+  status: ModerationRetryResponseStatus;
+}
+
+export type ModerationCaseDetailSignalsItem = { [key: string]: unknown };
+
+export type ModerationCaseDetailReportsItem = { [key: string]: unknown };
+
+export type ModerationCaseDetailSubject = { [key: string]: unknown };
+
+export interface ModerationAction {
+  id: number;
+  caseId: number;
+  /** @nullable */
+  actorUserId: string | null;
+  action: string;
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  beforeState: string | null;
+  /** @nullable */
+  afterState: string | null;
+  createdAt: string;
+}
+
+export interface ModerationCaseDetail {
+  case: ModerationCase;
+  signals: ModerationCaseDetailSignalsItem[];
+  reports: ModerationCaseDetailReportsItem[];
+  subject: ModerationCaseDetailSubject;
+  actions: ModerationAction[];
+}
+
+export type ModerationDecisionInputDecision = typeof ModerationDecisionInputDecision[keyof typeof ModerationDecisionInputDecision];
+
+
+export const ModerationDecisionInputDecision = {
+  approve: 'approve',
+  quarantine: 'quarantine',
+  remove: 'remove',
+  resolve: 'resolve',
+  escalate: 'escalate',
+  dismiss: 'dismiss',
+} as const;
+
+export interface ModerationDecisionInput {
+  /** @minimum 1 */
+  version: number;
+  decision: ModerationDecisionInputDecision;
+  /** @maxLength 1000 */
+  reason?: string;
+}
+
+export type ModerationAppealStatus = typeof ModerationAppealStatus[keyof typeof ModerationAppealStatus];
+
+
+export const ModerationAppealStatus = {
+  open: 'open',
+  upheld: 'upheld',
+  decided: 'decided',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ModerationAppealDecision = typeof ModerationAppealDecision[keyof typeof ModerationAppealDecision] | null;
+
+
+export const ModerationAppealDecision = {
+  uphold: 'uphold',
+  restore: 'restore',
+  dismiss: 'dismiss',
+  revoke_sanction: 'revoke_sanction',
+} as const;
+
+export interface ModerationAppeal {
+  id: number;
+  caseId: number;
+  /** @nullable */
+  appellantUserId: string | null;
+  statement: string;
+  status: ModerationAppealStatus;
+  /** @nullable */
+  decision: ModerationAppealDecision;
+  /** @nullable */
+  decidedBy: string | null;
+  /** @nullable */
+  decidedAt: string | unknown | null;
+  createdAt: string;
+}
+
+export type ModerationAppealSummaryStatus = typeof ModerationAppealSummaryStatus[keyof typeof ModerationAppealSummaryStatus];
+
+
+export const ModerationAppealSummaryStatus = {
+  open: 'open',
+  upheld: 'upheld',
+  decided: 'decided',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ModerationAppealSummaryDecision = typeof ModerationAppealSummaryDecision[keyof typeof ModerationAppealSummaryDecision] | null;
+
+
+export const ModerationAppealSummaryDecision = {
+  uphold: 'uphold',
+  restore: 'restore',
+  dismiss: 'dismiss',
+  revoke_sanction: 'revoke_sanction',
+} as const;
+
+export interface ModerationAppealSummary {
+  id: number;
+  caseId: number;
+  statement: string;
+  status: ModerationAppealSummaryStatus;
+  /** @nullable */
+  decision: ModerationAppealSummaryDecision;
+  createdAt: string;
+  /** @nullable */
+  decidedAt: string | unknown | null;
+}
+
+export interface ModerationAppealList {
+  appeals: ModerationAppeal[];
+}
+
+export interface MemberModerationAppealList {
+  appeals: ModerationAppealSummary[];
+}
+
+export type EligibleModerationAppealTargetType = typeof EligibleModerationAppealTargetType[keyof typeof EligibleModerationAppealTargetType];
+
+
+export const EligibleModerationAppealTargetType = {
+  post: 'post',
+  comment: 'comment',
+  profile: 'profile',
+} as const;
+
+export interface EligibleModerationAppeal {
+  caseId: number;
+  targetType: EligibleModerationAppealTargetType;
+  targetId: number;
+  /**
+     * @maxLength 280
+     * @nullable
+     */
+  contentExcerpt: string | null;
+  /** @nullable */
+  contentCreatedAt: string | unknown | null;
+  reason: string;
+  status: string;
+  alreadyAppealed: boolean;
+}
+
+export interface EligibleModerationAppealList {
+  cases: EligibleModerationAppeal[];
+}
+
+export interface ModerationAppealResponse {
+  appeal: ModerationAppeal;
+}
+
+export type ModerationSanctionRevokeResponseSanctionStatus = typeof ModerationSanctionRevokeResponseSanctionStatus[keyof typeof ModerationSanctionRevokeResponseSanctionStatus];
+
+
+export const ModerationSanctionRevokeResponseSanctionStatus = {
+  revoked: 'revoked',
+} as const;
+
+export type ModerationSanctionRevokeResponseSanction = {
+  id: number;
+  status: ModerationSanctionRevokeResponseSanctionStatus;
+  revokedAt: string;
+};
+
+export interface ModerationSanctionRevokeResponse {
+  sanction: ModerationSanctionRevokeResponseSanction;
+}
+
+export type SanctionInputType = typeof SanctionInputType[keyof typeof SanctionInputType];
+
+
+export const SanctionInputType = {
+  warning: 'warning',
+  suspend: 'suspend',
+  ban: 'ban',
+} as const;
+
+export interface SanctionInput {
+  type: SanctionInputType;
+  /** @maxLength 1000 */
+  reason?: string;
+  expiresAt?: string;
+}
+
+export interface AppealInput {
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  statement: string;
+}
+
+export type AppealDecisionInputDecision = typeof AppealDecisionInputDecision[keyof typeof AppealDecisionInputDecision];
+
+
+export const AppealDecisionInputDecision = {
+  uphold: 'uphold',
+  restore: 'restore',
+  dismiss: 'dismiss',
+  revoke_sanction: 'revoke_sanction',
+} as const;
+
+export interface AppealDecisionInput {
+  decision: AppealDecisionInputDecision;
+  /** @maxLength 1000 */
+  reason?: string;
+}
+
 export interface SafeError {
   error: string;
   code: string;
@@ -345,6 +628,18 @@ export const PostTranscriptionStatus = {
   failed: 'failed',
 } as const;
 
+export type PostModerationStatus = typeof PostModerationStatus[keyof typeof PostModerationStatus];
+
+
+export const PostModerationStatus = {
+  pending: 'pending',
+  processing: 'processing',
+  approved: 'approved',
+  quarantined: 'quarantined',
+  failed: 'failed',
+  removed: 'removed',
+} as const;
+
 /**
  * @nullable
  */
@@ -362,6 +657,7 @@ export interface Post {
   author: Founder;
   transcript: string;
   transcriptionStatus: PostTranscriptionStatus;
+  moderationStatus?: PostModerationStatus;
   /** @nullable */
   audioUrl?: string | null;
   durationSeconds: number;
@@ -624,4 +920,37 @@ export type SearchProfilesParams = {
  */
 q: string;
 };
+
+export type ListModerationCasesParams = {
+status?: ListModerationCasesStatus;
+priority?: ListModerationCasesPriority;
+overdue?: boolean;
+/**
+ * @minimum 0
+ */
+minAgeHours?: number;
+};
+
+export type ListModerationCasesStatus = typeof ListModerationCasesStatus[keyof typeof ListModerationCasesStatus];
+
+
+export const ListModerationCasesStatus = {
+  open: 'open',
+  in_review: 'in_review',
+  escalated: 'escalated',
+  resolved: 'resolved',
+  appealed: 'appealed',
+} as const;
+
+export type ListModerationCasesPriority = typeof ListModerationCasesPriority[keyof typeof ListModerationCasesPriority];
+
+
+export const ListModerationCasesPriority = {
+  normal: 'normal',
+  high: 'high',
+} as const;
+
+export type CreateModerationSanction201 = { [key: string]: unknown };
+
+export type CreateModerationAppeal201 = { [key: string]: unknown };
 

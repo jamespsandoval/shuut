@@ -31,6 +31,10 @@ import SettingsPage from '@/pages/settings';
 import NotificationsPage from '@/pages/notifications';
 import Waitlist from '@/pages/waitlist';
 import LegalConsentGate from '@/pages/legal-consent-gate';
+import ModerationDashboard from '@/pages/moderation/dashboard';
+import ModerationCaseView from '@/pages/moderation/case-view';
+import ModerationAppealView from '@/pages/moderation/appeal-view';
+import AppealsPage from '@/pages/appeals/index';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -117,6 +121,11 @@ function Router() {
         <ProtectedRoute path="/p/:postId" component={PostDetail} />
         <ProtectedRoute path="/u/:handle" component={Profile} />
         <ProtectedRoute path="/settings" component={SettingsPage} />
+        <ProtectedRoute path="/moderation" component={ModerationDashboard} />
+        <ProtectedRoute path="/moderation/appeals" component={ModerationDashboard} />
+        <ProtectedRoute path="/moderation/cases/:id" component={ModerationCaseView} />
+        <ProtectedRoute path="/moderation/appeals/:id" component={ModerationAppealView} />
+        <ProtectedRoute path="/appeals" component={AppealsPage} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>

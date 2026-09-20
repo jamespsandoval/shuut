@@ -38,6 +38,7 @@ import {
   webauthnChallengesTable,
 } from "@workspace/db";
 import { CURRENT_LEGAL_POLICY_VERSIONS, CURRENT_LEGAL_POLICY_CONTENT_HASHES } from "../src/lib/legalPolicy";
+import { enqueueModeration, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
 
 const prefix = `auth-security-${Date.now()}`;
 const userAgent = "SHUUT security regression test";
@@ -205,7 +206,7 @@ test("Ask Me stays locked until a profile has five active transcribed posts", as
   await db.insert(postsTable).values({
     authorId: founder.id,
     transcript: "First qualifying post",
-    durationSeconds: 2,
+    durationSeconds: 2, moderationStatus: "approved",
   });
   const locked = await request(`/api/profiles/${founder.handle}/ask`, {
     method: "POST",
@@ -218,7 +219,7 @@ test("Ask Me stays locked until a profile has five active transcribed posts", as
     Array.from({ length: 4 }, (_, index) => ({
       authorId: founder.id,
       transcript: `Qualifying post ${index + 2}`,
-      durationSeconds: 2,
+      durationSeconds: 2, moderationStatus: "approved",
     })),
   );
   const unlocked = await request(`/api/profiles/${founder.handle}/ask`, {
@@ -458,11 +459,11 @@ async function securityFixture(label: string) {
   }).returning();
   const [post] = await db.insert(postsTable).values({
     authorId: owner.id, transcript: "Original reportable transcript",
-    durationSeconds: 2, audioUrl: "/objects/uploads/security-post-audio",
+    durationSeconds: 2, audioUrl: "/objects/uploads/security-post-audio", moderationStatus: "approved",
   }).returning();
   const [comment] = await db.insert(commentsTable).values({
     postId: post.id, authorId: owner.id, transcript: "Original reportable comment",
-    transcriptionStatus: "ready", audioUrl: "/objects/uploads/security-comment", durationSeconds: 1,
+    transcriptionStatus: "ready", audioUrl: "/objects/uploads/security-comment", durationSeconds: 1, moderationStatus: "approved",
   }).returning();
   return {
     ownerEmail, viewerEmail, ownerSession, viewerSession, ownerUser, viewerUser,
@@ -536,7 +537,7 @@ test("reports enforce auth and consent, validate all targets, deduplicate, and r
     const copiesAfterFirstReports = copyCalls;
     const [raceTarget] = await db.insert(postsTable).values({
       authorId: fixture.owner.id, transcript: "Concurrent report target",
-      durationSeconds: 1, audioUrl: "/objects/uploads/concurrent-report-audio",
+      durationSeconds: 1, audioUrl: "/objects/uploads/concurrent-report-audio", moderationStatus: "approved",
     }).returning();
     const concurrent = await Promise.all(Array.from({ length: 4 }, () => request("/api/reports", {
       method: "POST", session: fixture.viewerSession,
@@ -586,6 +587,7 @@ test("reports enforce auth and consent, validate all targets, deduplicate, and r
     const [postReport] = await db.select().from(accountReportsTable).where(and(
       eq(accountReportsTable.reporterUserId, fixture.viewerUser.id),
       eq(accountReportsTable.targetType, "post"),
+      eq(accountReportsTable.targetId, fixture.post.id),
     ));
     const [commentReport] = await db.select().from(accountReportsTable).where(and(
       eq(accountReportsTable.reporterUserId, fixture.viewerUser.id),
@@ -1322,6 +1324,7 @@ test("publishing requires owned audio and responses never expose private object 
     transcript: "Private audio",
     durationSeconds: 3,
     audioUrl: objectPath,
+    moderationStatus: "approved",
   }).returning();
   await db.delete(profileImageUploadsTable)
     .where(eq(profileImageUploadsTable.objectPath, objectPath));
@@ -1476,6 +1479,11 @@ test("notifications require authentication and capture attributed activity witho
     transcript: "A post that receives activity",
     durationSeconds: 3,
   }).returning();
+  const previousModerationProvider = setModerationProviderForTests({
+    classify: async () => ({ categories: [], riskScore: 0 }),
+  });
+  await enqueueModeration("post", post.id, post.transcript);
+  for (let attempt = 0; attempt < 3; attempt += 1) await runModerationSweep();
 
   // Self-actions are accepted, but must never create owner-to-owner activity.
   assert.equal((await request(`/api/posts/${post.id}/reaction`, {
@@ -1530,6 +1538,7 @@ test("notifications require authentication and capture attributed activity witho
     globalThis.fetch = previousFetch;
   }
 
+  for (let attempt = 0; attempt < 3; attempt += 1) await runModerationSweep();
   const notifications = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.recipientId, owner.id));
   assert.equal(notifications.length, 3);
@@ -1556,6 +1565,7 @@ test("notifications require authentication and capture attributed activity witho
   assert.ok(body.every((item) => item.actor.id === actor.id));
   assert.ok(body.every((item) => item.post.id === post.id));
   assert.ok(body.every((item) => item.post.transcript === post.transcript));
+  setModerationProviderForTests(previousModerationProvider);
 });
 
 test("post review tags searchable accounts and notifies each selected person once", async () => {
@@ -1608,6 +1618,10 @@ test("post review tags searchable accounts and notifies each selected person onc
   }
   assert.equal(response.status, 201);
   const post = await response.json() as { id: number };
+  const previousModerationProvider = setModerationProviderForTests({
+    classify: async () => ({ categories: [], riskScore: 0 }),
+  });
+  await runModerationSweep();
   const mentions = await db.select().from(postMentionsTable).where(eq(postMentionsTable.postId, post.id));
   assert.deepEqual(mentions.map((mention) => mention.founderId), [target.id]);
   const notifications = await db.select().from(notificationsTable).where(eq(notificationsTable.postId, post.id));
@@ -1615,6 +1629,7 @@ test("post review tags searchable accounts and notifies each selected person onc
   assert.equal(notifications[0]?.actorId, author.id);
   assert.equal(notifications[0]?.recipientId, target.id);
   assert.equal(notifications[0]?.eventType, "mention");
+  setModerationProviderForTests(previousModerationProvider);
 });
 
 test("failed post recording cleanup remains durable and retries to completion", async () => {
@@ -1635,7 +1650,7 @@ test("failed post recording cleanup remains durable and retries to completion", 
     authorId: founder.id,
     transcript: "Retry this cleanup",
     durationSeconds: 4,
-    audioUrl: objectPath,
+    audioUrl: objectPath, moderationStatus: "approved",
   }).returning();
   const shareBeforeDeletion = await request(`/api/posts/${post.id}/share-link`, {
     method: "POST",
@@ -1710,7 +1725,7 @@ test("account deletion waits out issued upload URLs and blocks new uploads", asy
     authorId: founder.id,
     transcript: "Hidden during account cleanup",
     durationSeconds: 2,
-    audioUrl: postObjectPath,
+    audioUrl: postObjectPath, moderationStatus: "approved",
   }).returning();
   const objectPath = `/objects/uploads/${prefix}-issued-upload`;
   await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
@@ -1774,12 +1789,14 @@ test("retry sweep finalizes deleting posts with zero or already-completed object
       transcript: "No objects remain",
       durationSeconds: 1,
       deletionStatus: "deleting",
+      moderationStatus: "approved",
     },
     {
       authorId: founder.id,
       transcript: "Object deletion finished before interruption",
       durationSeconds: 1,
       deletionStatus: "deleting",
+      moderationStatus: "approved",
     },
   ]).returning();
   await db.insert(objectCleanupJobsTable).values({
@@ -1821,7 +1838,7 @@ test("comment publication serializes with post deletion and its recording is rem
   const [post] = await db.insert(postsTable).values({
     authorId: founder.id,
     transcript: "Delete while comment publishes",
-    durationSeconds: 1,
+    durationSeconds: 1, moderationStatus: "approved",
   }).returning();
   const objectPath = `/objects/uploads/${prefix}-racing-comment`;
   await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
@@ -1896,7 +1913,7 @@ test("expiry cleanup cannot claim recordings being published as posts or comment
   const targetPost = await db.insert(postsTable).values({
     authorId: founder.id,
     transcript: "Comment expiry target",
-    durationSeconds: 1,
+    durationSeconds: 1, moderationStatus: "approved",
   }).returning().then(([row]) => row);
   const realPublishAudio = ObjectStorageService.prototype.publishAudio;
   const realReadAudio = ObjectStorageService.prototype.readAudio;
@@ -1985,7 +2002,7 @@ test("failed comment transcription keeps durable cleanup work until storage retr
   const [post] = await db.insert(postsTable).values({
     authorId: founder.id,
     transcript: "Comment transcription target",
-    durationSeconds: 1,
+    durationSeconds: 1, moderationStatus: "approved",
   }).returning();
   const objectPath = `/objects/uploads/${prefix}-failed-comment-transcription`;
   await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
@@ -2062,7 +2079,7 @@ test("rich preview metadata requires an authenticated share action and signed to
   const [post] = await db.insert(postsTable).values({
     authorId: founder.id,
     transcript: 'A private-by-default thought with "quotes" & markup <here>.',
-    durationSeconds: 8,
+    durationSeconds: 8, moderationStatus: "approved",
   }).returning();
 
   const unsigned = await request(`/p/${post.id}`);

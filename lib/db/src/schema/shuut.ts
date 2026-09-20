@@ -44,6 +44,11 @@ export const postsTable = pgTable("shuut_posts", {
   isReshuuted: boolean("is_reshuuted").notNull().default(false),
   reshuutedBy: text("reshuuted_by"),
   deletionStatus: text("deletion_status").notNull().default("active"),
+  moderationStatus: text("moderation_status").notNull().default("pending"),
+  moderationRevision: integer("moderation_revision").notNull().default(1),
+  moderationRiskScore: integer("moderation_risk_score"),
+  moderationCategories: text("moderation_categories").notNull().default("[]"),
+  moderationErrorCode: text("moderation_error_code"),
 });
 
 export const postReactionsTable = pgTable(
@@ -113,6 +118,11 @@ export const commentsTable = pgTable(
     audioUrl: text("audio_url").notNull(),
     durationSeconds: integer("duration_seconds").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    moderationStatus: text("moderation_status").notNull().default("pending"),
+    moderationRevision: integer("moderation_revision").notNull().default(1),
+    moderationRiskScore: integer("moderation_risk_score"),
+    moderationCategories: text("moderation_categories").notNull().default("[]"),
+    moderationErrorCode: text("moderation_error_code"),
   },
   (table) => [
     index("shuut_comments_post_created_idx").on(table.postId, table.createdAt),
@@ -404,6 +414,7 @@ export const accountReportsTable = pgTable(
     evidenceAudioObjectPath: text("evidence_audio_object_path"),
     contentHash: text("content_hash"),
     sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }),
+    moderationCaseId: integer("moderation_case_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

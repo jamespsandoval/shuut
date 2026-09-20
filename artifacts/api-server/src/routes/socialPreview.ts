@@ -111,6 +111,7 @@ router.get("/p/:postId", async (req, res): Promise<void> => {
           eq(postsTable.id, postId),
           eq(postsTable.transcriptionStatus, "ready"),
           eq(postsTable.deletionStatus, "active"),
+          eq(postsTable.moderationStatus, "approved"),
           or(
             isNull(foundersTable.userId),
             eq(usersTable.deletionStatus, "active"),

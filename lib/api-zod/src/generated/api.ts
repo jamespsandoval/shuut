@@ -571,6 +571,7 @@ export const GetFeedResponseItem = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -652,6 +653,7 @@ export const GetProfileResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -733,6 +735,7 @@ export const UpdateProfileResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -821,6 +824,7 @@ export const CreatePostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -881,6 +885,7 @@ export const GetPostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -935,6 +940,7 @@ export const UpdatePostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -976,6 +982,7 @@ export const SetReactionResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -1066,6 +1073,7 @@ export const ReshuutPostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
@@ -1179,6 +1187,297 @@ export const UnblockAccountParams = zod.object({
 export const UnblockAccountResponse = zod.object({
   "blocked": zod.boolean(),
   "handle": zod.string()
+})
+
+
+export const listModerationCasesQueryMinAgeHoursMin = 0;
+
+
+
+export const ListModerationCasesQueryParams = zod.object({
+  "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']).optional(),
+  "priority": zod.enum(['normal', 'high']).optional(),
+  "overdue": zod.coerce.boolean().optional(),
+  "minAgeHours": zod.coerce.number().min(listModerationCasesQueryMinAgeHoursMin).optional()
+})
+
+export const listModerationCasesResponseCasesItemSlaHoursDefault = 24;
+
+export const ListModerationCasesResponse = zod.object({
+  "cases": zod.array(zod.object({
+  "id": zod.number().int(),
+  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetId": zod.number().int(),
+  "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
+  "priority": zod.enum(['normal', 'high']),
+  "dueAt": zod.coerce.date(),
+  "assignedOperatorId": zod.string().nullish(),
+  "version": zod.number().int(),
+  "resolution": zod.string().nullish(),
+  "ageHours": zod.number(),
+  "slaHours": zod.number().default(listModerationCasesResponseCasesItemSlaHoursDefault),
+  "overdue": zod.boolean()
+}))
+})
+
+
+export const GetModerationCaseParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+export const getModerationCaseResponseCaseSlaHoursDefault = 24;
+
+export const GetModerationCaseResponse = zod.object({
+  "case": zod.object({
+  "id": zod.number().int(),
+  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetId": zod.number().int(),
+  "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
+  "priority": zod.enum(['normal', 'high']),
+  "dueAt": zod.coerce.date(),
+  "assignedOperatorId": zod.string().nullish(),
+  "version": zod.number().int(),
+  "resolution": zod.string().nullish(),
+  "ageHours": zod.number(),
+  "slaHours": zod.number().default(getModerationCaseResponseCaseSlaHoursDefault),
+  "overdue": zod.boolean()
+}),
+  "signals": zod.array(zod.record(zod.string(), zod.unknown())),
+  "reports": zod.array(zod.record(zod.string(), zod.unknown())),
+  "subject": zod.record(zod.string(), zod.unknown()),
+  "actions": zod.array(zod.object({
+  "id": zod.number().int(),
+  "caseId": zod.number().int(),
+  "actorUserId": zod.string().nullable(),
+  "action": zod.string(),
+  "reason": zod.string().nullable(),
+  "beforeState": zod.string().nullable(),
+  "afterState": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+export const DecideModerationCaseParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+
+export const decideModerationCaseBodyReasonMax = 1000;
+
+
+
+export const DecideModerationCaseBody = zod.object({
+  "version": zod.number().int().min(1),
+  "decision": zod.enum(['approve', 'quarantine', 'remove', 'resolve', 'escalate', 'dismiss']),
+  "reason": zod.string().max(decideModerationCaseBodyReasonMax).optional()
+})
+
+export const decideModerationCaseResponseSlaHoursDefault = 24;
+
+export const DecideModerationCaseResponse = zod.object({
+  "id": zod.number().int(),
+  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetId": zod.number().int(),
+  "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
+  "priority": zod.enum(['normal', 'high']),
+  "dueAt": zod.coerce.date(),
+  "assignedOperatorId": zod.string().nullish(),
+  "version": zod.number().int(),
+  "resolution": zod.string().nullish(),
+  "ageHours": zod.number(),
+  "slaHours": zod.number().default(decideModerationCaseResponseSlaHoursDefault),
+  "overdue": zod.boolean()
+})
+
+
+export const ClaimModerationCaseParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+export const claimModerationCaseResponseCaseSlaHoursDefault = 24;
+
+export const ClaimModerationCaseResponse = zod.object({
+  "case": zod.object({
+  "id": zod.number().int(),
+  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetId": zod.number().int(),
+  "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
+  "priority": zod.enum(['normal', 'high']),
+  "dueAt": zod.coerce.date(),
+  "assignedOperatorId": zod.string().nullish(),
+  "version": zod.number().int(),
+  "resolution": zod.string().nullish(),
+  "ageHours": zod.number(),
+  "slaHours": zod.number().default(claimModerationCaseResponseCaseSlaHoursDefault),
+  "overdue": zod.boolean()
+})
+})
+
+
+export const RetryModerationCaseParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+export const RetryModerationCaseResponse = zod.object({
+  "status": zod.enum(['queued'])
+})
+
+
+export const CreateModerationSanctionParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+export const createModerationSanctionBodyReasonMax = 1000;
+
+
+
+export const CreateModerationSanctionBody = zod.object({
+  "type": zod.enum(['warning', 'suspend', 'ban']),
+  "reason": zod.string().max(createModerationSanctionBodyReasonMax).optional(),
+  "expiresAt": zod.coerce.date().optional()
+})
+
+export const CreateModerationSanctionResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const ListCaseAppealsParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+export const ListCaseAppealsResponse = zod.object({
+  "appeals": zod.array(zod.object({
+  "id": zod.number().int(),
+  "caseId": zod.number().int(),
+  "appellantUserId": zod.string().nullable(),
+  "statement": zod.string(),
+  "status": zod.enum(['open', 'upheld', 'decided']),
+  "decision": zod.union([zod.literal('uphold'),zod.literal('restore'),zod.literal('dismiss'),zod.literal('revoke_sanction'),zod.literal(null)]).nullable(),
+  "decidedBy": zod.string().nullable(),
+  "decidedAt": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+export const CreateModerationAppealParams = zod.object({
+  "caseId": zod.coerce.number().int()
+})
+
+export const createModerationAppealBodyStatementMax = 5000;
+
+
+
+export const CreateModerationAppealBody = zod.object({
+  "statement": zod.string().min(1).max(createModerationAppealBodyStatementMax)
+})
+
+export const CreateModerationAppealResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const ListModerationAppealsResponse = zod.object({
+  "appeals": zod.array(zod.object({
+  "id": zod.number().int(),
+  "caseId": zod.number().int(),
+  "appellantUserId": zod.string().nullable(),
+  "statement": zod.string(),
+  "status": zod.enum(['open', 'upheld', 'decided']),
+  "decision": zod.union([zod.literal('uphold'),zod.literal('restore'),zod.literal('dismiss'),zod.literal('revoke_sanction'),zod.literal(null)]).nullable(),
+  "decidedBy": zod.string().nullable(),
+  "decidedAt": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+export const listEligibleModerationAppealsResponseCasesItemContentExcerptMax = 280;
+
+
+
+export const ListEligibleModerationAppealsResponse = zod.object({
+  "cases": zod.array(zod.object({
+  "caseId": zod.number().int(),
+  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetId": zod.number().int(),
+  "contentExcerpt": zod.string().max(listEligibleModerationAppealsResponseCasesItemContentExcerptMax).nullable(),
+  "contentCreatedAt": zod.string().nullable(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "alreadyAppealed": zod.boolean()
+}))
+})
+
+
+export const GetModerationAppealParams = zod.object({
+  "appealId": zod.coerce.number().int()
+})
+
+export const GetModerationAppealResponse = zod.object({
+  "appeal": zod.object({
+  "id": zod.number().int(),
+  "caseId": zod.number().int(),
+  "appellantUserId": zod.string().nullable(),
+  "statement": zod.string(),
+  "status": zod.enum(['open', 'upheld', 'decided']),
+  "decision": zod.union([zod.literal('uphold'),zod.literal('restore'),zod.literal('dismiss'),zod.literal('revoke_sanction'),zod.literal(null)]).nullable(),
+  "decidedBy": zod.string().nullable(),
+  "decidedAt": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+export const ListMyModerationAppealsResponse = zod.object({
+  "appeals": zod.array(zod.object({
+  "id": zod.number().int(),
+  "caseId": zod.number().int(),
+  "statement": zod.string(),
+  "status": zod.enum(['open', 'upheld', 'decided']),
+  "decision": zod.union([zod.literal('uphold'),zod.literal('restore'),zod.literal('dismiss'),zod.literal('revoke_sanction'),zod.literal(null)]).nullable(),
+  "createdAt": zod.coerce.date(),
+  "decidedAt": zod.string().nullable()
+}))
+})
+
+
+export const DecideModerationAppealParams = zod.object({
+  "appealId": zod.coerce.number().int()
+})
+
+export const decideModerationAppealBodyReasonMax = 1000;
+
+
+
+export const DecideModerationAppealBody = zod.object({
+  "decision": zod.enum(['uphold', 'restore', 'dismiss', 'revoke_sanction']),
+  "reason": zod.string().max(decideModerationAppealBodyReasonMax).optional()
+})
+
+export const DecideModerationAppealResponse = zod.object({
+  "appeal": zod.object({
+  "id": zod.number().int(),
+  "caseId": zod.number().int(),
+  "appellantUserId": zod.string().nullable(),
+  "statement": zod.string(),
+  "status": zod.enum(['open', 'upheld', 'decided']),
+  "decision": zod.union([zod.literal('uphold'),zod.literal('restore'),zod.literal('dismiss'),zod.literal('revoke_sanction'),zod.literal(null)]).nullable(),
+  "decidedBy": zod.string().nullable(),
+  "decidedAt": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+export const RevokeModerationSanctionParams = zod.object({
+  "sanctionId": zod.coerce.number().int()
+})
+
+export const RevokeModerationSanctionResponse = zod.object({
+  "sanction": zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['revoked']),
+  "revokedAt": zod.coerce.date()
+})
 })
 
 

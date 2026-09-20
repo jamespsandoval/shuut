@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 export default function SettingsPage() {
   const { data: profile } = useGetProfile("me");
@@ -132,6 +133,16 @@ export default function SettingsPage() {
             disabled={!profile || updateProfile.isPending}
             aria-label="Preview transcript before publishing"
           />
+        </div>
+
+        <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <h2 className="font-semibold">Account standing & appeals</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Review your moderation history and submit appeals for content removals or account sanctions.
+          </p>
+          <Button asChild variant="outline" className="mt-4 rounded-full">
+            <Link href="/appeals">View appeals</Link>
+          </Button>
         </div>
 
         <div className="rounded-2xl border border-border/60 bg-card p-5">

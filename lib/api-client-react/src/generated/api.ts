@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AppealDecisionInput,
+  AppealInput,
   AskAnswer,
   AskInput,
   AudioTranscript,
@@ -34,7 +36,10 @@ import type {
   ConfirmPasskeyRecovery200,
   ContactMessageInput,
   ContactMessageResult,
+  CreateModerationAppeal201,
+  CreateModerationSanction201,
   DeletionResult,
+  EligibleModerationAppealList,
   EmailCodeInput,
   ExchangeMobilePasskeyHandoff200,
   FollowState,
@@ -45,10 +50,21 @@ import type {
   LegalPolicyConsentRequiredError,
   LegalPolicyConsentStatus,
   LegalPolicyVersionMismatchError,
+  ListModerationCasesParams,
   LoginInput,
+  MemberModerationAppealList,
   MobileAuthSession,
   MobilePasskeyGrantInput,
   MobilePasskeyHandoff,
+  ModerationAppealList,
+  ModerationAppealResponse,
+  ModerationCase,
+  ModerationCaseClaimResponse,
+  ModerationCaseDetail,
+  ModerationCaseList,
+  ModerationDecisionInput,
+  ModerationRetryResponse,
+  ModerationSanctionRevokeResponse,
   Notification,
   OnboardingInput,
   OpenMobilePasskeyHandoffParams,
@@ -66,6 +82,7 @@ import type {
   ReportInput,
   ReportResult,
   SafeError,
+  SanctionInput,
   SearchProfilesParams,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -4430,5 +4447,1045 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getUnblockAccountMutationOptions(options));
+    }
+
+export const getListModerationCasesUrl = (params?: ListModerationCasesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/moderation/cases?${stringifiedParams}` : `/api/moderation/cases`
+}
+
+export const listModerationCases = async (params?: ListModerationCasesParams, options?: Parameters<typeof customFetch>[1]): Promise<ModerationCaseList> => {
+
+  return customFetch<ModerationCaseList>(getListModerationCasesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListModerationCasesQueryKey = (params?: ListModerationCasesParams,) => {
+    return [
+    `/api/moderation/cases`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListModerationCasesQueryOptions = <TData = Awaited<ReturnType<typeof listModerationCases>>, TError = ErrorType<void>>(params?: ListModerationCasesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listModerationCases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListModerationCasesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listModerationCases>>> = ({ signal }) => listModerationCases(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listModerationCases>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListModerationCasesQueryResult = NonNullable<Awaited<ReturnType<typeof listModerationCases>>>
+export type ListModerationCasesQueryError = ErrorType<void>
+
+
+
+export function useListModerationCases<TData = Awaited<ReturnType<typeof listModerationCases>>, TError = ErrorType<void>>(
+ params?: ListModerationCasesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listModerationCases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListModerationCasesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetModerationCaseUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}`
+}
+
+export const getModerationCase = async (caseId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationCaseDetail> => {
+
+  return customFetch<ModerationCaseDetail>(getGetModerationCaseUrl(caseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetModerationCaseQueryKey = (caseId: number,) => {
+    return [
+    `/api/moderation/cases/${caseId}`
+    ] as const;
+    }
+
+
+export const getGetModerationCaseQueryOptions = <TData = Awaited<ReturnType<typeof getModerationCase>>, TError = ErrorType<void>>(caseId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationCase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetModerationCaseQueryKey(caseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getModerationCase>>> = ({ signal }) => getModerationCase(caseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: caseId !== null && caseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getModerationCase>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetModerationCaseQueryResult = NonNullable<Awaited<ReturnType<typeof getModerationCase>>>
+export type GetModerationCaseQueryError = ErrorType<void>
+
+
+
+export function useGetModerationCase<TData = Awaited<ReturnType<typeof getModerationCase>>, TError = ErrorType<void>>(
+ caseId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationCase>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetModerationCaseQueryOptions(caseId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDecideModerationCaseUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}`
+}
+
+export const decideModerationCase = async (caseId: number,
+    moderationDecisionInput: ModerationDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<ModerationCase> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ModerationCase>(getDecideModerationCaseUrl(caseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(moderationDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getDecideModerationCaseMutationKey = () => ['decideModerationCase'] as const;
+
+export const getDecideModerationCaseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideModerationCase>>, TError,DecideModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decideModerationCase>>, TError,DecideModerationCaseMutationVariables, TContext> => {
+
+const mutationKey = getDecideModerationCaseMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decideModerationCase>>, DecideModerationCaseMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  decideModerationCase(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecideModerationCaseMutationResult = NonNullable<Awaited<ReturnType<typeof decideModerationCase>>>
+    export type DecideModerationCaseMutationBody = BodyType<ModerationDecisionInput>
+    export type DecideModerationCaseMutationError = ErrorType<void>
+    export type DecideModerationCaseMutationVariables = {caseId: number;data: BodyType<ModerationDecisionInput>}
+
+    export const useDecideModerationCase = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideModerationCase>>, TError,DecideModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decideModerationCase>>,
+        TError,
+        DecideModerationCaseMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDecideModerationCaseMutationOptions(options));
+    }
+
+export const getClaimModerationCaseUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}/claim`
+}
+
+export const claimModerationCase = async (caseId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationCaseClaimResponse> => {
+
+  return customFetch<ModerationCaseClaimResponse>(getClaimModerationCaseUrl(caseId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getClaimModerationCaseMutationKey = () => ['claimModerationCase'] as const;
+
+export const getClaimModerationCaseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimModerationCase>>, TError,ClaimModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof claimModerationCase>>, TError,ClaimModerationCaseMutationVariables, TContext> => {
+
+const mutationKey = getClaimModerationCaseMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof claimModerationCase>>, ClaimModerationCaseMutationVariables> = (props) => {
+          const {caseId} = props ?? {};
+
+          return  claimModerationCase(caseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClaimModerationCaseMutationResult = NonNullable<Awaited<ReturnType<typeof claimModerationCase>>>
+
+    export type ClaimModerationCaseMutationError = ErrorType<void>
+    export type ClaimModerationCaseMutationVariables = {caseId: number}
+
+    export const useClaimModerationCase = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimModerationCase>>, TError,ClaimModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof claimModerationCase>>,
+        TError,
+        ClaimModerationCaseMutationVariables,
+        TContext
+      > => {
+      return useMutation(getClaimModerationCaseMutationOptions(options));
+    }
+
+export const getRetryModerationCaseUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}/retry`
+}
+
+export const retryModerationCase = async (caseId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationRetryResponse> => {
+
+  return customFetch<ModerationRetryResponse>(getRetryModerationCaseUrl(caseId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryModerationCaseMutationKey = () => ['retryModerationCase'] as const;
+
+export const getRetryModerationCaseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryModerationCase>>, TError,RetryModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryModerationCase>>, TError,RetryModerationCaseMutationVariables, TContext> => {
+
+const mutationKey = getRetryModerationCaseMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryModerationCase>>, RetryModerationCaseMutationVariables> = (props) => {
+          const {caseId} = props ?? {};
+
+          return  retryModerationCase(caseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryModerationCaseMutationResult = NonNullable<Awaited<ReturnType<typeof retryModerationCase>>>
+
+    export type RetryModerationCaseMutationError = ErrorType<void>
+    export type RetryModerationCaseMutationVariables = {caseId: number}
+
+    export const useRetryModerationCase = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryModerationCase>>, TError,RetryModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryModerationCase>>,
+        TError,
+        RetryModerationCaseMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRetryModerationCaseMutationOptions(options));
+    }
+
+export const getCreateModerationSanctionUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}/sanctions`
+}
+
+export const createModerationSanction = async (caseId: number,
+    sanctionInput: SanctionInput, options?: Parameters<typeof customFetch>[1]): Promise<CreateModerationSanction201> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CreateModerationSanction201>(getCreateModerationSanctionUrl(caseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sanctionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateModerationSanctionMutationKey = () => ['createModerationSanction'] as const;
+
+export const getCreateModerationSanctionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createModerationSanction>>, TError,CreateModerationSanctionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createModerationSanction>>, TError,CreateModerationSanctionMutationVariables, TContext> => {
+
+const mutationKey = getCreateModerationSanctionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createModerationSanction>>, CreateModerationSanctionMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  createModerationSanction(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateModerationSanctionMutationResult = NonNullable<Awaited<ReturnType<typeof createModerationSanction>>>
+    export type CreateModerationSanctionMutationBody = BodyType<SanctionInput>
+    export type CreateModerationSanctionMutationError = ErrorType<void>
+    export type CreateModerationSanctionMutationVariables = {caseId: number;data: BodyType<SanctionInput>}
+
+    export const useCreateModerationSanction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createModerationSanction>>, TError,CreateModerationSanctionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createModerationSanction>>,
+        TError,
+        CreateModerationSanctionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateModerationSanctionMutationOptions(options));
+    }
+
+export const getListCaseAppealsUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}/appeals`
+}
+
+export const listCaseAppeals = async (caseId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationAppealList> => {
+
+  return customFetch<ModerationAppealList>(getListCaseAppealsUrl(caseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCaseAppealsQueryKey = (caseId: number,) => {
+    return [
+    `/api/moderation/cases/${caseId}/appeals`
+    ] as const;
+    }
+
+
+export const getListCaseAppealsQueryOptions = <TData = Awaited<ReturnType<typeof listCaseAppeals>>, TError = ErrorType<void>>(caseId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCaseAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCaseAppealsQueryKey(caseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCaseAppeals>>> = ({ signal }) => listCaseAppeals(caseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: caseId !== null && caseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCaseAppeals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCaseAppealsQueryResult = NonNullable<Awaited<ReturnType<typeof listCaseAppeals>>>
+export type ListCaseAppealsQueryError = ErrorType<void>
+
+
+
+export function useListCaseAppeals<TData = Awaited<ReturnType<typeof listCaseAppeals>>, TError = ErrorType<void>>(
+ caseId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCaseAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCaseAppealsQueryOptions(caseId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateModerationAppealUrl = (caseId: number,) => {
+
+
+
+
+  return `/api/moderation/cases/${caseId}/appeals`
+}
+
+export const createModerationAppeal = async (caseId: number,
+    appealInput: AppealInput, options?: Parameters<typeof customFetch>[1]): Promise<CreateModerationAppeal201> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CreateModerationAppeal201>(getCreateModerationAppealUrl(caseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(appealInput)
+  }
+);}
+
+
+
+
+
+export const getCreateModerationAppealMutationKey = () => ['createModerationAppeal'] as const;
+
+export const getCreateModerationAppealMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createModerationAppeal>>, TError,CreateModerationAppealMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createModerationAppeal>>, TError,CreateModerationAppealMutationVariables, TContext> => {
+
+const mutationKey = getCreateModerationAppealMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createModerationAppeal>>, CreateModerationAppealMutationVariables> = (props) => {
+          const {caseId,data} = props ?? {};
+
+          return  createModerationAppeal(caseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateModerationAppealMutationResult = NonNullable<Awaited<ReturnType<typeof createModerationAppeal>>>
+    export type CreateModerationAppealMutationBody = BodyType<AppealInput>
+    export type CreateModerationAppealMutationError = ErrorType<void>
+    export type CreateModerationAppealMutationVariables = {caseId: number;data: BodyType<AppealInput>}
+
+    export const useCreateModerationAppeal = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createModerationAppeal>>, TError,CreateModerationAppealMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createModerationAppeal>>,
+        TError,
+        CreateModerationAppealMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateModerationAppealMutationOptions(options));
+    }
+
+export const getListModerationAppealsUrl = () => {
+
+
+
+
+  return `/api/moderation/appeals`
+}
+
+export const listModerationAppeals = async ( options?: Parameters<typeof customFetch>[1]): Promise<ModerationAppealList> => {
+
+  return customFetch<ModerationAppealList>(getListModerationAppealsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListModerationAppealsQueryKey = () => {
+    return [
+    `/api/moderation/appeals`
+    ] as const;
+    }
+
+
+export const getListModerationAppealsQueryOptions = <TData = Awaited<ReturnType<typeof listModerationAppeals>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listModerationAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListModerationAppealsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listModerationAppeals>>> = ({ signal }) => listModerationAppeals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listModerationAppeals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListModerationAppealsQueryResult = NonNullable<Awaited<ReturnType<typeof listModerationAppeals>>>
+export type ListModerationAppealsQueryError = ErrorType<void>
+
+
+
+export function useListModerationAppeals<TData = Awaited<ReturnType<typeof listModerationAppeals>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listModerationAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListModerationAppealsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListEligibleModerationAppealsUrl = () => {
+
+
+
+
+  return `/api/moderation/appeals/eligible`
+}
+
+export const listEligibleModerationAppeals = async ( options?: Parameters<typeof customFetch>[1]): Promise<EligibleModerationAppealList> => {
+
+  return customFetch<EligibleModerationAppealList>(getListEligibleModerationAppealsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEligibleModerationAppealsQueryKey = () => {
+    return [
+    `/api/moderation/appeals/eligible`
+    ] as const;
+    }
+
+
+export const getListEligibleModerationAppealsQueryOptions = <TData = Awaited<ReturnType<typeof listEligibleModerationAppeals>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEligibleModerationAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEligibleModerationAppealsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEligibleModerationAppeals>>> = ({ signal }) => listEligibleModerationAppeals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEligibleModerationAppeals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEligibleModerationAppealsQueryResult = NonNullable<Awaited<ReturnType<typeof listEligibleModerationAppeals>>>
+export type ListEligibleModerationAppealsQueryError = ErrorType<void>
+
+
+
+export function useListEligibleModerationAppeals<TData = Awaited<ReturnType<typeof listEligibleModerationAppeals>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEligibleModerationAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEligibleModerationAppealsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetModerationAppealUrl = (appealId: number,) => {
+
+
+
+
+  return `/api/moderation/appeals/${appealId}`
+}
+
+export const getModerationAppeal = async (appealId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationAppealResponse> => {
+
+  return customFetch<ModerationAppealResponse>(getGetModerationAppealUrl(appealId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetModerationAppealQueryKey = (appealId: number,) => {
+    return [
+    `/api/moderation/appeals/${appealId}`
+    ] as const;
+    }
+
+
+export const getGetModerationAppealQueryOptions = <TData = Awaited<ReturnType<typeof getModerationAppeal>>, TError = ErrorType<void>>(appealId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationAppeal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetModerationAppealQueryKey(appealId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getModerationAppeal>>> = ({ signal }) => getModerationAppeal(appealId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: appealId !== null && appealId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getModerationAppeal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetModerationAppealQueryResult = NonNullable<Awaited<ReturnType<typeof getModerationAppeal>>>
+export type GetModerationAppealQueryError = ErrorType<void>
+
+
+
+export function useGetModerationAppeal<TData = Awaited<ReturnType<typeof getModerationAppeal>>, TError = ErrorType<void>>(
+ appealId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getModerationAppeal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetModerationAppealQueryOptions(appealId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListMyModerationAppealsUrl = () => {
+
+
+
+
+  return `/api/moderation/appeals/mine`
+}
+
+export const listMyModerationAppeals = async ( options?: Parameters<typeof customFetch>[1]): Promise<MemberModerationAppealList> => {
+
+  return customFetch<MemberModerationAppealList>(getListMyModerationAppealsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMyModerationAppealsQueryKey = () => {
+    return [
+    `/api/moderation/appeals/mine`
+    ] as const;
+    }
+
+
+export const getListMyModerationAppealsQueryOptions = <TData = Awaited<ReturnType<typeof listMyModerationAppeals>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyModerationAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMyModerationAppealsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyModerationAppeals>>> = ({ signal }) => listMyModerationAppeals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMyModerationAppeals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMyModerationAppealsQueryResult = NonNullable<Awaited<ReturnType<typeof listMyModerationAppeals>>>
+export type ListMyModerationAppealsQueryError = ErrorType<void>
+
+
+
+export function useListMyModerationAppeals<TData = Awaited<ReturnType<typeof listMyModerationAppeals>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyModerationAppeals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMyModerationAppealsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDecideModerationAppealUrl = (appealId: number,) => {
+
+
+
+
+  return `/api/moderation/appeals/${appealId}/decision`
+}
+
+export const decideModerationAppeal = async (appealId: number,
+    appealDecisionInput: AppealDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<ModerationAppealResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ModerationAppealResponse>(getDecideModerationAppealUrl(appealId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(appealDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getDecideModerationAppealMutationKey = () => ['decideModerationAppeal'] as const;
+
+export const getDecideModerationAppealMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideModerationAppeal>>, TError,DecideModerationAppealMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decideModerationAppeal>>, TError,DecideModerationAppealMutationVariables, TContext> => {
+
+const mutationKey = getDecideModerationAppealMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decideModerationAppeal>>, DecideModerationAppealMutationVariables> = (props) => {
+          const {appealId,data} = props ?? {};
+
+          return  decideModerationAppeal(appealId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecideModerationAppealMutationResult = NonNullable<Awaited<ReturnType<typeof decideModerationAppeal>>>
+    export type DecideModerationAppealMutationBody = BodyType<AppealDecisionInput>
+    export type DecideModerationAppealMutationError = ErrorType<void>
+    export type DecideModerationAppealMutationVariables = {appealId: number;data: BodyType<AppealDecisionInput>}
+
+    export const useDecideModerationAppeal = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideModerationAppeal>>, TError,DecideModerationAppealMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decideModerationAppeal>>,
+        TError,
+        DecideModerationAppealMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDecideModerationAppealMutationOptions(options));
+    }
+
+export const getRevokeModerationSanctionUrl = (sanctionId: number,) => {
+
+
+
+
+  return `/api/moderation/sanctions/${sanctionId}/revoke`
+}
+
+export const revokeModerationSanction = async (sanctionId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationSanctionRevokeResponse> => {
+
+  return customFetch<ModerationSanctionRevokeResponse>(getRevokeModerationSanctionUrl(sanctionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokeModerationSanctionMutationKey = () => ['revokeModerationSanction'] as const;
+
+export const getRevokeModerationSanctionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeModerationSanction>>, TError,RevokeModerationSanctionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeModerationSanction>>, TError,RevokeModerationSanctionMutationVariables, TContext> => {
+
+const mutationKey = getRevokeModerationSanctionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeModerationSanction>>, RevokeModerationSanctionMutationVariables> = (props) => {
+          const {sanctionId} = props ?? {};
+
+          return  revokeModerationSanction(sanctionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeModerationSanctionMutationResult = NonNullable<Awaited<ReturnType<typeof revokeModerationSanction>>>
+
+    export type RevokeModerationSanctionMutationError = ErrorType<void>
+    export type RevokeModerationSanctionMutationVariables = {sanctionId: number}
+
+    export const useRevokeModerationSanction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeModerationSanction>>, TError,RevokeModerationSanctionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeModerationSanction>>,
+        TError,
+        RevokeModerationSanctionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRevokeModerationSanctionMutationOptions(options));
     }
 

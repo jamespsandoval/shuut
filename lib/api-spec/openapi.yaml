@@ -17,6 +17,7 @@ tags:
   - { name: storage, description: Secure direct uploads }
   - { name: account, description: Account lifecycle }
   - { name: contact, description: Public contact form }
+  - { name: moderation, description: Moderation review and appeals }
 paths:
   /healthz:
     get:
@@ -729,6 +730,165 @@ paths:
         '401': { description: Unauthorized }
         '403': { description: Legal consent required }
         '404': { description: Profile not found }
+  /moderation/cases:
+    get:
+      operationId: listModerationCases
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, in_review, escalated, resolved, appealed] } }
+        - { name: priority, in: query, schema: { type: string, enum: [normal, high] } }
+        - { name: overdue, in: query, schema: { type: boolean } }
+        - { name: minAgeHours, in: query, schema: { type: number, minimum: 0 } }
+      responses:
+        '200': { description: Moderation queue, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationCaseList' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+  /moderation/cases/{caseId}:
+    get:
+      operationId: getModerationCase
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Safe case detail, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationCaseDetail' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+        '404': { description: Case not found }
+    post:
+      operationId: decideModerationCase
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationDecisionInput' } } } }
+      responses:
+        '200': { description: Decision recorded, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationCase' } } } }
+        '400': { description: Invalid decision }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+        '404': { description: Case not found }
+        '409': { description: Version conflict }
+  /moderation/cases/{caseId}/claim:
+    post:
+      operationId: claimModerationCase
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Case claimed, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationCaseClaimResponse' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+        '404': { description: Open case not found }
+  /moderation/cases/{caseId}/retry:
+    post:
+      operationId: retryModerationCase
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '202': { description: Job queued, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationRetryResponse' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+        '404': { description: Case not found }
+  /moderation/cases/{caseId}/sanctions:
+    post:
+      operationId: createModerationSanction
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SanctionInput' } } } }
+      responses:
+        '201': { description: Sanction created, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        '401': { description: Authentication required }
+        '403': { description: Administrator access required }
+        '404': { description: Case not found }
+  /moderation/cases/{caseId}/appeals:
+    get:
+      operationId: listCaseAppeals
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Appeals, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationAppealList' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+    post:
+      operationId: createModerationAppeal
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AppealInput' } } } }
+      responses:
+        '201': { description: Appeal created, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        '400': { description: Invalid or ineligible appeal }
+        '401': { description: Authentication required }
+        '409': { description: Existing appeal }
+  /moderation/appeals:
+    get:
+      operationId: listModerationAppeals
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      responses:
+        '200': { description: Operator appeal queue, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationAppealList' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+  /moderation/appeals/eligible:
+    get:
+      operationId: listEligibleModerationAppeals
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      responses:
+        '200':
+          description: Member-owned content and sanctions eligible for appeal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EligibleModerationAppealList' }
+        '401': { description: Authentication required }
+  /moderation/appeals/{appealId}:
+    get:
+      operationId: getModerationAppeal
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: appealId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Appeal detail, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationAppealResponse' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+        '404': { description: Appeal not found }
+  /moderation/appeals/mine:
+    get:
+      operationId: listMyModerationAppeals
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      responses:
+        '200': { description: Member's own appeals, content: { application/json: { schema: { $ref: '#/components/schemas/MemberModerationAppealList' } } } }
+        '401': { description: Authentication required }
+  /moderation/appeals/{appealId}/decision:
+    post:
+      operationId: decideModerationAppeal
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: appealId, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AppealDecisionInput' } } } }
+      responses:
+        '200': { description: Appeal decision recorded, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationAppealResponse' } } } }
+        '400': { description: Invalid decision }
+        '401': { description: Authentication required }
+        '403': { description: Operator access required }
+        '404': { description: Appeal not found }
+        '409': { description: Appeal already decided }
+  /moderation/sanctions/{sanctionId}/revoke:
+    post:
+      operationId: revokeModerationSanction
+      tags: [moderation]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      parameters: [{ name: sanctionId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        '200': { description: Sanction revoked, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationSanctionRevokeResponse' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Administrator access required }
+        '404': { description: Sanction not found }
+        '409': { description: Sanction already revoked }
 components:
   securitySchemes:
     SessionCookie:
@@ -740,6 +900,146 @@ components:
       scheme: bearer
       bearerFormat: opaque
   schemas:
+    ModerationCase:
+      type: object
+      required: [id, targetType, targetId, status, priority, dueAt, version, ageHours, slaHours, overdue]
+      properties:
+        id: { type: integer }
+        targetType: { type: string, enum: [post, comment, profile] }
+        targetId: { type: integer }
+        status: { type: string, enum: [open, in_review, escalated, resolved, appealed] }
+        priority: { type: string, enum: [normal, high] }
+        dueAt: { type: string, format: date-time }
+        assignedOperatorId: { type: [string, 'null'] }
+        version: { type: integer }
+        resolution: { type: [string, 'null'] }
+        ageHours: { type: number }
+        slaHours: { type: number, default: 24 }
+        overdue: { type: boolean }
+    ModerationCaseList:
+      type: object
+      required: [cases]
+      properties: { cases: { type: array, items: { $ref: '#/components/schemas/ModerationCase' } } }
+    ModerationCaseClaimResponse:
+      type: object
+      required: [case]
+      properties: { case: { $ref: '#/components/schemas/ModerationCase' } }
+    ModerationRetryResponse:
+      type: object
+      required: [status]
+      properties: { status: { type: string, enum: [queued] } }
+    ModerationCaseDetail:
+      type: object
+      required: [case, signals, reports, subject, actions]
+      properties:
+        case: { $ref: '#/components/schemas/ModerationCase' }
+        signals: { type: array, items: { type: object, additionalProperties: true } }
+        reports: { type: array, items: { type: object, additionalProperties: true } }
+        subject: { type: object, additionalProperties: true }
+        actions: { type: array, items: { $ref: '#/components/schemas/ModerationAction' } }
+    ModerationAction:
+      type: object
+      required: [id, caseId, actorUserId, action, reason, beforeState, afterState, createdAt]
+      properties:
+        id: { type: integer }
+        caseId: { type: integer }
+        actorUserId: { type: [string, 'null'] }
+        action: { type: string }
+        reason: { type: [string, 'null'] }
+        beforeState: { type: [string, 'null'] }
+        afterState: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    ModerationDecisionInput:
+      type: object
+      required: [version, decision]
+      additionalProperties: false
+      properties:
+        version: { type: integer, minimum: 1 }
+        decision: { type: string, enum: [approve, quarantine, remove, resolve, escalate, dismiss] }
+        reason: { type: string, maxLength: 1000 }
+    ModerationAppeal:
+      type: object
+      required: [id, caseId, appellantUserId, statement, status, decision, decidedBy, decidedAt, createdAt]
+      properties:
+        id: { type: integer }
+        caseId: { type: integer }
+        appellantUserId: { type: [string, 'null'] }
+        statement: { type: string }
+        status: { type: string, enum: [open, upheld, decided] }
+        decision: { type: [string, 'null'], enum: [uphold, restore, dismiss, revoke_sanction, null] }
+        decidedBy: { type: [string, 'null'] }
+        decidedAt: { type: [string, format: date-time, 'null'] }
+        createdAt: { type: string, format: date-time }
+    ModerationAppealSummary:
+      type: object
+      required: [id, caseId, statement, status, decision, createdAt, decidedAt]
+      properties:
+        id: { type: integer }
+        caseId: { type: integer }
+        statement: { type: string }
+        status: { type: string, enum: [open, upheld, decided] }
+        decision: { type: [string, 'null'], enum: [uphold, restore, dismiss, revoke_sanction, null] }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: [string, format: date-time, 'null'] }
+    ModerationAppealList:
+      type: object
+      required: [appeals]
+      properties: { appeals: { type: array, items: { $ref: '#/components/schemas/ModerationAppeal' } } }
+    MemberModerationAppealList:
+      type: object
+      required: [appeals]
+      properties: { appeals: { type: array, items: { $ref: '#/components/schemas/ModerationAppealSummary' } } }
+    EligibleModerationAppeal:
+      type: object
+      required: [caseId, targetType, targetId, contentExcerpt, contentCreatedAt, reason, status, alreadyAppealed]
+      properties:
+        caseId: { type: integer }
+        targetType: { type: string, enum: [post, comment, profile] }
+        targetId: { type: integer }
+        contentExcerpt: { type: [string, 'null'], maxLength: 280 }
+        contentCreatedAt: { type: [string, format: date-time, 'null'] }
+        reason: { type: string }
+        status: { type: string }
+        alreadyAppealed: { type: boolean }
+    EligibleModerationAppealList:
+      type: object
+      required: [cases]
+      properties: { cases: { type: array, items: { $ref: '#/components/schemas/EligibleModerationAppeal' } } }
+    ModerationAppealResponse:
+      type: object
+      required: [appeal]
+      properties: { appeal: { $ref: '#/components/schemas/ModerationAppeal' } }
+    ModerationSanctionRevokeResponse:
+      type: object
+      required: [sanction]
+      properties:
+        sanction:
+          type: object
+          required: [id, status, revokedAt]
+          properties:
+            id: { type: integer }
+            status: { type: string, enum: [revoked] }
+            revokedAt: { type: string, format: date-time }
+    SanctionInput:
+      type: object
+      required: [userId, type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [warning, suspend, ban] }
+        reason: { type: string, maxLength: 1000 }
+        expiresAt: { type: string, format: date-time }
+    AppealInput:
+      type: object
+      required: [statement]
+      additionalProperties: false
+      properties: { statement: { type: string, minLength: 1, maxLength: 5000 } }
+    AppealDecisionInput:
+      type: object
+      required: [decision]
+      additionalProperties: false
+      properties:
+        decision: { type: string, enum: [uphold, restore, dismiss, revoke_sanction] }
+        reason: { type: string, maxLength: 1000 }
     SafeError:
       type: object
       required: [error, code]
@@ -981,6 +1281,7 @@ components:
         author: { $ref: '#/components/schemas/Founder' }
         transcript: { type: string }
         transcriptionStatus: { type: string, enum: [processing, ready, failed] }
+        moderationStatus: { type: string, enum: [pending, processing, approved, quarantined, failed, removed] }
         audioUrl: { type: [string, 'null'] }
         durationSeconds: { type: integer }
         createdAt: { type: string, format: date-time }

@@ -64,6 +64,7 @@ import {
   objectCleanupJobsTable,
   accountBlocksTable,
   accountReportsTable,
+  moderationCasesTable,
   accountFollowsTable,
   type FounderRow,
   type PostRow,
@@ -80,6 +81,16 @@ import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/securi
 import { createPostShareToken } from "../lib/postShareToken";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
+import {
+  assertCanParticipate,
+  canDistributeComment,
+  canDistributePost,
+  enqueueModeration,
+  ensureModerationCase,
+  isFounderDistributable,
+  startModerationWorker,
+  sweepModerationRetention,
+} from "../lib/moderation";
 
 const router: IRouter = Router();
 const ASK_MINIMUM_POSTS = 5;
@@ -89,7 +100,7 @@ const CLEANUP_RETRY_BASE_MS = 5_000;
 const SIGNED_UPLOAD_EXPIRY_SAFETY_MS = 5_000;
 class AudioVerificationError extends Error {}
 
-type CleanupScope = { type: "post" | "account" | "orphan"; id: string };
+type CleanupScope = { type: "post" | "account" | "orphan" | "moderation"; id: string };
 
 function cleanupBackoff(attempts: number) {
   return Math.min(60 * 60 * 1000, CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts, 9));
@@ -107,7 +118,10 @@ async function finalizeCleanupScope(scope: CleanupScope) {
   if (remaining.length) return false;
 
   await db.transaction(async (tx) => {
-    if (scope.type === "post") {
+    if (scope.type === "moderation") {
+      await tx.update(moderationCasesTable).set({ sourceCleanupCompletedAt: new Date() })
+        .where(eq(moderationCasesTable.id, Number(scope.id)));
+    } else if (scope.type === "post") {
       await tx.delete(postsTable).where(eq(postsTable.id, Number(scope.id)));
     } else if (scope.type === "account") {
       await tx.execute(sql`select id from shuut_users where id = ${scope.id} for update`);
@@ -242,7 +256,12 @@ export async function retryDueCleanupJobs() {
   }
 }
 
-function scheduleCleanupSweep() {
+async function scheduleCleanupSweep() {
+  try {
+    await sweepModerationRetention();
+  } catch (error) {
+    logger.error({ err: error }, "Moderation retention sweep failed");
+  }
   void retryDueCleanupJobs().catch((error) => {
     logger.error({ err: error }, "Cleanup retry sweep failed");
   });
@@ -251,6 +270,12 @@ function scheduleCleanupSweep() {
 const cleanupTimer = setInterval(scheduleCleanupSweep, 15_000);
 cleanupTimer.unref();
 scheduleCleanupSweep();
+if (!process.env.NODE_TEST_CONTEXT) {
+  const moderationRetentionTimer = setInterval(() => void sweepModerationRetention().catch(() => undefined), 15 * 60_000);
+  moderationRetentionTimer.unref();
+  void sweepModerationRetention().catch(() => undefined);
+  startModerationWorker();
+}
 
 async function currentFounder(userId: string) {
   const [user] = await db.select({ deletionStatus: usersTable.deletionStatus })
@@ -288,6 +313,10 @@ async function requireViewer(req: Request, res: Response) {
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
+  }
+  try { await assertCanParticipate(userId); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
+    return;
   }
   const founder = await currentFounder(userId);
   if (!founder) {
@@ -351,6 +380,7 @@ function postJson(
     author: founderJson(author),
     transcript: post.transcript,
     transcriptionStatus: post.transcriptionStatus,
+    moderationStatus: post.moderationStatus,
     audioUrl,
     durationSeconds: post.durationSeconds,
     createdAt: post.createdAt,
@@ -428,6 +458,12 @@ async function isFounderActive(founder: FounderRow | undefined) {
   return Boolean(founder && (await activeFounders([founder])).length);
 }
 
+async function distributablePosts(rows: PostRow[]) {
+  const result: PostRow[] = [];
+  for (const row of rows) if (await canDistributePost(row.id)) result.push(row);
+  return result;
+}
+
 async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
   if (!rows.length) return [];
   const founders = await activeFounders(await db
@@ -500,8 +536,7 @@ router.get("/feed", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const all = (await db.select().from(postsTable).orderBy(desc(postsTable.createdAt)))
-    .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
+  const all = await distributablePosts(await db.select().from(postsTable).orderBy(desc(postsTable.createdAt)));
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
   let rows = all;
@@ -546,11 +581,15 @@ router.get("/notifications", async (req, res): Promise<void> => {
       eq(notificationsTable.recipientId, viewer.id),
       eq(postsTable.deletionStatus, "active"),
       eq(postsTable.transcriptionStatus, "ready"),
+      eq(postsTable.moderationStatus, "approved"),
     ))
     .orderBy(desc(notificationsTable.createdAt))
     .limit(50);
   const active = await activeFounders(rows.map((row) => row.actor));
   const activeIds = new Set(active.map((founder) => founder.id));
+  const distributableActorIds = new Set((await Promise.all(active.map(async (actor) =>
+    await isFounderDistributable(actor.id) ? actor.id : null,
+  ))).filter((id): id is number => id !== null));
   const blockedActorIds = new Set(viewer
     ? (await Promise.all(active.map(async (actor) =>
       await foundersBlocked(viewer.id, actor.id) ? actor.id : null))).filter(
@@ -558,7 +597,7 @@ router.get("/notifications", async (req, res): Promise<void> => {
       )
     : []);
   res.json(GetNotificationsResponse.parse(rows
-    .filter((row) => activeIds.has(row.actor.id) && !blockedActorIds.has(row.actor.id))
+     .filter((row) => activeIds.has(row.actor.id) && distributableActorIds.has(row.actor.id) && !blockedActorIds.has(row.actor.id))
     .map((row) => ({
       id: row.notification.id,
       eventType: row.notification.eventType,
@@ -581,6 +620,10 @@ router.get("/profiles/search", async (req, res): Promise<void> => {
     res.status(userId ? 400 : 401).json({ error: userId ? "Invalid search" : "Unauthorized" });
     return;
   }
+  try { await assertCanParticipate(userId); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
+    return;
+  }
   const query = params.data.q.trim();
   const matches = await db.select().from(foundersTable)
     .where(or(
@@ -589,13 +632,17 @@ router.get("/profiles/search", async (req, res): Promise<void> => {
     ))
     .limit(12);
   const active = (await activeFounders(matches)).slice(0, 8);
+  const distributable = (await Promise.all(active.map(async (candidate) =>
+    await isFounderDistributable(candidate.id) ? candidate : null))).filter(
+      (candidate): candidate is FounderRow => Boolean(candidate),
+    );
   const viewer = await currentFounder(userId);
   const visible = viewer
-    ? (await Promise.all(active.map(async (founder) =>
+    ? (await Promise.all(distributable.map(async (founder) =>
       await visibleToViewer(viewer.id, founder.id) ? founder : null))).filter(
         (founder): founder is FounderRow => Boolean(founder),
       )
-    : active;
+    : distributable;
   const followedSearchIds = viewer
     ? new Set((await db.select({ followedFounderId: accountFollowsTable.followedFounderId })
       .from(accountFollowsTable).where(and(
@@ -699,29 +746,46 @@ router.post("/reports", async (req, res): Promise<void> => {
       return;
     }
   }
-  const [report] = await db.insert(accountReportsTable).values({
-    reporterUserId: viewer.userId,
-    reporterFounderId: viewer.founder.id,
-    targetType,
-    targetId,
-    reason: body.data.reason,
-    details: body.data.details?.trim() || null,
-    targetAuthorId: author.id,
-    targetAuthorHandle: author.handle,
-    contentSnapshot,
-    profileSnapshot,
-    evidenceAudioObjectPath,
-    sourceCreatedAt,
-  }).onConflictDoNothing({
-    target: [
-      accountReportsTable.reporterUserId,
-      accountReportsTable.targetType,
-      accountReportsTable.targetId,
-    ],
-  }).returning({ id: accountReportsTable.id }).catch(async (error) => {
+  let report: { id: number } | undefined;
+  try {
+    [report] = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(accountReportsTable).values({
+        reporterUserId: viewer.userId,
+        reporterFounderId: viewer.founder.id,
+        targetType,
+        targetId,
+        reason: body.data.reason,
+        details: body.data.details?.trim() || null,
+        targetAuthorId: author.id,
+        targetAuthorHandle: author.handle,
+        contentSnapshot,
+        profileSnapshot,
+        evidenceAudioObjectPath,
+        sourceCreatedAt,
+      }).onConflictDoNothing({
+        target: [
+          accountReportsTable.reporterUserId,
+          accountReportsTable.targetType,
+          accountReportsTable.targetId,
+        ],
+      }).returning({ id: accountReportsTable.id });
+      if (!created) return [];
+      const caseId = await ensureModerationCase(
+        targetType,
+        targetNumericId,
+        "normal",
+        "user_report",
+        undefined,
+        tx as any,
+      );
+      await tx.update(accountReportsTable).set({ moderationCaseId: caseId })
+        .where(eq(accountReportsTable.id, created.id));
+      return [created];
+    });
+  } catch (error) {
     if (evidenceAudioObjectPath) await objectStorage.deleteEvidence(evidenceAudioObjectPath).catch(() => undefined);
     throw error;
-  });
+  }
   if (!report) {
     const [duplicate] = await db.select({ id: accountReportsTable.id })
       .from(accountReportsTable).where(and(
@@ -837,14 +901,21 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Profile not found" });
     return;
   }
-  const rows = (await db
+  if (viewerForVisibility?.id !== founder.id && !(await isFounderDistributable(founder.id))) {
+    res.status(404).json({ error: "Profile not found" });
+    return;
+  }
+  const allRows = (await db
     .select()
     .from(postsTable)
     .where(eq(postsTable.authorId, founder.id))
-    .orderBy(desc(postsTable.createdAt)))
-    .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
+    .orderBy(desc(postsTable.createdAt)));
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
+  const ownProfile = viewer?.id === founder.id;
+  const rows = ownProfile
+    ? allRows.filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active")
+    : await distributablePosts(allRows);
   const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
   const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
@@ -948,7 +1019,7 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
     .from(postsTable)
     .where(eq(postsTable.authorId, founder.id))
     .orderBy(desc(postsTable.createdAt)))
-    .filter((post) => post.transcriptionStatus === "ready");
+    .filter((post) => post.transcriptionStatus === "ready" && post.moderationStatus === "approved");
   const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
   const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
@@ -1019,10 +1090,7 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
     authorId: postsTable.authorId,
   })
     .from(postsTable)
-    .where(and(
-      eq(postsTable.id, params.data.postId),
-      eq(postsTable.deletionStatus, "active"),
-    ))
+    .where(and(eq(postsTable.id, params.data.postId), eq(postsTable.deletionStatus, "active")))
     .limit(1);
   const [author] = post
     ? await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId)).limit(1)
@@ -1033,6 +1101,11 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
     return;
   }
   const audioViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const ownerAudio = audioViewer?.id === post.authorId;
+  if (!ownerAudio && !(await canDistributePost(params.data.postId))) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
   if (audioViewer && !(await visibleToViewer(audioViewer.id, post.authorId))) {
     res.status(404).json({ error: "Audio not found" });
     return;
@@ -1189,6 +1262,10 @@ router.post("/posts", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  try { await assertCanParticipate(userId); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
+    return;
+  }
   const body = CreatePostBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
@@ -1254,6 +1331,8 @@ router.post("/posts", async (req, res): Promise<void> => {
         authorId: author.id,
         transcript: body.data.transcript ?? "",
         transcriptionStatus: body.data.transcript ? "ready" : "processing",
+        moderationStatus: "pending",
+        moderationRevision: 1,
         durationSeconds: body.data.durationSeconds,
         audioUrl: claimedUpload.objectPath,
       }).returning();
@@ -1286,22 +1365,17 @@ router.post("/posts", async (req, res): Promise<void> => {
   }
   const { created } = publication;
   const audioObjectPath = created.audioUrl;
+  if (body.data.transcript) await enqueueModeration("post", created.id, body.data.transcript, 1);
   await auditSecurityEvent(req, "publish", userId, { postId: created.id });
-  for (const mentioned of mentionedFounders) {
-    await recordNotification({
-      actorId: author.id,
-      recipientId: mentioned.id,
-      postId: created.id,
-      eventType: "mention",
-    });
-  }
+  // Mentions are delivered by the moderation-approved distribution worker.
   res.status(201).json(CreatePostResponse.parse(postJson(created, author, author.id)));
   if (!body.data.transcript && audioObjectPath) {
     void transcribeRecording(audioObjectPath)
       .then(async (transcript) => {
         await db.update(postsTable)
-          .set({ transcript, transcriptionStatus: "ready" })
+          .set({ transcript, transcriptionStatus: "ready", moderationStatus: "pending", moderationRevision: 1 })
           .where(eq(postsTable.id, created.id));
+        await enqueueModeration("post", created.id, transcript, 1);
       })
       .catch(async (error) => {
         req.log.error({ err: error, postId: created.id }, "Background transcription failed");
@@ -1333,6 +1407,10 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
     return;
   }
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (viewer?.id !== author.id && !(await canDistributePost(post.id))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   if (viewer && !(await visibleToViewer(viewer.id, author.id))) {
     res.status(404).json({ error: "Post not found" });
     return;
@@ -1368,15 +1446,26 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  if (viewer?.id !== parent.authorId && !(await canDistributePost(params.data.postId))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   const rows = await db.select().from(commentsTable)
     .where(and(
       eq(commentsTable.postId, params.data.postId),
       eq(commentsTable.transcriptionStatus, "ready"),
+       or(
+         eq(commentsTable.moderationStatus, "approved"),
+         viewer ? eq(commentsTable.authorId, viewer.id) : sql`false`,
+       ),
     ))
     .orderBy(asc(commentsTable.createdAt));
-  const authors = rows.length
+  const visibleRows = (await Promise.all(rows.map(async (row) =>
+    row.authorId === viewer?.id || await canDistributeComment(row.id) ? row : null,
+  ))).filter((row): row is CommentRow => Boolean(row));
+  const authors = visibleRows.length
     ? await activeFounders(await db.select().from(foundersTable)
-      .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))])))
+      .where(inArray(foundersTable.id, [...new Set(visibleRows.map((row) => row.authorId))])))
     : [];
   const byId = new Map(authors.map((author) => [author.id, author]));
   const blockedAuthorIds = new Set(viewer
@@ -1386,9 +1475,10 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
       )
     : []);
   res.json(GetPostCommentsResponse.parse(
-    rows.flatMap((row) => {
+     visibleRows.flatMap((row) => {
       const author = byId.get(row.authorId);
-      return author && !blockedAuthorIds.has(author.id) ? [commentJson(row, author)] : [];
+       return author && !blockedAuthorIds.has(author.id)
+         ? [commentJson(row, author)] : [];
     }),
   ));
 });
@@ -1400,6 +1490,10 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
   const body = CreatePostCommentBody.safeParse(req.body);
   if (!userId || !params.success || !body.success) {
     res.status(userId ? 400 : 401).json({ error: userId ? "Invalid voice comment" : "Unauthorized" });
+    return;
+  }
+  try { await assertCanParticipate(userId); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
     return;
   }
   const limit = await consumeRateLimit(
@@ -1420,6 +1514,10 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
       eq(postsTable.deletionStatus, "active"),
     )).limit(1);
   if (!author || !post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+  if (!(await canDistributePost(post.id)) ) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
@@ -1466,6 +1564,8 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
         authorId: author.id,
         audioUrl: claimedUpload.objectPath,
         durationSeconds: body.data.durationSeconds,
+        moderationStatus: "pending",
+        moderationRevision: 1,
       }).returning();
       return { status: "created" as const, created };
     });
@@ -1490,13 +1590,7 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     return;
   }
   const { created } = publication;
-  await recordNotification({
-    actorId: author.id,
-    recipientId: post.authorId,
-    postId: post.id,
-    eventType: "comment",
-    commentId: created.id,
-  });
+  // Comment notifications are intentionally deferred until moderation approves.
   await auditSecurityEvent(req, "voice_comment_created", userId, {
     postId: post.id,
     commentId: created.id,
@@ -1505,8 +1599,9 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
   void transcribeRecording(created.audioUrl)
     .then(async (transcript) => {
       await db.update(commentsTable)
-        .set({ transcript, transcriptionStatus: "ready" })
+        .set({ transcript, transcriptionStatus: "ready", moderationStatus: "pending", moderationRevision: 1 })
         .where(eq(commentsTable.id, created.id));
+      await enqueueModeration("comment", created.id, transcript, 1);
     })
     .catch(async (error) => {
       req.log.error({ err: error, commentId: created.id }, "Background comment transcription failed");
@@ -1560,6 +1655,11 @@ router.get("/comments/:commentId/audio", async (req, res): Promise<void> => {
     return;
   }
   const commentAudioViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const ownerCommentAudio = commentAudioViewer?.id === comment.authorId;
+  if (!ownerCommentAudio && !(await canDistributeComment(comment.id))) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
   if (commentAudioViewer && (
     !(await visibleToViewer(commentAudioViewer.id, parent.authorId))
     || !(await visibleToViewer(commentAudioViewer.id, comment.authorId))
@@ -1605,6 +1705,10 @@ router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  if (!(await canDistributePost(post.id))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   const shareViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   if (shareViewer && !(await visibleToViewer(shareViewer.id, post.authorId))) {
     res.status(404).json({ error: "Post not found" });
@@ -1642,9 +1746,14 @@ router.patch("/posts/:postId", async (req, res): Promise<void> => {
     return;
   }
   const [updated] = await db.update(postsTable)
-    .set({ transcript: body.data.transcript.trim() })
+    .set({
+      transcript: body.data.transcript.trim(),
+      moderationStatus: "pending", moderationRevision: sql`${postsTable.moderationRevision} + 1`,
+      moderationRiskScore: null, moderationCategories: "[]", moderationErrorCode: null,
+    })
     .where(eq(postsTable.id, post.id))
     .returning();
+  await enqueueModeration("post", post.id, updated.transcript, updated.moderationRevision);
   res.json(UpdatePostResponse.parse(postJson(
     updated,
     founder,
@@ -1658,6 +1767,10 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
   const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try { await assertCanParticipate(userId); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
     return;
   }
   const params = DeletePostParams.safeParse(req.params);
@@ -1713,10 +1826,18 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  try { await assertCanParticipate(userId!); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
+    return;
+  }
   const [targetPost] = await db.select({ authorId: postsTable.authorId }).from(postsTable)
     .where(eq(postsTable.id, params.data.postId)).limit(1);
   if (targetPost && await foundersBlocked(viewer.id, targetPost.authorId)) {
     res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
+  if (!(await canDistributePost(params.data.postId))) {
+    res.status(404).json({ error: "Post not found" });
     return;
   }
   const result = await db.transaction(async (tx) => {
@@ -1809,6 +1930,10 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  try { await assertCanParticipate(userId!); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
+    return;
+  }
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
     const [activeUser] = await tx.select({ deletionStatus: usersTable.deletionStatus })
@@ -1847,6 +1972,10 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
     return;
   }
+  if (!(await canDistributePost(params.data.postId))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   const { updated, isReshuuted } = result;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
   if (isReshuuted) {
@@ -1881,9 +2010,17 @@ router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
+  if (!(await isFounderDistributable(founder.id))) {
+    res.status(404).json({ error: "Founder not found" });
+    return;
+  }
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   if (!viewer) {
     res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try { await assertCanParticipate(viewer.userId!); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
     return;
   }
   if (founder.id === viewer.id) {
@@ -1943,7 +2080,17 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
+  if (!(await isFounderDistributable(founder.id))) {
+    res.status(404).json({ error: "Founder not found" });
+    return;
+  }
   const askViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (askViewer?.userId) {
+    try { await assertCanParticipate(askViewer.userId); } catch (error) {
+      res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted", code: (error as { code?: string }).code ?? "ACCOUNT_RESTRICTED" });
+      return;
+    }
+  }
   const posts = await db.transaction(async (tx) => {
     if (askViewer) {
       await lockFounderPair(tx, askViewer.id, founder.id);
@@ -1955,6 +2102,7 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
         eq(postsTable.authorId, founder.id),
         eq(postsTable.transcriptionStatus, "ready"),
         eq(postsTable.deletionStatus, "active"),
+        eq(postsTable.moderationStatus, "approved"),
       ))
       .orderBy(desc(postsTable.createdAt))
       .limit(ASK_MINIMUM_POSTS);
@@ -1963,7 +2111,8 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
-  if (posts.length < ASK_MINIMUM_POSTS) {
+  const distributable = await distributablePosts(posts);
+  if (distributable.length < ASK_MINIMUM_POSTS) {
     res.status(403).json({ error: `Ask Me unlocks after ${ASK_MINIMUM_POSTS} published SHÜÜTs.` });
     return;
   }
@@ -1973,7 +2122,7 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
     AskFounderResponse.parse({
       answer,
       hasEnoughContext,
-      sources: posts.slice(0, 2).map((post) => ({
+       sources: distributable.slice(0, 2).map((post) => ({
         postId: post.id,
         excerpt: post.transcript.slice(0, 120),
         createdAt: post.createdAt,

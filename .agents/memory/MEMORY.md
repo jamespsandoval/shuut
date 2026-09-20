@@ -15,3 +15,4 @@
 - [Native post-publish refresh](native-post-publish-refresh.md) — poll silently for transcription-ready posts and dismiss recorder routes back to the existing feed.
 - [Legal policy versioning](legal-policy-versioning.md) — policy copy, version identifiers, and server-owned content hashes must change together before re-consent.
 - [Safety relationship invariants](safety-relationship-invariants.md) — blocks are mutual, serialize with social writes, and remove both directional follows without restoring them on unblock.
+- [Voice moderation safety](voice-moderation-safety.md) — voice content fails closed; removals retain source audio through a serialized 30-day appeal window.
