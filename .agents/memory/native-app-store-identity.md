@@ -7,4 +7,4 @@ Keep the bundle identifier from the first Replit App Store upload. Replit treats
 
 **Why:** A later repository value did not match the installed TestFlight binary. Official Replit documentation confirmed that the installed identity belongs to the existing listing and cannot be replaced in place.
 
-**How to apply:** Validate release identity against the established listing. Embed essential public runtime configuration in the Expo manifest and validate it during build, but keep a safe canonical runtime fallback so a missing build-shell variable cannot abort before React renders.
+**How to apply:** Validate release identity against the established listing. Embed essential public runtime configuration in the Expo manifest and validate it during build, but keep a safe canonical runtime fallback so a missing build-shell variable cannot abort before React renders. The Replit deployment domain hosts static Expo bundles/manifests; never infer the production API origin from it.

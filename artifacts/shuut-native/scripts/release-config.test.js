@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   EXPECTED_IOS_BUNDLE_IDENTIFIER,
   PRODUCTION_API_BASE_URL,
+  resolveStaticBuildApiBaseUrl,
   validateReleaseConfig,
 } = require('./release-config');
 const configureApp = require('../app.config');
@@ -49,6 +50,22 @@ test('rejects a build variable that disagrees with the embedded API', () => {
     appConfig: appConfig(),
     configuredApiBaseUrl: 'https://example.com',
   }), /does not match/);
+});
+
+test('production static deployment keeps the canonical API origin', () => {
+  assert.equal(resolveStaticBuildApiBaseUrl({
+    configuredApiBaseUrl: undefined,
+    deploymentDomain: 'shuut-me.replit.app',
+    production: true,
+  }), PRODUCTION_API_BASE_URL);
+});
+
+test('development static deployment can use its deployment domain', () => {
+  assert.equal(resolveStaticBuildApiBaseUrl({
+    configuredApiBaseUrl: undefined,
+    deploymentDomain: 'example.replit.dev',
+    production: false,
+  }), 'https://example.replit.dev');
 });
 
 test('rejects diagnostics crash flags in a production release', () => {

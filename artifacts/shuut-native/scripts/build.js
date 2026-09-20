@@ -3,7 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
-const { normalizeApiBaseUrl } = require('./release-config');
+const { resolveStaticBuildApiBaseUrl } = require('./release-config');
 
 let metroProcess = null;
 
@@ -77,20 +77,11 @@ function getDeploymentDomain() {
 }
 
 function getApiBaseUrl(deploymentDomain) {
-  const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (configured) {
-    return normalizeApiBaseUrl(configured, process.env.NODE_ENV !== 'production');
-  }
-
-  // REPLIT_DEV_DOMAIN is a development ingress, never an implicit release API.
-  if (process.env.NODE_ENV === 'production' &&
-      !process.env.REPLIT_INTERNAL_APP_DOMAIN &&
-      process.env.REPLIT_DEV_DOMAIN) {
-    throw new Error(
-      'EXPO_PUBLIC_API_BASE_URL is required for production static builds; refusing REPLIT_DEV_DOMAIN.',
-    );
-  }
-  return normalizeApiBaseUrl(`https://${deploymentDomain}`, process.env.NODE_ENV !== 'production');
+  return resolveStaticBuildApiBaseUrl({
+    configuredApiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
+    deploymentDomain,
+    production: process.env.NODE_ENV === 'production',
+  });
 }
 
 function prepareDirectories(timestamp) {

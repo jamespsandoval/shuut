@@ -25,6 +25,24 @@ function normalizeApiBaseUrl(value, allowDevelopmentHosts = false) {
   return parsed.toString().replace(/\/$/, '');
 }
 
+function resolveStaticBuildApiBaseUrl({
+  configuredApiBaseUrl,
+  deploymentDomain,
+  production,
+}) {
+  if (configuredApiBaseUrl?.trim()) {
+    return normalizeApiBaseUrl(configuredApiBaseUrl, !production);
+  }
+
+  // The deployment domain hosts Expo Go bundles and manifests. It is not the
+  // app's production API origin.
+  if (production) {
+    return PRODUCTION_API_BASE_URL;
+  }
+
+  return normalizeApiBaseUrl(`https://${deploymentDomain}`, true);
+}
+
 function validateReleaseConfig({
   appConfig,
   configuredApiBaseUrl,
@@ -100,5 +118,6 @@ module.exports = {
   EXPECTED_IOS_BUNDLE_IDENTIFIER,
   PRODUCTION_API_BASE_URL,
   normalizeApiBaseUrl,
+  resolveStaticBuildApiBaseUrl,
   validateReleaseConfig,
 };
