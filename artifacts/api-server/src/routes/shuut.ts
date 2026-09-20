@@ -65,6 +65,8 @@ import {
   accountBlocksTable,
   accountReportsTable,
   moderationCasesTable,
+  moderationSubjectsTable,
+  moderationJobsTable,
   accountFollowsTable,
   type FounderRow,
   type PostRow,
@@ -81,6 +83,8 @@ import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/securi
 import { createPostShareToken } from "../lib/postShareToken";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
+import { requireCurrentVoiceAiConsent } from "../lib/voiceAiConsent";
+import { createUploadToken } from "../lib/uploadToken";
 import {
   assertCanParticipate,
   canDistributeComment,
@@ -150,6 +154,35 @@ async function finalizeCleanupScope(scope: CleanupScope) {
         const authoredPosts = await tx.select({ id: postsTable.id })
           .from(postsTable)
           .where(eq(postsTable.authorId, founder.id));
+        const authoredComments = await tx.select({ id: commentsTable.id })
+          .from(commentsTable)
+          .where(authoredPosts.length
+            ? or(
+              eq(commentsTable.authorId, founder.id),
+              inArray(commentsTable.postId, authoredPosts.map((post) => post.id)),
+            )
+            : eq(commentsTable.authorId, founder.id));
+        // Subjects/jobs are ephemeral provider work and must not retain deleted
+        // content. Cases, reports, actions, sanctions, and appeals intentionally
+        // remain as safety evidence and are not deleted here.
+        const postIds = authoredPosts.map((post) => post.id);
+        const commentIds = authoredComments.map((comment) => comment.id);
+        if (postIds.length || commentIds.length) {
+          const targets = [
+            ...(postIds.length ? [{ type: "post", ids: postIds }] : []),
+            ...(commentIds.length ? [{ type: "comment", ids: commentIds }] : []),
+          ];
+          for (const target of targets) {
+            await tx.delete(moderationJobsTable).where(and(
+              eq(moderationJobsTable.targetType, target.type),
+              inArray(moderationJobsTable.targetId, target.ids),
+            ));
+            await tx.delete(moderationSubjectsTable).where(and(
+              eq(moderationSubjectsTable.targetType, target.type),
+              inArray(moderationSubjectsTable.targetId, target.ids),
+            ));
+          }
+        }
         const postIdsToLock = [...new Set([
           ...reactions.map((reaction) => reaction.postId),
           ...authoredPosts.map((post) => post.id),
@@ -1052,6 +1085,8 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Choose a supported image or audio file under 15MB" });
     return;
   }
+  if (body.data.contentType.startsWith("audio/")
+    && !(await requireCurrentVoiceAiConsent(req, res))) return;
   try {
     await queueExpiredPrivateUploads();
     const upload = await db.transaction(async (tx) => {
@@ -1066,7 +1101,12 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
         objectPath: created.objectPath,
         userId,
       });
-      return created;
+      return {
+        uploadURL: `/api/storage/uploads/put?token=${encodeURIComponent(
+          createUploadToken(created.objectPath, body.data.contentType, body.data.size),
+        )}`,
+        objectPath: created.objectPath,
+      };
     });
     if (!upload) {
       res.status(409).json({ error: "Account deletion is already in progress" });
@@ -1154,6 +1194,7 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
 
 router.post("/transcriptions", async (req, res): Promise<void> => {
   if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  if (!(await requireCurrentVoiceAiConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   const body = TranscribeAudioBody.safeParse(req.body);
   if (!userId || !body.success) {
@@ -1256,6 +1297,7 @@ router.get("/storage/objects/*path", async (req, res): Promise<void> => {
 
 router.post("/posts", async (req, res): Promise<void> => {
   if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  if (!(await requireCurrentVoiceAiConsent(req, res))) return;
   await ensureSeeded();
   const userId = getAuthenticatedUserId(req);
   if (!userId) {
@@ -1485,6 +1527,7 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
 
 router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
   if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  if (!(await requireCurrentVoiceAiConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   const params = CreatePostCommentParams.safeParse(req.params);
   const body = CreatePostCommentBody.safeParse(req.body);

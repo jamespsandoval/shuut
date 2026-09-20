@@ -18,7 +18,37 @@ tags:
   - { name: account, description: Account lifecycle }
   - { name: contact, description: Public contact form }
   - { name: moderation, description: Moderation review and appeals }
+  - { name: voice-ai-consent, description: Voice AI consent and disclosure }
 paths:
+  /voice-ai-consent:
+    get:
+      operationId: getVoiceAiConsent
+      tags: [voice-ai-consent]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      responses:
+        '200':
+          description: Voice AI consent status
+          content: { application/json: { schema: { $ref: '#/components/schemas/VoiceAiConsentStatus' } } }
+    post:
+      operationId: acceptVoiceAiConsent
+      tags: [voice-ai-consent]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VoiceAiConsentInput' } } }
+      responses:
+        '200':
+          description: Updated voice AI consent status
+          content: { application/json: { schema: { $ref: '#/components/schemas/VoiceAiConsentStatus' } } }
+        '409': { description: Stale consent version }
+    delete:
+      operationId: revokeVoiceAiConsent
+      tags: [voice-ai-consent]
+      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
+      responses:
+        '200':
+          description: Revoked voice AI consent status
+          content: { application/json: { schema: { $ref: '#/components/schemas/VoiceAiConsentStatus' } } }
   /healthz:
     get:
       operationId: healthCheck
@@ -900,6 +930,24 @@ components:
       scheme: bearer
       bearerFormat: opaque
   schemas:
+    VoiceAiConsentInput:
+      type: object
+      required: [version, source]
+      properties:
+        version: { type: string }
+        source: { type: string, enum: [web, native, ios, android] }
+    VoiceAiConsentStatus:
+      type: object
+      required: [required, currentVersion, acceptedVersion, acceptedAt, revokedAt, canRevoke, summary, details]
+      properties:
+        required: { type: boolean }
+        currentVersion: { type: string }
+        acceptedVersion: { type: [string, 'null'] }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        canRevoke: { type: boolean }
+        summary: { type: string }
+        details: { type: array, items: { type: string } }
     ModerationCase:
       type: object
       required: [id, targetType, targetId, status, priority, dueAt, version, ageHours, slaHours, overdue]
@@ -1324,7 +1372,7 @@ components:
       type: object
       required: [uploadURL, objectPath]
       properties:
-        uploadURL: { type: string, format: uri }
+        uploadURL: { type: string }
         objectPath: { type: string }
     PostInput:
       type: object

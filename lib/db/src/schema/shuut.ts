@@ -223,6 +223,25 @@ export const legalPolicyAcceptancesTable = pgTable(
   ],
 );
 
+export const voiceAiConsentsTable = pgTable(
+  "shuut_voice_ai_consents",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    consentVersion: text("consent_version").notNull(),
+    consentContentHash: text("consent_content_hash").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    source: text("source").notNull().default("web"),
+  },
+  (table) => [
+    uniqueIndex("shuut_voice_ai_consents_user_version_idx").on(table.userId, table.consentVersion),
+    index("shuut_voice_ai_consents_user_idx").on(table.userId),
+  ],
+);
+
 export const objectCleanupJobsTable = pgTable(
   "shuut_object_cleanup_jobs",
   {

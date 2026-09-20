@@ -3,15 +3,18 @@ import { Mic, Square, Loader2, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatTime } from "@/lib/utils"
-import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio } from "@workspace/api-client-react"
+import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio, useGetVoiceAiConsent } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
 import { useToast } from "@/hooks/use-toast"
+import { ToastAction } from "@/components/ui/toast"
 import { AudioPlayer } from "./audio-player"
 import { MentionPicker } from "./mention-picker"
+import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
 
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
+const CONSENT_BYPASS = Symbol("consent-bypass")
 
 export type RecorderHandle = {
   startRecording: () => void
@@ -42,17 +45,20 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null)
   const [transcript, setTranscript] = useState("")
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([])
-  
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<number | null>(null)
-  
+
   const createPost = useCreatePost()
   const transcribeAudio = useTranscribeAudio()
   const { data: profile } = useGetProfile("me")
+  const { data: voiceAiConsent, isLoading: voiceAiConsentLoading, isError: voiceAiConsentError, refetch: refetchVoiceAiConsent } = useGetVoiceAiConsent()
   const previewTranscript = profile?.founder.previewTranscript ?? false
   const queryClient = useQueryClient()
   const { toast } = useToast()
+
+  const [showConsentModal, setShowConsentModal] = useState(false)
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -71,8 +77,39 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     }
   }, [time, isRecording, stopRecording])
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (bypassMarker?: symbol) => {
     if (isRecording || audioData) return
+
+    if (bypassMarker !== CONSENT_BYPASS) {
+      if (voiceAiConsentLoading) {
+        toast({
+          title: "Checking permissions...",
+          description: "Please wait a moment.",
+          duration: 1500,
+        })
+        return
+      }
+
+      if (voiceAiConsentError || !voiceAiConsent) {
+        toast({
+          title: "Could not verify permissions",
+          description: "Please check your connection and try again.",
+          variant: "destructive",
+          action: (
+            <ToastAction altText="Retry" onClick={() => refetchVoiceAiConsent()}>
+              Retry
+            </ToastAction>
+          ),
+        })
+        return
+      }
+
+      if (voiceAiConsent.required) {
+        setShowConsentModal(true)
+        return
+      }
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const supportedType = getSupportedRecordingType()
@@ -81,11 +118,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         supportedType ? { mimeType: supportedType } : undefined,
       )
       chunksRef.current = []
-      
+
       mediaRecorderRef.current.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
-      
+
       mediaRecorderRef.current.onstop = async () => {
         const recorderType = mediaRecorderRef.current?.mimeType || chunksRef.current[0]?.type || "audio/webm"
         const contentType = recorderType.split(";")[0].toLowerCase()
@@ -137,14 +174,14 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           })
         }
       }
-      
+
       mediaRecorderRef.current.start()
       setIsRecording(true)
       setTime(0)
       setAudioData(null)
       setAudioObjectPath(null)
       setTranscript("")
-      
+
       timerRef.current = window.setInterval(() => {
         setTime(prev => prev + 1)
       }, 1000)
@@ -156,7 +193,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         variant: "destructive"
       })
     }
-  }, [audioData, isRecording, previewTranscript, toast, transcribeAudio])
+  }, [audioData, isRecording, previewTranscript, toast, transcribeAudio, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent])
 
   useImperativeHandle(ref, () => ({
     startRecording: () => {
@@ -229,19 +266,20 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   }, [isExpanded, onExpandedChange])
 
   return (
-    <div
-      className={cn(
-        "bg-card border-b border-border/50 transition-[height,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden",
-        isRecording
-          ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
-          : audioData
-            ? previewTranscript
-              ? "h-[min(680px,calc(100dvh-8rem))] md:h-[60vh]"
-              : "h-[320px] md:h-[300px]"
-            : "h-[140px]"
-      )}
-      data-testid="container-recorder"
-    >
+    <>
+      <div
+        className={cn(
+          "bg-card border-b border-border/50 transition-[height,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden",
+          isRecording
+            ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
+            : audioData
+              ? previewTranscript
+                ? "h-[min(680px,calc(100dvh-8rem))] md:h-[60vh]"
+                : "h-[320px] md:h-[300px]"
+              : "h-[140px]"
+        )}
+        data-testid="container-recorder"
+      >
       {/* State 1: Idle */}
       <div
         className={cn(
@@ -361,5 +399,15 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         </div>
       </div>
     </div>
+      <VoiceAiConsentModal
+        open={showConsentModal}
+        status={voiceAiConsent}
+        onAccepted={() => {
+          setShowConsentModal(false)
+          void startRecording(CONSENT_BYPASS)
+        }}
+        onDecline={() => setShowConsentModal(false)}
+      />
+    </>
   )
 })

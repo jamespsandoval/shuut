@@ -5,6 +5,7 @@ import contactRouter from "./routes/contact";
 import authRouter from "./routes/auth";
 import healthRouter from "./routes/health";
 import socialPreviewRouter from "./routes/socialPreview";
+import uploadRouter from "./routes/upload";
 import { logger } from "./lib/logger";
 import { requireAuth, sessionAuth } from "./middlewares/sessionAuth";
 import { csrfProtection } from "./middlewares/csrf";
@@ -66,6 +67,9 @@ app.use((req, res, next) => {
 
   next();
 });
+// Token-authorized binary uploads must bypass JSON parsing, session auth, and
+// CSRF: the short-lived HMAC token is the complete authorization credential.
+app.use("/api/storage", uploadRouter);
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 app.use(sessionAuth);

@@ -26,26 +26,6 @@ function parsePath(path: string) {
   return { bucketName: parts[0], objectName: parts.slice(1).join("/") };
 }
 
-async function signedPutUrl(bucketName: string, objectName: string): Promise<string> {
-  const response = await fetch(`${SIDECAR}/object-storage/signed-object-url`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bucket_name: bucketName,
-      object_name: objectName,
-      method: "PUT",
-      expires_at: new Date(Date.now() + SIGNED_UPLOAD_TTL_MS).toISOString(),
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Could not create upload URL (${response.status})`);
-  }
-  const payload = await response.json() as { signed_url?: string };
-  if (!payload.signed_url) throw new Error("Upload URL was not returned");
-  return payload.signed_url;
-}
-
 export class ObjectStorageService {
   constructor(private readonly storageClient: Pick<Storage, "bucket"> = storage) {}
 
@@ -57,11 +37,20 @@ export class ObjectStorageService {
 
   async createUpload(contentLength: number, contentType: string) {
     const fullPath = `${this.privateDir()}/uploads/${randomUUID()}`;
-    const { bucketName, objectName } = parsePath(fullPath);
-    void contentLength;
-    void contentType;
-    const uploadURL = await signedPutUrl(bucketName, objectName);
-    return { uploadURL, objectPath: `/objects/uploads/${objectName.split("/").at(-1)}` };
+    const { objectName } = parsePath(fullPath);
+    const objectPath = `/objects/uploads/${objectName.split("/").at(-1)}`;
+    return { uploadURL: "", objectPath, contentLength, contentType };
+  }
+
+  async saveUpload(objectPath: string, data: Buffer, contentType: string) {
+    if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) throw new Error("Invalid object path");
+    const relative = objectPath.replace(/^\/objects\//, "");
+    const { bucketName, objectName } = parsePath(`${this.privateDir()}/${relative}`);
+    await this.storageClient.bucket(bucketName).file(objectName).save(data, {
+      resumable: false,
+      contentType,
+      metadata: { contentType },
+    });
   }
 
   async getFile(objectPath: string): Promise<File> {

@@ -8,6 +8,47 @@
 import * as zod from 'zod';
 
 
+export const GetVoiceAiConsentResponse = zod.object({
+  "required": zod.boolean(),
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "canRevoke": zod.boolean(),
+  "summary": zod.string(),
+  "details": zod.array(zod.string())
+})
+
+
+export const AcceptVoiceAiConsentBody = zod.object({
+  "version": zod.string(),
+  "source": zod.enum(['web', 'native', 'ios', 'android'])
+})
+
+export const AcceptVoiceAiConsentResponse = zod.object({
+  "required": zod.boolean(),
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "canRevoke": zod.boolean(),
+  "summary": zod.string(),
+  "details": zod.array(zod.string())
+})
+
+
+export const RevokeVoiceAiConsentResponse = zod.object({
+  "required": zod.boolean(),
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "canRevoke": zod.boolean(),
+  "summary": zod.string(),
+  "details": zod.array(zod.string())
+})
+
+
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
@@ -768,7 +809,7 @@ export const RequestUploadUrlBody = zod.object({
 })
 
 export const RequestUploadUrlResponse = zod.object({
-  "uploadURL": zod.string().url(),
+  "uploadURL": zod.string(),
   "objectPath": zod.string()
 })
 

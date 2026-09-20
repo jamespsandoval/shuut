@@ -13,6 +13,9 @@ import { authenticatedImageSource } from '../lib/apiUrl';
 import { useAuth } from '../hooks/useAuthStore';
 import { SPEECH_RECORDING_OPTIONS } from '../lib/audioRecording';
 import { formatApproximateTimeAgo } from '../lib/relativeTime';
+import { useVoiceConsentCheck } from '../hooks/useVoiceConsentCheck';
+import { VoiceAiConsentModal } from './VoiceAiConsentModal';
+import { Alert } from 'react-native';
 
 export function PostCard({
   post,
@@ -53,6 +56,15 @@ export function PostCard({
 
   const requestUploadUrl = useRequestUploadUrl();
   const createComment = useCreatePostComment();
+
+  const {
+    checkConsent,
+    showModal,
+    onAccept,
+    onDecline,
+    isLoading: isConsentLoading,
+    isError: isConsentError
+  } = useVoiceConsentCheck();
 
   const { data: comments, refetch: refetchComments } = useGetPostComments(post.id, {
     query: { enabled: showCommentComposer, queryKey: ['comments', post.id] }
@@ -100,21 +112,27 @@ export function PostCard({
   };
 
   const startRecording = async () => {
-    try {
-      const perm = await getRecordingPermissionsAsync();
-      if (perm.status !== 'granted') {
-        const newPerm = await requestRecordingPermissionsAsync();
-        if (newPerm.status !== 'granted') return;
+    const { allowed, error, loading } = await checkConsent(async () => {
+      try {
+        const perm = await getRecordingPermissionsAsync();
+        if (perm.status !== 'granted') {
+          const newPerm = await requestRecordingPermissionsAsync();
+          if (newPerm.status !== 'granted') return;
+        }
+        setRecordedUri(null);
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+        });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+      } catch (err) {
+        console.error('Failed to start recording', err);
       }
-      setRecordedUri(null);
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-      });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-    } catch (err) {
-      console.error('Failed to start recording', err);
+    });
+
+    if (error) {
+      Alert.alert('Error', 'Could not verify voice consent. Please try again.');
     }
   };
 
@@ -326,7 +344,11 @@ export function PostCard({
               </View>
             ) : (
               <View style={styles.composerActions}>
-                <TouchableOpacity style={styles.recordBtnPlaceholder} onPress={recorderState.isRecording ? stopRecording : startRecording}>
+                <TouchableOpacity
+                  style={[styles.recordBtnPlaceholder, { opacity: (isConsentLoading || isConsentError) ? 0.5 : 1 }]}
+                  onPress={recorderState.isRecording ? stopRecording : startRecording}
+                  disabled={isConsentLoading || isConsentError}
+                >
                   <Mic color={colors.mutedForeground} size={16} />
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', marginLeft: 8 }}>
                     {recorderState.isRecording ? 'Recording...' : 'Add a voice comment...'}
@@ -362,6 +384,7 @@ export function PostCard({
           )}
         </View>
       )}
+      <VoiceAiConsentModal visible={showModal} onAccept={onAccept} onDecline={onDecline} />
     </View>
   );
 

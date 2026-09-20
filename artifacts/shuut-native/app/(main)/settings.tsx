@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput, Switch, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
 import { Trash2, LogOut } from 'lucide-react-native';
-import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile, useListBlockedAccounts, useUnblockAccount } from '@workspace/api-client-react';
+import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile, useListBlockedAccounts, useUnblockAccount, useGetVoiceAiConsent, getGetVoiceAiConsentQueryKey, useRevokeVoiceAiConsent } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
 
@@ -23,9 +23,18 @@ export default function SettingsScreen() {
   const { data: profileData, refetch: refetchProfile } = useGetProfile('me', {
     query: { queryKey: ['profile', 'me'] },
   });
+  const { data: consentStatus, isLoading: isConsentLoading, refetch: refetchConsent } = useGetVoiceAiConsent();
+  const revokeConsent = useRevokeVoiceAiConsent();
+  const [isRevokeModalVisible, setIsRevokeModalVisible] = useState(false);
+  const [revokeConfirmation, setRevokeConfirmation] = useState('');
+
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [previewTranscript, setPreviewTranscript] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    void refetchConsent();
+  }, [refetchConsent]));
 
   useEffect(() => {
     if (profileData?.founder) {
@@ -143,6 +152,58 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={styles.cardHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Voice & AI Processing</Text>
+              {isConsentLoading ? (
+                <ActivityIndicator color={colors.primary} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
+              ) : consentStatus?.revokedAt ? (
+                <>
+                  <Text style={[styles.cardDesc, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                    You revoked Voice & AI processing consent on {new Date(consentStatus.revokedAt).toLocaleDateString()}.
+                  </Text>
+                  <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
+                    To create new recordings, you must provide consent when prompted.
+                  </Text>
+                </>
+              ) : consentStatus?.required && (consentStatus.acceptedVersion || consentStatus.acceptedAt) ? (
+                <>
+                  <Text style={[styles.cardDesc, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                    Voice & AI consent must be updated before you can create new recordings.
+                  </Text>
+                  {consentStatus.acceptedVersion && (
+                    <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
+                      Previously accepted version: {consentStatus.acceptedVersion}
+                    </Text>
+                  )}
+                </>
+              ) : (consentStatus?.acceptedAt && !consentStatus.required && consentStatus.canRevoke) ? (
+                <>
+                  <Text style={[styles.cardDesc, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                    You consented to Voice & AI processing on {new Date(consentStatus.acceptedAt).toLocaleDateString()}.
+                  </Text>
+                  {consentStatus.acceptedVersion && (
+                    <Text style={[styles.cardDesc, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                      Version: {consentStatus.acceptedVersion}
+                    </Text>
+                  )}
+                  <TouchableOpacity onPress={() => { setIsRevokeModalVisible(true); setRevokeConfirmation(''); }} accessibilityLabel="Revoke voice consent">
+                    <Text style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', marginTop: 4 }}>Revoke consent</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
+                  You have not provided consent for voice processing.
+                </Text>
+              )}
+              <TouchableOpacity onPress={() => openPublicPage('privacy')} hitSlop={8} style={{ marginTop: 12 }}>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_500Medium', fontSize: 14 }}>Read Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         <View style={[styles.blockedCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Blocked accounts</Text>
           <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>Blocked profiles and their posts are hidden from your feeds.</Text>
@@ -232,6 +293,51 @@ export default function SettingsScreen() {
                 disabled={deleteConfirmation !== 'DELETE' || deleteAccount.isPending}
               >
                 {deleteAccount.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold' }}>Delete</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isRevokeModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Revoke Voice Consent</Text>
+            <Text style={[styles.modalText, { color: colors.mutedForeground }]}>
+              Revoking consent will prevent you from making new recordings or transcriptions. Existing posts and required safety records will not be erased.
+            </Text>
+            <Text style={[styles.modalText, { color: colors.mutedForeground, marginTop: 12 }]}>
+              Type <Text style={{ fontFamily: 'Inter_700Bold', color: colors.foreground }}>REVOKE</Text> to confirm.
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.input }]}
+              value={revokeConfirmation}
+              onChangeText={setRevokeConfirmation}
+              autoCapitalize="none"
+              testID="revoke-consent-input"
+              accessibilityLabel="Type REVOKE to confirm"
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIsRevokeModalVisible(false)} disabled={revokeConsent.isPending}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalDeleteBtn, { backgroundColor: colors.destructive, opacity: revokeConfirmation === 'REVOKE' ? 1 : 0.5 }]}
+                onPress={async () => {
+                  if (revokeConfirmation !== 'REVOKE') return;
+                  try {
+                    await revokeConsent.mutateAsync();
+                    await queryClient.invalidateQueries({ queryKey: getGetVoiceAiConsentQueryKey() });
+                    setIsRevokeModalVisible(false);
+                    setRevokeConfirmation('');
+                  } catch (e) {
+                    Alert.alert('Error', 'Could not revoke consent.');
+                  }
+                }}
+                disabled={revokeConfirmation !== 'REVOKE' || revokeConsent.isPending}
+                accessibilityLabel="Confirm revoke consent"
+              >
+                {revokeConsent.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold' }}>Revoke</Text>}
               </TouchableOpacity>
             </View>
           </View>

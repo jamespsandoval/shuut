@@ -5,6 +5,35 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+export type VoiceAiConsentInputSource = typeof VoiceAiConsentInputSource[keyof typeof VoiceAiConsentInputSource];
+
+
+export const VoiceAiConsentInputSource = {
+  web: 'web',
+  native: 'native',
+  ios: 'ios',
+  android: 'android',
+} as const;
+
+export interface VoiceAiConsentInput {
+  version: string;
+  source: VoiceAiConsentInputSource;
+}
+
+export interface VoiceAiConsentStatus {
+  required: boolean;
+  currentVersion: string;
+  /** @nullable */
+  acceptedVersion: string | null;
+  /** @nullable */
+  acceptedAt: string | null;
+  /** @nullable */
+  revokedAt: string | null;
+  canRevoke: boolean;
+  summary: string;
+  details: string[];
+}
+
 export type ModerationCaseTargetType = typeof ModerationCaseTargetType[keyof typeof ModerationCaseTargetType];
 
 

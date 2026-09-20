@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
@@ -11,6 +11,8 @@ import { MentionPicker } from '../../components/MentionPicker';
 import { KeyboardAwareScrollViewCompat } from '../../components/KeyboardAwareScrollViewCompat';
 import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
 import { useQueryClient } from '@tanstack/react-query';
+import { useVoiceConsentCheck } from '../../hooks/useVoiceConsentCheck';
+import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -33,6 +35,20 @@ export default function RecordScreen() {
   const spinnerRotation = useRef(new Animated.Value(0)).current;
   const previewPlayer = useAudioPlayer(null);
   const previewStatus = useAudioPlayerStatus(previewPlayer);
+
+  const {
+    checkConsent,
+    showModal,
+    onAccept,
+    onDecline,
+    isLoading: isConsentLoading,
+    isError: isConsentError,
+    consentStatus,
+    refetch: refetchConsent,
+    setShowModal
+  } = useVoiceConsentCheck();
+
+  const [initialized, setInitialized] = useState(false);
 
   const requestUploadUrl = useRequestUploadUrl();
   const createPost = useCreatePost();
@@ -95,21 +111,47 @@ export default function RecordScreen() {
     setIsPreparingTranscript(false);
     setMentionedFounders([]);
     isStoppingRef.current = false;
+    setInitialized(false);
 
-    const beginRecording = async () => {
-      const permission = await getRecordingPermissionsAsync();
-      if (!isActive) return;
-      await startRecording(permission, () => isActive);
-    };
+    void refetchConsent();
 
-    void beginRecording();
     return () => {
       isActive = false;
       isScreenActiveRef.current = false;
       setIsProcessing(false);
       setIsStarting(true);
+      setShowModal(false);
     };
-  }, [startRecording]));
+  }, [refetchConsent, setShowModal]));
+
+  useEffect(() => {
+    if (initialized || isConsentLoading || !isScreenActiveRef.current) return;
+
+    if (isConsentError || !consentStatus) {
+      setIsStarting(false);
+      return;
+    }
+
+    setInitialized(true);
+
+    const checkAndStart = async () => {
+      const { allowed, loading, error, required } = await checkConsent(async () => {
+        const permission = await getRecordingPermissionsAsync();
+        if (!isScreenActiveRef.current) return;
+        await startRecording(permission, () => isScreenActiveRef.current);
+      });
+      if (required) {
+        setIsStarting(false);
+      }
+    };
+
+    void checkAndStart();
+  }, [initialized, isConsentLoading, consentStatus, isConsentError, startRecording, checkConsent]);
+
+  const handleDeclineConsent = () => {
+    onDecline();
+    router.dismissTo('/(main)/feed');
+  };
 
   useEffect(() => {
     if (!isProcessing) {
@@ -311,7 +353,7 @@ export default function RecordScreen() {
   };
 
   const isRecording = recorderState.isRecording;
-  const showRecordingState = isStarting || isRecording;
+  const showRecordingState = (isStarting && !isConsentLoading) || isRecording;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -443,23 +485,43 @@ export default function RecordScreen() {
             </View>
           ) : (
             <View style={styles.recordCard}>
-              <View style={styles.recordingState}>
-                <Text style={[styles.recordingTitle, { color: showRecordingState ? colors.destructive : colors.mutedForeground }]}>
-                  {showRecordingState ? 'RECORDING' : 'READY'}
-                </Text>
-                <Text style={[styles.timerText, { color: colors.foreground }]}>
-                  {Math.floor((recorderState?.durationMillis || 0) / 1000 / 60)}:{Math.floor(((recorderState?.durationMillis || 0) / 1000) % 60).toString().padStart(2, '0')}
-                </Text>
-                <Text style={[styles.timerLimit, { color: colors.mutedForeground }]}>/ 1:30</Text>
-              </View>
-              
-              <TouchableOpacity 
+              {(isConsentError || (!isConsentLoading && !consentStatus)) ? (
+                <View style={styles.recordingState}>
+                  <Text style={[styles.recordingTitle, { color: colors.destructive }]}>
+                    ERROR
+                  </Text>
+                  <Text style={[styles.timerLimit, { color: colors.foreground, textAlign: 'center', marginBottom: 12 }]}>
+                    Could not verify voice consent.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.retryTranscriptButton, { borderColor: colors.border, paddingHorizontal: 16 }]}
+                    onPress={() => {
+                      setIsStarting(true);
+                      void refetchConsent();
+                    }}
+                  >
+                    <Text style={[styles.retryTranscriptText, { color: colors.primary }]}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.recordingState}>
+                  <Text style={[styles.recordingTitle, { color: showRecordingState ? colors.destructive : colors.mutedForeground }]}>
+                    {showRecordingState ? 'RECORDING' : 'READY'}
+                  </Text>
+                  <Text style={[styles.timerText, { color: colors.foreground }]}>
+                    {Math.floor((recorderState?.durationMillis || 0) / 1000 / 60)}:{Math.floor(((recorderState?.durationMillis || 0) / 1000) % 60).toString().padStart(2, '0')}
+                  </Text>
+                  <Text style={[styles.timerLimit, { color: colors.mutedForeground }]}>/ 1:30</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
                 style={[
-                  styles.recordButton, 
-                  { backgroundColor: showRecordingState ? colors.destructive : colors.primary }
+                  styles.recordButton,
+                  { backgroundColor: showRecordingState ? colors.destructive : colors.primary, opacity: (isConsentError || (!isConsentLoading && !consentStatus)) ? 0.5 : 1 }
                 ]}
                 onPress={isRecording ? stopRecording : () => void startRecording()}
-                disabled={isStarting}
+                disabled={isStarting || showModal || isConsentLoading || isConsentError || !consentStatus}
               >
                 <Square color={colors.primaryForeground} size={32} />
               </TouchableOpacity>
@@ -467,6 +529,12 @@ export default function RecordScreen() {
           )}
         </View>
       </KeyboardAwareScrollViewCompat>
+
+      <VoiceAiConsentModal
+        visible={showModal}
+        onAccept={onAccept}
+        onDecline={handleDeclineConsent}
+      />
     </SafeAreaView>
   );
 }
@@ -691,5 +759,42 @@ const styles = StyleSheet.create({
   publishText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  modalTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 20,
+    marginBottom: 12,
+  },
+  modalText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 16,
+    alignItems: 'center',
+  },
+  modalCancelBtn: {
+    padding: 12,
+  },
+  modalAcceptBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
   }
 });

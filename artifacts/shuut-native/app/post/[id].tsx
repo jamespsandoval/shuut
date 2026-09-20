@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useGetPost, useGetPostComments, useCreatePostComment, useRequestUploadUrl, useGetProfile } from '@workspace/api-client-react';
@@ -11,6 +11,9 @@ import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsy
 import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
 import { formatApproximateTimeAgo } from '../../lib/relativeTime';
 import { SafetyActionSheet } from '../../components/SafetyActionSheet';
+
+import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
+import { useVoiceConsentCheck } from '../../hooks/useVoiceConsentCheck';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,6 +28,15 @@ export default function PostDetailScreen() {
   const requestUploadUrl = useRequestUploadUrl();
   const createComment = useCreatePostComment();
 
+  const {
+    checkConsent,
+    showModal,
+    onAccept,
+    onDecline,
+    isLoading: isConsentLoading,
+    isError: isConsentError
+  } = useVoiceConsentCheck();
+
   const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
   const recorderState = useAudioRecorderState(recorder);
   const isRecordingRef = useRef(false);
@@ -34,21 +46,27 @@ export default function PostDetailScreen() {
   const [isUploading, setIsUploading] = useState(false);
 
   const startRecording = async () => {
-    try {
-      const perm = await getRecordingPermissionsAsync();
-      if (perm.status !== 'granted') {
-        const newPerm = await requestRecordingPermissionsAsync();
-        if (newPerm.status !== 'granted') return;
+    const { allowed, error, loading } = await checkConsent(async () => {
+      try {
+        const perm = await getRecordingPermissionsAsync();
+        if (perm.status !== 'granted') {
+          const newPerm = await requestRecordingPermissionsAsync();
+          if (newPerm.status !== 'granted') return;
+        }
+        setRecordedUri(null);
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+        });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+      } catch (err) {
+        console.error('Failed to start recording', err);
       }
-      setRecordedUri(null);
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-      });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-    } catch (err) {
-      console.error('Failed to start recording', err);
+    });
+
+    if (error) {
+      Alert.alert('Error', 'Could not verify voice consent. Please try again.');
     }
   };
 
@@ -165,7 +183,11 @@ export default function PostDetailScreen() {
             </View>
           ) : (
             <View style={styles.composerActions}>
-              <TouchableOpacity style={styles.recordBtnPlaceholder} onPress={recorderState.isRecording ? stopRecording : startRecording}>
+              <TouchableOpacity
+                style={[styles.recordBtnPlaceholder, { opacity: (isConsentLoading || isConsentError) ? 0.5 : 1 }]}
+                onPress={recorderState.isRecording ? stopRecording : startRecording}
+                disabled={isConsentLoading || isConsentError}
+              >
                 <Mic color={colors.mutedForeground} size={16} />
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', marginLeft: 8 }}>
                   {recorderState.isRecording ? 'Recording...' : 'Add a voice comment...'}
@@ -207,6 +229,7 @@ export default function PostDetailScreen() {
           </View>
         )}
       </ScrollView>
+      <VoiceAiConsentModal visible={showModal} onAccept={onAccept} onDecline={onDecline} />
     </SafeAreaView>
   );
 }

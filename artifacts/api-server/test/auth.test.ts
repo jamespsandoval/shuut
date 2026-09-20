@@ -26,6 +26,9 @@ import {
   postMentionsTable,
   foundersTable,
   legalPolicyAcceptancesTable,
+  moderationCasesTable,
+  moderationJobsTable,
+  moderationSubjectsTable,
   passkeyRecoveriesTable,
   objectCleanupJobsTable,
   passkeysTable,
@@ -35,9 +38,11 @@ import {
   profileImageUploadsTable,
   sessionsTable,
   usersTable,
+  voiceAiConsentsTable,
   webauthnChallengesTable,
 } from "@workspace/db";
 import { CURRENT_LEGAL_POLICY_VERSIONS, CURRENT_LEGAL_POLICY_CONTENT_HASHES } from "../src/lib/legalPolicy";
+import { CURRENT_VOICE_AI_CONSENT_VERSION } from "../src/lib/voiceAiConsent";
 import { enqueueModeration, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
 
 const prefix = `auth-security-${Date.now()}`;
@@ -373,6 +378,15 @@ async function register(email: string, acceptPolicies = true): Promise<BrowserSe
       },
     });
     assert.equal(consent.status, 200);
+    const voiceConsent = await request("/api/voice-ai-consent", {
+      method: "POST",
+      session,
+      json: {
+        version: CURRENT_VOICE_AI_CONSENT_VERSION,
+        source: "web",
+      },
+    });
+    assert.equal(voiceConsent.status, 200);
   }
   return session;
 }
@@ -1727,6 +1741,29 @@ test("account deletion waits out issued upload URLs and blocks new uploads", asy
     durationSeconds: 2,
     audioUrl: postObjectPath, moderationStatus: "approved",
   }).returning();
+  const commentObjectPath = `/objects/uploads/${prefix}-account-comment`;
+  const [comment] = await db.insert(commentsTable).values({
+    postId: post.id,
+    authorId: founder.id,
+    transcript: "Derived moderation data should be removed",
+    audioUrl: commentObjectPath,
+    durationSeconds: 1,
+    transcriptionStatus: "ready",
+    moderationStatus: "approved",
+  }).returning();
+  await db.insert(moderationSubjectsTable).values([
+    { targetType: "post", targetId: post.id, revision: 1, contentHash: "account-post" },
+    { targetType: "comment", targetId: comment.id, revision: 1, contentHash: "account-comment" },
+  ]);
+  await db.insert(moderationJobsTable).values([
+    { targetType: "post", targetId: post.id, revision: 1, contentHash: "account-post" },
+    { targetType: "comment", targetId: comment.id, revision: 1, contentHash: "account-comment" },
+  ]);
+  const [retainedCase] = await db.insert(moderationCasesTable).values({
+    targetType: "post",
+    targetId: post.id,
+    dueAt: new Date(Date.now() + 60_000),
+  }).returning();
   const objectPath = `/objects/uploads/${prefix}-issued-upload`;
   await db.insert(profileImageUploadsTable).values({ objectPath, userId: user.id });
   const realDeleteObject = ObjectStorageService.prototype.deleteObject;
@@ -1767,6 +1804,28 @@ test("account deletion waits out issued upload URLs and blocks new uploads", asy
     assert.equal(completed.status, 200);
     assert.deepEqual(await completed.json(), { status: "completed" });
     assert.deepEqual(deletedPaths, [objectPath]);
+    assert.equal(
+      (await db.select().from(voiceAiConsentsTable).where(eq(voiceAiConsentsTable.userId, user.id))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(moderationSubjectsTable).where(or(
+        and(eq(moderationSubjectsTable.targetType, "post"), eq(moderationSubjectsTable.targetId, post.id)),
+        and(eq(moderationSubjectsTable.targetType, "comment"), eq(moderationSubjectsTable.targetId, comment.id)),
+      ))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(moderationJobsTable).where(or(
+        and(eq(moderationJobsTable.targetType, "post"), eq(moderationJobsTable.targetId, post.id)),
+        and(eq(moderationJobsTable.targetType, "comment"), eq(moderationJobsTable.targetId, comment.id)),
+      ))).length,
+      0,
+    );
+    assert.equal(
+      (await db.select().from(moderationCasesTable).where(eq(moderationCasesTable.id, retainedCase.id))).length,
+      1,
+    );
   } finally {
     ObjectStorageService.prototype.deleteObject = realDeleteObject;
   }

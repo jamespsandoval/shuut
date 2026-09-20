@@ -8,6 +8,9 @@ import {
   useListBlockedAccounts,
   useUnblockAccount,
   getListBlockedAccountsQueryKey,
+  useGetVoiceAiConsent,
+  useRevokeVoiceAiConsent,
+  getGetVoiceAiConsentQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
@@ -31,6 +34,10 @@ export default function SettingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deletionState, setDeletionState] = useState<"pending" | "failed" | null>(null);
+
+  const { data: voiceAiConsent, isLoading: voiceAiConsentLoading } = useGetVoiceAiConsent();
+  const revokeVoiceAiConsent = useRevokeVoiceAiConsent();
+  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false);
 
   const setPreviewTranscript = (previewTranscript: boolean) => {
     if (!profile) return;
@@ -165,6 +172,80 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <h2 className="font-semibold">Voice & AI Data</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Manage your consent for voice recording and AI transcription features. <Link href="/privacy" className="underline hover:text-primary">Privacy Policy</Link>.
+          </p>
+
+          {!voiceAiConsentLoading && voiceAiConsent && (
+            <div className="mt-5 space-y-4">
+              <div className="flex flex-col gap-1 rounded-xl bg-secondary/20 p-4 border border-border/50">
+                <div className="text-sm font-medium">Status</div>
+                <div className="text-sm text-muted-foreground">
+                  {voiceAiConsent.revokedAt ? (
+                    <>Revoked on {new Date(voiceAiConsent.revokedAt).toLocaleDateString()}</>
+                  ) : voiceAiConsent.required ? (
+                    voiceAiConsent.acceptedVersion ? "Update required" : "Not accepted"
+                  ) : voiceAiConsent.acceptedVersion ? (
+                    <>Accepted (Version {voiceAiConsent.acceptedVersion}) on {voiceAiConsent.acceptedAt ? new Date(voiceAiConsent.acceptedAt).toLocaleDateString() : "unknown"}</>
+                  ) : (
+                    "Not accepted"
+                  )}
+                </div>
+              </div>
+
+              {voiceAiConsent.canRevoke && !voiceAiConsent.revokedAt && (
+                <Dialog.Root open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
+                  <Dialog.Trigger asChild>
+                    <Button variant="outline" className="rounded-full" data-testid="revoke">
+                      Revoke Consent
+                    </Button>
+                  </Dialog.Trigger>
+                  <Dialog.Portal>
+                    <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm" />
+                    <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-xl">
+                      <Dialog.Title className="text-xl font-bold">Revoke Voice & AI Consent?</Dialog.Title>
+                      <Dialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
+                        Are you sure you want to revoke your consent? This will stop future recording and transcription, but does not delete your existing posts or safety records.
+                      </Dialog.Description>
+
+                      <div className="mt-6 flex justify-end gap-3 border-t border-border/60 pt-4">
+                        <Dialog.Close asChild>
+                          <Button variant="outline" disabled={revokeVoiceAiConsent.isPending}>Cancel</Button>
+                        </Dialog.Close>
+                        <Button
+                          variant="destructive"
+                          disabled={revokeVoiceAiConsent.isPending}
+                          onClick={() => {
+                            revokeVoiceAiConsent.mutate(undefined, {
+                              onSuccess: () => {
+                                queryClient.invalidateQueries({ queryKey: getGetVoiceAiConsentQueryKey() });
+                                setRevokeDialogOpen(false);
+                                toast({ title: "Consent revoked" });
+                              },
+                              onError: (err) => {
+                                toast({
+                                  title: "Could not revoke consent",
+                                  description: err instanceof Error ? err.message : "Please try again.",
+                                  variant: "destructive"
+                                });
+                              }
+                            });
+                          }}
+                        >
+                          {revokeVoiceAiConsent.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Revoke Consent
+                        </Button>
+                      </div>
+                    </Dialog.Content>
+                  </Dialog.Portal>
+                </Dialog.Root>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-destructive/40 bg-card p-5">
