@@ -1,3 +1,8 @@
+const path = require('node:path');
+
+const EXPECTED_IOS_BUNDLE_IDENTIFIER = 'app.replit.shuut';
+const PRODUCTION_API_BASE_URL = 'https://shuut.me';
+
 function normalizeApiBaseUrl(value, allowDevelopmentHosts = false) {
   let parsed;
   try {
@@ -20,14 +25,56 @@ function normalizeApiBaseUrl(value, allowDevelopmentHosts = false) {
   return parsed.toString().replace(/\/$/, '');
 }
 
+function validateReleaseConfig({
+  appConfig,
+  configuredApiBaseUrl,
+}) {
+  const bundleIdentifier = appConfig?.expo?.ios?.bundleIdentifier;
+  if (bundleIdentifier !== EXPECTED_IOS_BUNDLE_IDENTIFIER) {
+    throw new Error(
+      `iOS bundle identifier must remain ${EXPECTED_IOS_BUNDLE_IDENTIFIER}; received ${bundleIdentifier || 'missing'}.`,
+    );
+  }
+
+  const embeddedApiBaseUrl = appConfig?.expo?.extra?.EXPO_PUBLIC_API_BASE_URL;
+  const embedded = normalizeApiBaseUrl(embeddedApiBaseUrl);
+  if (embedded !== PRODUCTION_API_BASE_URL) {
+    throw new Error(
+      `Embedded release API URL must be ${PRODUCTION_API_BASE_URL}; received ${embedded}.`,
+    );
+  }
+
+  if (configuredApiBaseUrl?.trim()) {
+    const configured = normalizeApiBaseUrl(configuredApiBaseUrl);
+    if (configured !== embedded) {
+      throw new Error(
+        `Build API URL ${configured} does not match embedded release API URL ${embedded}.`,
+      );
+    }
+  }
+
+  return { bundleIdentifier, apiBaseUrl: embedded };
+}
+
 if (require.main === module) {
   try {
-    normalizeApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
-    console.log('Release API URL is valid');
+    const appConfig = require(path.join('..', 'app.json'));
+    const validated = validateReleaseConfig({
+      appConfig,
+      configuredApiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
+    });
+    console.log(
+      `Release config is valid (${validated.bundleIdentifier}, ${validated.apiBaseUrl})`,
+    );
   } catch (error) {
-    console.error(`Invalid release API URL: ${error.message}`);
+    console.error(`Invalid release config: ${error.message}`);
     process.exitCode = 1;
   }
 }
 
-module.exports = { normalizeApiBaseUrl };
+module.exports = {
+  EXPECTED_IOS_BUNDLE_IDENTIFIER,
+  PRODUCTION_API_BASE_URL,
+  normalizeApiBaseUrl,
+  validateReleaseConfig,
+};

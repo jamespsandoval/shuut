@@ -7,9 +7,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "shuut-native",
     "userInterfaceStyle": "light",
+    "extra": {
+      "EXPO_PUBLIC_API_BASE_URL": "https://shuut.me"
+    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.doubleportrait.shuut",
+      "bundleIdentifier": "app.replit.shuut",
       "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "SHÜÜT uses the microphone only when you choose to record a voice post or comment, and lets you review it before publishing.",
@@ -17,7 +20,9 @@
       }
     },
     "android": {
-      "permissions": ["android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -48,7 +53,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#F8F9FA"
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

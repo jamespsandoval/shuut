@@ -18,8 +18,11 @@ import { API_BASE_URL } from '../lib/apiUrl';
 setBaseUrl(API_BASE_URL);
 setDefaultCredentials('omit');
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// Startup helpers are nonessential. Native-module rejection must not terminate
+// the process before React can paint a recoverable screen.
+void SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.warn('Could not keep the splash screen visible during startup', error);
+});
 
 const queryClient = new QueryClient();
 
@@ -87,7 +90,7 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  const [loaded] = useFonts({
+  const [loaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -95,20 +98,29 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (loaded || fontError) {
+      void SplashScreen.hideAsync().catch((error) => {
+        console.warn('Could not hide the splash screen', error);
+      });
     }
-  }, [loaded]);
+    if (fontError) {
+      console.warn('Could not load bundled fonts; continuing with system fonts', fontError);
+    }
+  }, [loaded, fontError]);
 
   useEffect(() => {
-    SystemUI.setBackgroundColorAsync(Colors.light.background);
+    void SystemUI.setBackgroundColorAsync(Colors.light.background).catch((error) => {
+      console.warn('Could not set the startup background color', error);
+    });
     void setAudioModeAsync({
       allowsRecording: false,
       playsInSilentMode: true,
+    }).catch((error) => {
+      console.warn('Could not initialize the startup audio mode', error);
     });
   }, []);
 
-  if (!loaded) {
+  if (!loaded && !fontError) {
     return null;
   }
 
