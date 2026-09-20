@@ -29,6 +29,8 @@ import type {
   AuthStartResult,
   BeginPasskeyAssertion200,
   BeginPasskeyRegistration200,
+  BlockResult,
+  BlockedAccount,
   ConfirmPasskeyRecovery200,
   ContactMessageInput,
   ContactMessageResult,
@@ -61,6 +63,9 @@ import type {
   ReactionInput,
   RecoveryCodeInput,
   RegistrationInput,
+  ReportInput,
+  ReportResult,
+  SafeError,
   SearchProfilesParams,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -4065,5 +4070,365 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getAskFounderMutationOptions(options));
+    }
+
+export const getCreateReportUrl = () => {
+
+
+
+
+  return `/api/reports`
+}
+
+export const createReport = async (reportInput: ReportInput, options?: Parameters<typeof customFetch>[1]): Promise<ReportResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ReportResult>(getCreateReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reportInput)
+  }
+);}
+
+
+
+
+
+export const getCreateReportMutationKey = () => ['createReport'] as const;
+
+export const getCreateReportMutationOptions = <TError = ErrorType<void | SafeError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReport>>, TError,CreateReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createReport>>, TError,CreateReportMutationVariables, TContext> => {
+
+const mutationKey = getCreateReportMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReport>>, CreateReportMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateReportMutationResult = NonNullable<Awaited<ReturnType<typeof createReport>>>
+    export type CreateReportMutationBody = BodyType<ReportInput>
+    export type CreateReportMutationError = ErrorType<void | SafeError>
+    export type CreateReportMutationVariables = {data: BodyType<ReportInput>}
+
+    export const useCreateReport = <TError = ErrorType<void | SafeError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReport>>, TError,CreateReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createReport>>,
+        TError,
+        CreateReportMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateReportMutationOptions(options));
+    }
+
+export const getListBlockedAccountsUrl = () => {
+
+
+
+
+  return `/api/account/blocks`
+}
+
+export const listBlockedAccounts = async ( options?: Parameters<typeof customFetch>[1]): Promise<BlockedAccount[]> => {
+
+  return customFetch<BlockedAccount[]>(getListBlockedAccountsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBlockedAccountsQueryKey = () => {
+    return [
+    `/api/account/blocks`
+    ] as const;
+    }
+
+
+export const getListBlockedAccountsQueryOptions = <TData = Awaited<ReturnType<typeof listBlockedAccounts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlockedAccounts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBlockedAccountsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBlockedAccounts>>> = ({ signal }) => listBlockedAccounts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBlockedAccounts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBlockedAccountsQueryResult = NonNullable<Awaited<ReturnType<typeof listBlockedAccounts>>>
+export type ListBlockedAccountsQueryError = ErrorType<unknown>
+
+
+
+export function useListBlockedAccounts<TData = Awaited<ReturnType<typeof listBlockedAccounts>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlockedAccounts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBlockedAccountsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetBlockStatusUrl = (handle: string,) => {
+
+
+
+
+  return `/api/profiles/${handle}/block`
+}
+
+export const getBlockStatus = async (handle: string, options?: Parameters<typeof customFetch>[1]): Promise<BlockResult> => {
+
+  return customFetch<BlockResult>(getGetBlockStatusUrl(handle),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBlockStatusQueryKey = (handle: string,) => {
+    return [
+    `/api/profiles/${handle}/block`
+    ] as const;
+    }
+
+
+export const getGetBlockStatusQueryOptions = <TData = Awaited<ReturnType<typeof getBlockStatus>>, TError = ErrorType<void>>(handle: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBlockStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBlockStatusQueryKey(handle);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBlockStatus>>> = ({ signal }) => getBlockStatus(handle, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: handle !== null && handle !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBlockStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBlockStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getBlockStatus>>>
+export type GetBlockStatusQueryError = ErrorType<void>
+
+
+
+export function useGetBlockStatus<TData = Awaited<ReturnType<typeof getBlockStatus>>, TError = ErrorType<void>>(
+ handle: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBlockStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBlockStatusQueryOptions(handle,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getBlockAccountUrl = (handle: string,) => {
+
+
+
+
+  return `/api/profiles/${handle}/block`
+}
+
+export const blockAccount = async (handle: string, options?: Parameters<typeof customFetch>[1]): Promise<BlockResult> => {
+
+  return customFetch<BlockResult>(getBlockAccountUrl(handle),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+
+
+export const getBlockAccountMutationKey = () => ['blockAccount'] as const;
+
+export const getBlockAccountMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof blockAccount>>, TError,BlockAccountMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof blockAccount>>, TError,BlockAccountMutationVariables, TContext> => {
+
+const mutationKey = getBlockAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof blockAccount>>, BlockAccountMutationVariables> = (props) => {
+          const {handle} = props ?? {};
+
+          return  blockAccount(handle,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BlockAccountMutationResult = NonNullable<Awaited<ReturnType<typeof blockAccount>>>
+
+    export type BlockAccountMutationError = ErrorType<void>
+    export type BlockAccountMutationVariables = {handle: string}
+
+    export const useBlockAccount = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof blockAccount>>, TError,BlockAccountMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof blockAccount>>,
+        TError,
+        BlockAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getBlockAccountMutationOptions(options));
+    }
+
+export const getUnblockAccountUrl = (handle: string,) => {
+
+
+
+
+  return `/api/profiles/${handle}/block`
+}
+
+export const unblockAccount = async (handle: string, options?: Parameters<typeof customFetch>[1]): Promise<BlockResult> => {
+
+  return customFetch<BlockResult>(getUnblockAccountUrl(handle),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getUnblockAccountMutationKey = () => ['unblockAccount'] as const;
+
+export const getUnblockAccountMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unblockAccount>>, TError,UnblockAccountMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unblockAccount>>, TError,UnblockAccountMutationVariables, TContext> => {
+
+const mutationKey = getUnblockAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unblockAccount>>, UnblockAccountMutationVariables> = (props) => {
+          const {handle} = props ?? {};
+
+          return  unblockAccount(handle,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnblockAccountMutationResult = NonNullable<Awaited<ReturnType<typeof unblockAccount>>>
+
+    export type UnblockAccountMutationError = ErrorType<void>
+    export type UnblockAccountMutationVariables = {handle: string}
+
+    export const useUnblockAccount = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unblockAccount>>, TError,UnblockAccountMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unblockAccount>>,
+        TError,
+        UnblockAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUnblockAccountMutationOptions(options));
     }
 

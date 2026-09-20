@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
-import { useGetPost, useGetPostComments, useCreatePostComment, useRequestUploadUrl } from '@workspace/api-client-react';
+import { useGetPost, useGetPostComments, useCreatePostComment, useRequestUploadUrl, useGetProfile } from '@workspace/api-client-react';
 import { ChevronLeft, Mic, Square, Send } from 'lucide-react-native';
 import { PostCard } from '../../components/PostCard';
 import { AuthenticatedAudioPlayer } from '../../components/AuthenticatedAudioPlayer';
@@ -10,6 +10,7 @@ import { File } from 'expo-file-system';
 import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
 import { formatApproximateTimeAgo } from '../../lib/relativeTime';
+import { SafetyActionSheet } from '../../components/SafetyActionSheet';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,8 +18,9 @@ export default function PostDetailScreen() {
   const colors = useColors();
   const router = useRouter();
 
-  const { data: post, isLoading, refetch } = useGetPost(postId, { query: { queryKey: ['post', postId] } });
+  const { data: post, isLoading, isError, refetch } = useGetPost(postId, { query: { queryKey: ['post', postId] } });
   const { data: comments, isLoading: commentsLoading, refetch: refetchComments } = useGetPostComments(postId, { query: { queryKey: ['comments', postId] } });
+  const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
 
   const requestUploadUrl = useRequestUploadUrl();
   const createComment = useCreatePostComment();
@@ -116,12 +118,15 @@ export default function PostDetailScreen() {
     }
   };
 
-  if (isLoading || !post) {
+  if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator color={colors.primary} />
       </SafeAreaView>
     );
+  }
+  if (isError || !post) {
+    return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.mutedForeground }}>This post is no longer available.</Text><TouchableOpacity onPress={() => router.back()} accessibilityLabel="Go back"><Text style={{ color: colors.primary, marginTop: 12 }}>Go back</Text></TouchableOpacity></SafeAreaView>;
   }
 
   return (
@@ -188,6 +193,7 @@ export default function PostDetailScreen() {
               <View key={comment.id} style={[styles.commentCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.commentHeader}>
                   <Text style={[styles.commentAuthor, { color: colors.foreground }]}>{comment.author.name}</Text>
+                  <SafetyActionSheet targetType="comment" targetId={comment.id} authorHandle={comment.author.handle} self={comment.author.handle === viewerProfile?.founder?.handle} compact />
                   <Text style={[styles.time, { color: colors.mutedForeground }]}>
                     {formatApproximateTimeAgo(comment.createdAt)}
                   </Text>

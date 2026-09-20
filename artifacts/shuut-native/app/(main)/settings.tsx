@@ -5,7 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
 import { Trash2, LogOut } from 'lucide-react-native';
-import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile } from '@workspace/api-client-react';
+import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile, useListBlockedAccounts, useUnblockAccount } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
 
@@ -18,6 +18,8 @@ export default function SettingsScreen() {
   const logout = useMobileLogout();
   const deleteAccount = useDeleteAccount();
   const updateProfile = useUpdateProfile();
+  const { data: blockedAccounts, isLoading: blockedLoading, refetch: refetchBlocked } = useListBlockedAccounts();
+  const unblockAccount = useUnblockAccount();
   const { data: profileData, refetch: refetchProfile } = useGetProfile('me', {
     query: { queryKey: ['profile', 'me'] },
   });
@@ -98,6 +100,19 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleUnblock = (handle: string) => {
+    Alert.alert('Unblock account?', `You will see @${handle}'s content again.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Unblock', onPress: async () => {
+        try {
+          await unblockAccount.mutateAsync({ handle });
+          await refetchBlocked();
+          await queryClient.invalidateQueries();
+        } catch { Alert.alert('Unblock failed', 'Please try again.'); }
+      }},
+    ]);
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View
@@ -126,6 +141,18 @@ export default function SettingsScreen() {
             disabled={!profileData?.founder || updateProfile.isPending}
             trackColor={{ false: colors.border, true: colors.primary }}
           />
+        </View>
+
+        <View style={[styles.blockedCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Blocked accounts</Text>
+          <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>Blocked profiles and their posts are hidden from your feeds.</Text>
+          {blockedLoading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> :
+            blockedAccounts?.length ? blockedAccounts.map(account => (
+              <View key={account.id} style={styles.blockedRow}>
+                <View style={{ flex: 1 }}><Text style={[styles.blockedName, { color: colors.foreground }]}>{account.name}</Text><Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>@{account.handle}</Text></View>
+                <TouchableOpacity onPress={() => handleUnblock(account.handle)} accessibilityLabel={`Unblock @${account.handle}`} style={[styles.unblockBtn, { borderColor: colors.border }]}><Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Unblock</Text></TouchableOpacity>
+              </View>
+            )) : <Text style={[styles.cardDesc, { color: colors.mutedForeground, marginTop: 12 }]}>No blocked accounts.</Text>}
         </View>
 
         <View style={[styles.card, { borderColor: colors.destructive + '40', backgroundColor: colors.destructive + '05' }]}>
@@ -237,6 +264,10 @@ const styles = StyleSheet.create({
   preferenceCopy: {
     flex: 1,
   },
+  blockedCard: { padding: 20, borderRadius: 16, borderWidth: 1 },
+  blockedRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 16, gap: 12 },
+  blockedName: { fontFamily: 'Inter_600SemiBold', fontSize: 15 },
+  unblockBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
   preferenceTitle: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,

@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { PostComments } from "./post-comments"
 import { canShowPostDeleteAction } from "@/lib/post-permissions"
+import { ModerationActions } from "./moderation-actions"
 
 interface PostCardProps {
   post: Post
@@ -197,9 +198,12 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               <div className="truncate text-[13px] text-muted-foreground leading-tight">@{post.author.handle}</div>
             </div>
           </Link>
-          <Link href={`/p/${post.id}`} className="text-[13px] text-muted-foreground hover:underline whitespace-nowrap shrink-0 self-start pt-1">
-            {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-          </Link>
+          <div className="flex items-center gap-1 shrink-0 self-start">
+            <Link href={`/p/${post.id}`} className="text-[13px] text-muted-foreground hover:underline whitespace-nowrap pt-1">
+              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+            </Link>
+            <ModerationActions targetType="post" targetId={post.id} targetLabel="this SHÜÜT" authorHandle={post.author.handle} isSelf={post.canDelete} onBlocked={() => { if (isDetail) setLocation("/") }} />
+          </div>
         </div>
 
         {/* Content */}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import { desc, eq, inArray, like } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import app from "../src/app";
 import { retryDueCleanupJobs } from "../src/routes/shuut";
 import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
@@ -18,6 +18,10 @@ import {
 import {
   db,
   commentsTable,
+  accountBlocksTable,
+  accountFollowsTable,
+  accountReportsTable,
+  securityRateLimitsTable,
   notificationsTable,
   postMentionsTable,
   foundersTable,
@@ -396,6 +400,7 @@ before(async () => {
   realRegisterVerifier = webauthnVerifier.verifyRegistration;
   realAssertionVerifier = webauthnVerifier.verifyAuthentication;
   realStreamPrivate = ObjectStorageService.prototype.streamPrivate;
+  await db.delete(securityRateLimitsTable);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -432,6 +437,325 @@ after(async () => {
     server.close((error) => (error ? reject(error) : resolve())),
   );
   await pool.end();
+});
+
+let securityFixtureNumber = 0;
+async function securityFixture(label: string) {
+  const suffix = `${prefix.replace(/[^a-z0-9]/g, "").slice(-10)}${++securityFixtureNumber}`;
+  const ownerEmail = `${prefix}-${label}-owner-${securityFixtureNumber}@example.test`;
+  const viewerEmail = `${prefix}-${label}-viewer-${securityFixtureNumber}@example.test`;
+  const ownerSession = await register(ownerEmail);
+  const viewerSession = await register(viewerEmail);
+  const [ownerUser] = await db.select().from(usersTable).where(eq(usersTable.email, ownerEmail));
+  const [viewerUser] = await db.select().from(usersTable).where(eq(usersTable.email, viewerEmail));
+  const [owner] = await db.insert(foundersTable).values({
+    userId: ownerUser.id, name: `Owner ${suffix}`, handle: `${suffix}owner`,
+    bio: "Original owner bio", avatarColor: "#111111",
+  }).returning();
+  const [viewer] = await db.insert(foundersTable).values({
+    userId: viewerUser.id, name: `Viewer ${suffix}`, handle: `${suffix}viewer`,
+    bio: "Viewer bio", avatarColor: "#222222",
+  }).returning();
+  const [post] = await db.insert(postsTable).values({
+    authorId: owner.id, transcript: "Original reportable transcript",
+    durationSeconds: 2, audioUrl: "/objects/uploads/security-post-audio",
+  }).returning();
+  const [comment] = await db.insert(commentsTable).values({
+    postId: post.id, authorId: owner.id, transcript: "Original reportable comment",
+    transcriptionStatus: "ready", audioUrl: "/objects/uploads/security-comment", durationSeconds: 1,
+  }).returning();
+  return {
+    ownerEmail, viewerEmail, ownerSession, viewerSession, ownerUser, viewerUser,
+    owner, viewer, post, comment,
+    async cleanup() {
+      await db.delete(accountReportsTable).where(eq(accountReportsTable.reporterUserId, viewerUser.id));
+      await db.delete(accountBlocksTable).where(or(
+        and(eq(accountBlocksTable.blockerFounderId, owner.id), eq(accountBlocksTable.blockedFounderId, viewer.id)),
+        and(eq(accountBlocksTable.blockerFounderId, viewer.id), eq(accountBlocksTable.blockedFounderId, owner.id)),
+      ));
+      await db.delete(accountFollowsTable).where(or(
+        and(eq(accountFollowsTable.followerFounderId, owner.id), eq(accountFollowsTable.followedFounderId, viewer.id)),
+        and(eq(accountFollowsTable.followerFounderId, viewer.id), eq(accountFollowsTable.followedFounderId, owner.id)),
+      ));
+      await db.delete(commentsTable).where(eq(commentsTable.id, comment.id));
+      await db.delete(postsTable).where(eq(postsTable.id, post.id));
+      await db.delete(foundersTable).where(inArray(foundersTable.id, [owner.id, viewer.id]));
+      await db.delete(sessionsTable).where(inArray(sessionsTable.userId, [ownerUser.id, viewerUser.id]));
+      await db.delete(usersTable).where(inArray(usersTable.id, [ownerUser.id, viewerUser.id]));
+    },
+  };
+}
+
+test("reports enforce auth and consent, validate all targets, deduplicate, and retain private evidence", async () => {
+  const fixture = await securityFixture("reports");
+  const realEvidenceCopy = ObjectStorageService.prototype.copyToEvidence;
+  const realEvidenceDelete = ObjectStorageService.prototype.deleteEvidence;
+  let copyCalls = 0;
+  const deletedEvidence: string[] = [];
+  ObjectStorageService.prototype.copyToEvidence = async (objectPath: string) => {
+    copyCalls += 1;
+    return `/objects/evidence/regression-${objectPath.split("/").at(-1)}`;
+  };
+  ObjectStorageService.prototype.deleteEvidence = async (objectPath: string) => {
+    deletedEvidence.push(objectPath);
+  };
+  try {
+    const anonymous = await request("/api/reports", {
+      method: "POST", json: { targetType: "profile", targetId: fixture.owner.id, reason: "spam" },
+    });
+    assert.equal(anonymous.status, 401);
+    const pending = await register(`${prefix}-reports-pending@example.test`, false);
+    assert.equal((await request("/api/reports", {
+      method: "POST", session: pending,
+      json: { targetType: "profile", targetId: fixture.owner.id, reason: "spam" },
+    })).status, 403);
+
+    for (const target of [
+      { targetType: "profile", targetId: fixture.owner.id },
+      { targetType: "post", targetId: fixture.post.id },
+      { targetType: "comment", targetId: fixture.comment.id },
+    ] as const) {
+      const response = await request("/api/reports", {
+        method: "POST", session: fixture.viewerSession,
+        json: { ...target, reason: "other", details: "Specific evidence" },
+      });
+      assert.equal(response.status, 201);
+      const body = await response.json() as Record<string, unknown>;
+      assert.deepEqual(Object.keys(body).sort(), ["id", "status"]);
+      assert.equal(body.status, "received");
+      assert.ok(!JSON.stringify(body).includes(fixture.viewerEmail));
+    }
+    const copiesBeforeDuplicate = copyCalls;
+    const duplicate = await request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "post", targetId: fixture.post.id, reason: "spam" },
+    });
+    assert.equal(duplicate.status, 200);
+    assert.equal((await duplicate.json() as { status: string }).status, "received");
+    assert.equal(copyCalls, copiesBeforeDuplicate);
+    const copiesAfterFirstReports = copyCalls;
+    const [raceTarget] = await db.insert(postsTable).values({
+      authorId: fixture.owner.id, transcript: "Concurrent report target",
+      durationSeconds: 1, audioUrl: "/objects/uploads/concurrent-report-audio",
+    }).returning();
+    const concurrent = await Promise.all(Array.from({ length: 4 }, () => request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "post", targetId: raceTarget.id, reason: "other" },
+    })));
+    assert.ok(concurrent.every((response) => response.status === 200 || response.status === 201));
+    const raceCopies = copyCalls - copiesAfterFirstReports;
+    assert.ok(raceCopies >= 1 && raceCopies <= 4);
+    assert.equal(deletedEvidence.length, raceCopies - 1);
+    assert.equal((await db.select().from(accountReportsTable).where(and(
+      eq(accountReportsTable.reporterUserId, fixture.viewerUser.id),
+      eq(accountReportsTable.targetType, "post"),
+      eq(accountReportsTable.targetId, String(raceTarget.id)),
+    ))).length, 1);
+    await db.delete(postsTable).where(eq(postsTable.id, raceTarget.id));
+
+    for (const json of [
+      { targetType: "post", targetId: fixture.post.id, reason: "not-a-reason" },
+      { targetType: "post", targetId: fixture.post.id, reason: "spam", details: "   " },
+      { targetType: "post", targetId: String(fixture.post.id), reason: "spam" },
+      { targetType: "post", targetId: 1.5, reason: "spam" },
+    ]) {
+      assert.equal((await request("/api/reports", { method: "POST", session: fixture.viewerSession, json })).status, 400);
+    }
+    assert.equal(copyCalls, copiesAfterFirstReports + raceCopies);
+    assert.equal((await request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "post", targetId: 999999999, reason: "spam" },
+    })).status, 404);
+    assert.equal(copyCalls, copiesAfterFirstReports + raceCopies);
+    await db.update(postsTable).set({ deletionStatus: "deleting" }).where(eq(postsTable.id, fixture.post.id));
+    assert.equal((await request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "post", targetId: fixture.post.id, reason: "spam" },
+    })).status, 404);
+    assert.equal((await request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "comment", targetId: fixture.comment.id, reason: "spam" },
+    })).status, 404);
+    await db.update(postsTable).set({ deletionStatus: "active" }).where(eq(postsTable.id, fixture.post.id));
+    assert.equal((await request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "profile", targetId: fixture.viewer.id, reason: "spam" },
+    })).status, 400);
+    assert.equal(copyCalls, copiesAfterFirstReports + raceCopies);
+
+    const [postReport] = await db.select().from(accountReportsTable).where(and(
+      eq(accountReportsTable.reporterUserId, fixture.viewerUser.id),
+      eq(accountReportsTable.targetType, "post"),
+    ));
+    const [commentReport] = await db.select().from(accountReportsTable).where(and(
+      eq(accountReportsTable.reporterUserId, fixture.viewerUser.id),
+      eq(accountReportsTable.targetType, "comment"),
+    ));
+    const [profileReport] = await db.select().from(accountReportsTable).where(and(
+      eq(accountReportsTable.reporterUserId, fixture.viewerUser.id),
+      eq(accountReportsTable.targetType, "profile"),
+    ));
+    assert.equal(postReport.contentSnapshot, "Original reportable transcript");
+    assert.equal(commentReport.contentSnapshot, "Original reportable comment");
+    assert.ok(profileReport.profileSnapshot?.includes("Original owner bio"));
+    await db.update(postsTable).set({ transcript: "Edited transcript" }).where(eq(postsTable.id, fixture.post.id));
+    await db.update(commentsTable).set({ transcript: "Edited comment" }).where(eq(commentsTable.id, fixture.comment.id));
+    await db.update(foundersTable).set({ bio: "Edited owner bio" }).where(eq(foundersTable.id, fixture.owner.id));
+    const [unchanged] = await db.select().from(accountReportsTable).where(eq(accountReportsTable.id, postReport.id));
+    assert.equal(unchanged.contentSnapshot, "Original reportable transcript");
+    assert.equal((await db.select().from(accountReportsTable).where(eq(accountReportsTable.id, commentReport.id)))[0].contentSnapshot, "Original reportable comment");
+    assert.ok((await db.select().from(accountReportsTable).where(eq(accountReportsTable.id, profileReport.id)))[0].profileSnapshot?.includes("Original owner bio"));
+    assert.equal(postReport.evidenceAudioObjectPath, "/objects/evidence/regression-security-post-audio");
+    assert.equal(commentReport.evidenceAudioObjectPath, "/objects/evidence/regression-security-comment");
+    await db.delete(postsTable).where(eq(postsTable.id, fixture.post.id));
+    const [postEvidenceAfterDeletion] = await db.select().from(accountReportsTable)
+      .where(eq(accountReportsTable.id, postReport.id));
+    assert.equal(postEvidenceAfterDeletion.evidenceAudioObjectPath, "/objects/evidence/regression-security-post-audio");
+    assert.equal((await db.select().from(accountReportsTable).where(eq(accountReportsTable.id, commentReport.id)))[0].evidenceAudioObjectPath, "/objects/evidence/regression-security-comment");
+  } finally {
+    ObjectStorageService.prototype.copyToEvidence = realEvidenceCopy;
+    ObjectStorageService.prototype.deleteEvidence = realEvidenceDelete;
+    await fixture.cleanup();
+  }
+});
+
+test("blocks are mutual, idempotent, remove follows, hide content and writes, and unblock does not restore follows", async () => {
+  const fixture = await securityFixture("blocks");
+  try {
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/block`, { method: "PUT", session: fixture.ownerSession })).status, 400);
+    const followed = await request(`/api/profiles/${fixture.owner.handle}/follow`, { method: "PUT", session: fixture.viewerSession });
+    assert.equal(followed.status, 200);
+    const followedProfile = await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession });
+    const followedProfileBody = await followedProfile.json() as {
+      founder: { isFollowing: boolean }; followerCount: number; followingCount: number;
+    };
+    assert.equal(followedProfileBody.founder.isFollowing, true);
+    assert.equal(followedProfileBody.followerCount, 1);
+    assert.equal(followedProfileBody.followingCount, 0);
+    const followingBeforeBlock = await request("/api/feed?view=following", { session: fixture.viewerSession });
+    assert.ok(JSON.stringify(await followingBeforeBlock.json()).includes(String(fixture.post.id)));
+    const search = await request(`/api/profiles/search?q=${encodeURIComponent(fixture.owner.handle)}`, {
+      session: fixture.viewerSession,
+    });
+    const searchMatch = (await search.json() as Array<{ handle: string; isFollowing: boolean }>)
+      .find((profile) => profile.handle === fixture.owner.handle);
+    assert.equal(searchMatch?.isFollowing, true);
+    const blocked = await request(`/api/profiles/${fixture.owner.handle}/block`, { method: "PUT", session: fixture.viewerSession });
+    assert.equal(blocked.status, 200);
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/block`, { method: "PUT", session: fixture.viewerSession })).status, 200);
+    assert.equal((await db.select().from(accountBlocksTable).where(eq(accountBlocksTable.blockerFounderId, fixture.viewer.id))).length, 1);
+    assert.equal((await db.select().from(accountFollowsTable).where(or(
+      and(eq(accountFollowsTable.followerFounderId, fixture.owner.id), eq(accountFollowsTable.followedFounderId, fixture.viewer.id)),
+      and(eq(accountFollowsTable.followerFounderId, fixture.viewer.id), eq(accountFollowsTable.followedFounderId, fixture.owner.id)),
+    ))).length, 0);
+
+    for (const path of [
+      `/api/profiles/${fixture.owner.handle}`,
+      `/api/posts/${fixture.post.id}`,
+      `/api/posts/${fixture.post.id}/comments`,
+      `/api/posts/${fixture.post.id}/share-link`,
+      `/api/posts/${fixture.post.id}/audio`,
+      `/api/comments/${fixture.comment.id}/audio`,
+    ]) {
+      const response = await request(path, {
+        method: path.endsWith("share-link") ? "POST" : "GET", session: fixture.viewerSession,
+      });
+      assert.equal(response.status, 404, path);
+    }
+    const followingFeed = await request("/api/feed?view=following", { session: fixture.viewerSession });
+    assert.equal(followingFeed.status, 200);
+    assert.ok(!(JSON.stringify(await followingFeed.json())).includes(String(fixture.post.id)));
+    for (const [path, method, json] of [
+      [`/api/posts/${fixture.post.id}/reaction`, "PUT", { emojiType: "rocket" }],
+      [`/api/posts/${fixture.post.id}/reshuut`, "POST", undefined],
+    ] as const) {
+      assert.equal((await request(path, { method, session: fixture.viewerSession, ...(json ? { json } : {}) })).status, 403);
+    }
+    const notifications = await request("/api/notifications", { session: fixture.ownerSession });
+    assert.equal(notifications.status, 200);
+    assert.ok(!(JSON.stringify(await notifications.json())).includes(fixture.viewer.handle));
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/follow`, {
+      method: "PUT", session: fixture.viewerSession,
+    })).status, 403);
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/ask`, {
+      method: "POST", session: fixture.viewerSession, json: { question: "What are you building?" },
+    })).status, 404);
+    assert.equal((await request("/api/posts", {
+      method: "POST", session: fixture.viewerSession,
+      json: {
+        transcript: "Blocked mention", durationSeconds: 1,
+        audioObjectPath: "/objects/uploads/blocked-mention",
+        mentionedFounderIds: [fixture.owner.id],
+      },
+    })).status, 403);
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/block`, { method: "DELETE", session: fixture.viewerSession })).status, 200);
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession })).status, 200);
+    const restoredProfile = await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession });
+    const restoredProfileBody = await restoredProfile.json() as {
+      founder: { isFollowing: boolean }; followerCount: number;
+    };
+    assert.equal(restoredProfileBody.founder.isFollowing, false);
+    assert.equal(restoredProfileBody.followerCount, 0);
+    assert.equal((await db.select().from(accountFollowsTable).where(and(
+      eq(accountFollowsTable.followerFounderId, fixture.viewer.id),
+      eq(accountFollowsTable.followedFounderId, fixture.owner.id),
+    ))).length, 0);
+    const [reverseBlock] = await Promise.all([
+      request(`/api/profiles/${fixture.viewer.handle}/block`, { method: "PUT", session: fixture.ownerSession }),
+      request(`/api/profiles/${fixture.viewer.handle}/follow`, { method: "PUT", session: fixture.ownerSession }),
+    ]);
+    assert.equal(reverseBlock.status, 200);
+    assert.equal((await db.select().from(accountFollowsTable).where(or(
+      and(eq(accountFollowsTable.followerFounderId, fixture.owner.id), eq(accountFollowsTable.followedFounderId, fixture.viewer.id)),
+      and(eq(accountFollowsTable.followerFounderId, fixture.viewer.id), eq(accountFollowsTable.followedFounderId, fixture.owner.id)),
+    ))).length, 0);
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession })).status, 404);
+    await request(`/api/profiles/${fixture.viewer.handle}/block`, { method: "DELETE", session: fixture.ownerSession });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("reports are rate limited and block endpoints reject unauthenticated requests", async () => {
+  const fixture = await securityFixture("limits");
+  const realEvidenceCopy = ObjectStorageService.prototype.copyToEvidence;
+  let copyCalls = 0;
+  ObjectStorageService.prototype.copyToEvidence = async () => {
+    copyCalls += 1;
+    return "/objects/evidence/rate-limit";
+  };
+  const extraTargets = await db.insert(foundersTable).values(
+    Array.from({ length: 11 }, (_, index) => ({
+      name: `Rate target ${index}`, handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-12)}rt${index}`,
+      bio: "Rate target", avatarColor: "#333333",
+    })),
+  ).returning();
+  try {
+    const unauthenticatedBlock = await request(`/api/profiles/${fixture.owner.handle}/block`, { method: "PUT" });
+    assert.equal(unauthenticatedBlock.status, 401);
+    const unauthenticatedUnblock = await request(`/api/profiles/${fixture.owner.handle}/block`, { method: "DELETE" });
+    assert.equal(unauthenticatedUnblock.status, 401);
+    for (const target of extraTargets) {
+      const response = await request("/api/reports", {
+        method: "POST", session: fixture.viewerSession,
+        json: { targetType: "profile", targetId: target.id, reason: "spam" },
+      });
+      assert.equal(response.status, target === extraTargets.at(-1) ? 429 : 201);
+    }
+    const limited = await request("/api/reports", {
+      method: "POST", session: fixture.viewerSession,
+      json: { targetType: "post", targetId: fixture.post.id, reason: "spam" },
+    });
+    assert.equal(limited.status, 429);
+    assert.equal((await limited.json() as { code: string }).code, "RATE_LIMITED");
+    assert.equal(copyCalls, 0);
+  } finally {
+    ObjectStorageService.prototype.copyToEvidence = realEvidenceCopy;
+    await db.delete(securityRateLimitsTable).where(eq(securityRateLimitsTable.key, `report:${fixture.viewerUser.id}`));
+    await db.delete(accountReportsTable).where(eq(accountReportsTable.reporterUserId, fixture.viewerUser.id));
+    await db.delete(foundersTable).where(inArray(foundersTable.id, extraTargets.map((target) => target.id)));
+    await fixture.cleanup();
+  }
 });
 
 test("email verification creates a browser session without a passkey gate", async () => {

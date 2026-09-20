@@ -5,6 +5,69 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+export interface SafeError {
+  error: string;
+  code: string;
+}
+
+export type ReportInputTargetType = typeof ReportInputTargetType[keyof typeof ReportInputTargetType];
+
+
+export const ReportInputTargetType = {
+  post: 'post',
+  comment: 'comment',
+  profile: 'profile',
+} as const;
+
+export type ReportInputReason = typeof ReportInputReason[keyof typeof ReportInputReason];
+
+
+export const ReportInputReason = {
+  spam: 'spam',
+  harassment: 'harassment',
+  hate: 'hate',
+  sexual_content: 'sexual_content',
+  violence: 'violence',
+  impersonation: 'impersonation',
+  other: 'other',
+} as const;
+
+export interface ReportInput {
+  targetType: ReportInputTargetType;
+  /**
+     * Canonical numeric target ID; aliases are rejected
+     * @minimum 1
+     */
+  targetId: number;
+  reason: ReportInputReason;
+  /** @maxLength 1000 */
+  details?: string;
+}
+
+export type ReportResultStatus = typeof ReportResultStatus[keyof typeof ReportResultStatus];
+
+
+export const ReportResultStatus = {
+  received: 'received',
+} as const;
+
+export interface ReportResult {
+  id: number;
+  status: ReportResultStatus;
+}
+
+export interface BlockedAccount {
+  id: number;
+  handle: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface BlockResult {
+  blocked: boolean;
+  handle: string;
+}
+
 export type AuthUserEligibilityStatus = typeof AuthUserEligibilityStatus[keyof typeof AuthUserEligibilityStatus];
 
 

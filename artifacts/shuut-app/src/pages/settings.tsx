@@ -5,6 +5,9 @@ import {
   useGetProfile,
   useLogout,
   useUpdateProfile,
+  useListBlockedAccounts,
+  useUnblockAccount,
+  getListBlockedAccountsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
@@ -22,6 +25,8 @@ export default function SettingsPage() {
   const logout = useLogout();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { data: blockedAccounts, isLoading: blockedLoading } = useListBlockedAccounts();
+  const unblockAccount = useUnblockAccount();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deletionState, setDeletionState] = useState<"pending" | "failed" | null>(null);
@@ -94,6 +99,20 @@ export default function SettingsPage() {
     });
   };
 
+  const unblock = (handle: string) => {
+    unblockAccount.mutate({ handle }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListBlockedAccountsQueryKey() });
+        toast({ title: `@${handle} unblocked` });
+      },
+      onError: (caught) => toast({
+        title: "Could not unblock account",
+        description: caught instanceof Error ? caught.message : "Please try again.",
+        variant: "destructive",
+      }),
+    });
+  };
+
   return (
     <Layout>
       <header className="sticky top-0 z-20 border-b border-border/50 bg-background/80 px-5 py-4 backdrop-blur-md">
@@ -113,6 +132,28 @@ export default function SettingsPage() {
             disabled={!profile || updateProfile.isPending}
             aria-label="Preview transcript before publishing"
           />
+        </div>
+
+        <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <h2 className="font-semibold">Blocked accounts</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Blocked profiles are hidden from your feed. You can restore access here.
+          </p>
+          <div className="mt-4 divide-y divide-border/50">
+            {blockedLoading && <p className="py-3 text-sm text-muted-foreground">Loading blocked accounts…</p>}
+            {!blockedLoading && blockedAccounts?.length === 0 && <p className="py-3 text-sm text-muted-foreground">No blocked accounts.</p>}
+            {blockedAccounts?.map(account => (
+              <div key={account.handle} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{account.name}</p>
+                  <p className="truncate text-sm text-muted-foreground">@{account.handle}</p>
+                </div>
+                <Button variant="outline" size="sm" className="rounded-full" onClick={() => unblock(account.handle)} disabled={unblockAccount.isPending}>
+                  Unblock
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="rounded-2xl border border-destructive/40 bg-card p-5">

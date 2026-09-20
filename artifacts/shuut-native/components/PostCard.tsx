@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator } from 'react-native';
 import { useColors } from '../hooks/useColors';
-import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost } from '@workspace/api-client-react';
+import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost, useGetProfile } from '@workspace/api-client-react';
 import { useRouter } from 'expo-router';
 import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil } from 'lucide-react-native';
+import { SafetyActionSheet } from './SafetyActionSheet';
 import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
 import { File } from 'expo-file-system';
@@ -29,6 +30,7 @@ export function PostCard({
   const colors = useColors();
   const router = useRouter();
   const { token } = useAuth();
+  const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
 
   const deletePost = useDeletePost();
   const setReaction = useSetReaction();
@@ -214,6 +216,7 @@ export function PostCard({
         <Text style={[styles.time, { color: colors.mutedForeground }]}>
           {formatApproximateTimeAgo(post.createdAt)}
         </Text>
+        <SafetyActionSheet targetType="post" targetId={post.id} authorHandle={post.author.handle} self={post.canDelete || post.author.handle === viewerProfile?.founder?.handle} onBlocked={() => router.back()} />
       </View>
 
       {isEditing ? (
@@ -348,6 +351,7 @@ export function PostCard({
               <View key={comment.id} style={[styles.commentCard, { borderTopColor: colors.border }]}>
                 <View style={styles.commentHeader}>
                   <Text style={[styles.commentAuthor, { color: colors.foreground }]}>{comment.author.name}</Text>
+                  <SafetyActionSheet targetType="comment" targetId={comment.id} authorHandle={comment.author.handle} self={comment.author.handle === viewerProfile?.founder?.handle} compact />
                   <Text style={[styles.time, { color: colors.mutedForeground }]}>
                     {formatApproximateTimeAgo(comment.createdAt)}
                   </Text>

@@ -657,6 +657,78 @@ paths:
         '200':
           description: Grounded answer
           content: { application/json: { schema: { $ref: '#/components/schemas/AskAnswer' } } }
+  /reports:
+    post:
+      operationId: createReport
+      tags: [account]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReportInput' } } }
+      responses:
+        '201':
+          description: Report received
+          content: { application/json: { schema: { $ref: '#/components/schemas/ReportResult' } } }
+        '400': { description: Invalid report or self-report }
+        '401': { description: Unauthorized }
+        '403': { description: Legal consent required }
+        '429': { description: Rate limited }
+        '200': { description: Duplicate reports are idempotent, content: { application/json: { schema: { $ref: '#/components/schemas/ReportResult' } } } }
+        '404': { description: Report target not found }
+        '409': { description: Concurrent report conflict, content: { application/json: { schema: { $ref: '#/components/schemas/SafeError' } } } }
+        '502': { description: Evidence preservation failed, content: { application/json: { schema: { $ref: '#/components/schemas/SafeError' } } } }
+  /account/blocks:
+    get:
+      operationId: listBlockedAccounts
+      tags: [account]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Accounts blocked by the current founder
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/BlockedAccount' } } } }
+  /profiles/{handle}/block:
+    get:
+      operationId: getBlockStatus
+      tags: [account]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Block status for the viewer, content: { application/json: { schema: { $ref: '#/components/schemas/BlockResult' } } } }
+        '401': { description: Unauthorized }
+        '404': { description: Profile not found }
+    put:
+      operationId: blockAccount
+      tags: [account]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Account blocked, content: { application/json: { schema: { $ref: '#/components/schemas/BlockResult' } } } }
+        '401': { description: Unauthorized }
+        '403': { description: Legal consent required or blocked relationship }
+        '404': { description: Profile not found }
+    delete:
+      operationId: unblockAccount
+      tags: [account]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: handle, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Account unblocked, content: { application/json: { schema: { $ref: '#/components/schemas/BlockResult' } } } }
+        '401': { description: Unauthorized }
+        '403': { description: Legal consent required }
+        '404': { description: Profile not found }
 components:
   securitySchemes:
     SessionCookie:
@@ -668,6 +740,40 @@ components:
       scheme: bearer
       bearerFormat: opaque
   schemas:
+    SafeError:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string }
+    ReportInput:
+      type: object
+      required: [targetType, targetId, reason]
+      properties:
+        targetType: { type: string, enum: [post, comment, profile] }
+        targetId: { type: integer, minimum: 1, description: Canonical numeric target ID; aliases are rejected }
+        reason: { type: string, enum: [spam, harassment, hate, sexual_content, violence, impersonation, other] }
+        details: { type: string, maxLength: 1000 }
+    ReportResult:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [received] }
+    BlockedAccount:
+      type: object
+      required: [id, handle, name, createdAt]
+      properties:
+        id: { type: integer }
+        handle: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    BlockResult:
+      type: object
+      required: [blocked, handle]
+      properties:
+        blocked: { type: boolean }
+        handle: { type: string }
     AuthUser:
       type: object
       required: [id, email, emailVerified, onboardingComplete, eligibilityStatus, passkeyEnrolled, passkeyVerified, legalPolicyConsent]

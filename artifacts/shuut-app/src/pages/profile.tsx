@@ -14,6 +14,7 @@ import * as Progress from "@radix-ui/react-progress"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { ModerationActions } from "@/components/moderation-actions"
 import {
   Form,
   FormControl,
@@ -551,6 +552,13 @@ export default function Profile() {
                     >
                       {profile.founder.isFollowing ? "Following" : "Follow"}
                     </Button>
+                    <ModerationActions
+                      targetType="profile"
+                      targetId={profile.founder.id}
+                      targetLabel={`@${profile.founder.handle}`}
+                      authorHandle={profile.founder.handle}
+                      onBlocked={() => setLocation("/")}
+                    />
                   </>
                 )}
               </div>

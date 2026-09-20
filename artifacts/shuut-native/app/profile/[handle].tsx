@@ -9,6 +9,7 @@ import { authenticatedImageSource } from '../../lib/apiUrl';
 import { useAuth } from '../../hooks/useAuthStore';
 import { PostCard } from '../../components/PostCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafetyActionSheet } from '../../components/SafetyActionSheet';
 
 export default function ProfileScreen() {
   const { handle } = useLocalSearchParams<{ handle: string }>();
@@ -17,7 +18,8 @@ export default function ProfileScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const { data: profileData, isLoading, refetch } = useGetProfile(handle, { query: { queryKey: ['profile', handle] } });
+  const { data: profileData, isLoading, isError, refetch } = useGetProfile(handle, { query: { queryKey: ['profile', handle] } });
+  const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
   const toggleFollow = useToggleFollow();
 
   const handleFollow = () => {
@@ -33,6 +35,9 @@ export default function ProfileScreen() {
       </SafeAreaView>
     );
   }
+  if (isError || !profileData?.founder) {
+    return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.mutedForeground }}>This profile is unavailable.</Text><TouchableOpacity onPress={() => router.back()} accessibilityLabel="Go back"><Text style={{ color: colors.primary, marginTop: 12 }}>Go back</Text></TouchableOpacity></SafeAreaView>;
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -46,7 +51,7 @@ export default function ProfileScreen() {
             {profileData?.postCount ?? 0} {(profileData?.postCount ?? 0) === 1 ? 'SHÜÜT' : 'SHÜÜTs'}
           </Text>
         </View>
-        <View style={{ width: 24 }} />
+        <SafetyActionSheet targetType="profile" targetId={profileData.founder.id} authorHandle={profileData.founder.handle} self={profileData.founder.handle === viewerProfile?.founder?.handle} onBlocked={() => router.back()} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>

@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { and, asc, desc, eq, ilike, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import {
@@ -44,6 +44,11 @@ import {
   GetNotificationsResponse,
   SearchProfilesQueryParams,
   SearchProfilesResponse,
+  CreateReportBody,
+  CreateReportResponse,
+  BlockAccountParams,
+  BlockAccountResponse,
+  ListBlockedAccountsResponse,
 } from "@workspace/api-zod";
 import {
   db,
@@ -57,6 +62,9 @@ import {
   profileImageUploadsTable,
   usersTable,
   objectCleanupJobsTable,
+  accountBlocksTable,
+  accountReportsTable,
+  accountFollowsTable,
   type FounderRow,
   type PostRow,
   type CommentRow,
@@ -108,6 +116,21 @@ async function finalizeCleanupScope(scope: CleanupScope) {
         .where(eq(foundersTable.userId, scope.id))
         .limit(1);
       if (founder) {
+        await tx.delete(accountFollowsTable).where(or(
+          eq(accountFollowsTable.followerFounderId, founder.id),
+          eq(accountFollowsTable.followedFounderId, founder.id),
+        ));
+        await tx.delete(accountBlocksTable).where(or(
+          eq(accountBlocksTable.blockerFounderId, founder.id),
+          eq(accountBlocksTable.blockedFounderId, founder.id),
+        ));
+        await tx.update(accountReportsTable).set({
+          reporterFounderId: null,
+          targetAuthorId: null,
+        }).where(or(
+          eq(accountReportsTable.reporterFounderId, founder.id),
+          eq(accountReportsTable.targetAuthorId, founder.id),
+        ));
         const reactions = await tx.select().from(postReactionsTable)
           .where(eq(postReactionsTable.founderId, founder.id));
         const authoredPosts = await tx.select({ id: postsTable.id })
@@ -239,6 +262,41 @@ async function currentFounder(userId: string) {
   return linked ?? null;
 }
 
+async function foundersBlocked(leftId: number, rightId: number) {
+  const [row] = await db.select({ id: accountBlocksTable.id })
+    .from(accountBlocksTable)
+    .where(or(
+      and(eq(accountBlocksTable.blockerFounderId, leftId), eq(accountBlocksTable.blockedFounderId, rightId)),
+      and(eq(accountBlocksTable.blockerFounderId, rightId), eq(accountBlocksTable.blockedFounderId, leftId)),
+    ))
+    .limit(1);
+  return Boolean(row);
+}
+
+async function lockFounderPair(tx: any, leftId: number, rightId: number) {
+  const low = Math.min(leftId, rightId);
+  const high = Math.max(leftId, rightId);
+  await tx.execute(sql`select pg_advisory_xact_lock(${low}::bigint * 1000000 + ${high}::bigint)`);
+}
+
+async function visibleToViewer(viewerId: number | null | undefined, authorId: number) {
+  return !viewerId || !(await foundersBlocked(viewerId, authorId));
+}
+
+async function requireViewer(req: Request, res: Response) {
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  const founder = await currentFounder(userId);
+  if (!founder) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  return { userId, founder };
+}
+
 let syntheticProfilesCleaned = false;
 async function ensureSeeded(): Promise<void> {
   if (syntheticProfilesCleaned) return;
@@ -256,7 +314,7 @@ async function ensureSeeded(): Promise<void> {
   syntheticProfilesCleaned = true;
 }
 
-function founderJson(founder: FounderRow) {
+function founderJson(founder: FounderRow, isFollowing = founder.isFollowing) {
   const storedAvatar = founder.avatarObjectPath;
   const avatarUrl = storedAvatar?.startsWith("/objects/uploads/")
     ? `/api/storage${storedAvatar}`
@@ -272,7 +330,7 @@ function founderJson(founder: FounderRow) {
     avatarUrl,
     location: founder.location,
     website: founder.website,
-    isFollowing: founder.isFollowing,
+    isFollowing,
     previewTranscript: founder.previewTranscript,
   };
 }
@@ -338,17 +396,21 @@ async function recordNotification(input: {
   commentId?: number | null;
 }) {
   if (input.actorId === input.recipientId) return;
-  await db.insert(notificationsTable).values({
-    actorId: input.actorId,
-    recipientId: input.recipientId,
-    postId: input.postId,
-    eventType: input.eventType,
-    reactionType: input.reactionType ?? null,
-    commentId: input.commentId ?? null,
-    dedupeKey: input.eventType === "comment"
-      ? `comment:${input.commentId}`
-      : `${input.eventType}:${input.actorId}:${input.postId}:${input.reactionType ?? ""}`,
-  }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
+  await db.transaction(async (tx) => {
+    await lockFounderPair(tx, input.actorId, input.recipientId);
+    if (await foundersBlocked(input.actorId, input.recipientId)) return;
+    await tx.insert(notificationsTable).values({
+      actorId: input.actorId,
+      recipientId: input.recipientId,
+      postId: input.postId,
+      eventType: input.eventType,
+      reactionType: input.reactionType ?? null,
+      commentId: input.commentId ?? null,
+      dedupeKey: input.eventType === "comment"
+        ? `comment:${input.commentId}`
+        : `${input.eventType}:${input.actorId}:${input.postId}:${input.reactionType ?? ""}`,
+    }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
+  });
 }
 
 async function activeFounders(founders: FounderRow[]) {
@@ -380,6 +442,14 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       ))
     : [];
   const reactionByPostId = new Map(viewerReactions.map((reaction) => [reaction.postId, reaction.emojiType]));
+  const follows = viewerFounderId
+    ? await db.select({ followedFounderId: accountFollowsTable.followedFounderId }).from(accountFollowsTable)
+      .where(and(
+        eq(accountFollowsTable.followerFounderId, viewerFounderId),
+        inArray(accountFollowsTable.followedFounderId, founders.map((founder) => founder.id)),
+      ))
+    : [];
+  const followedIds = new Set(follows.map((row) => row.followedFounderId));
   const viewerReshuuts = viewerFounderId
     ? await db.select({ postId: postReshuutsTable.postId }).from(postReshuutsTable).where(and(
         eq(postReshuutsTable.founderId, viewerFounderId),
@@ -391,7 +461,7 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
     const author = byId.get(row.authorId);
     return author ? [postJson(
       row,
-      author,
+      { ...author, isFollowing: followedIds.has(author.id) },
       viewerFounderId,
       reactionByPostId.get(row.id),
       reshuutedPostIds.has(row.id),
@@ -435,12 +505,21 @@ router.get("/feed", async (req, res): Promise<void> => {
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
   let rows = all;
+  if (viewer) {
+    const visible: PostRow[] = [];
+    for (const post of rows) if (await visibleToViewer(viewer.id, post.authorId)) visible.push(post);
+    rows = visible;
+  }
   if (params.data.view === "following") {
-    const followed = await db
-      .select({ id: foundersTable.id })
-      .from(foundersTable)
-      .where(eq(foundersTable.isFollowing, true));
-    rows = all.filter((post) => followed.some((founder) => founder.id === post.authorId));
+    if (!viewer) {
+      rows = [];
+    } else {
+      const followed = await db.select({ id: accountFollowsTable.followedFounderId })
+        .from(accountFollowsTable)
+        .where(eq(accountFollowsTable.followerFounderId, viewer.id));
+      const followedIds = new Set(followed.map((row) => row.id));
+      rows = rows.filter((post) => followedIds.has(post.authorId));
+    }
   }
   res.json(GetFeedResponse.parse(await hydratePosts(rows, viewer?.id)));
 });
@@ -472,8 +551,14 @@ router.get("/notifications", async (req, res): Promise<void> => {
     .limit(50);
   const active = await activeFounders(rows.map((row) => row.actor));
   const activeIds = new Set(active.map((founder) => founder.id));
+  const blockedActorIds = new Set(viewer
+    ? (await Promise.all(active.map(async (actor) =>
+      await foundersBlocked(viewer.id, actor.id) ? actor.id : null))).filter(
+        (id): id is number => id !== null,
+      )
+    : []);
   res.json(GetNotificationsResponse.parse(rows
-    .filter((row) => activeIds.has(row.actor.id))
+    .filter((row) => activeIds.has(row.actor.id) && !blockedActorIds.has(row.actor.id))
     .map((row) => ({
       id: row.notification.id,
       eventType: row.notification.eventType,
@@ -504,7 +589,224 @@ router.get("/profiles/search", async (req, res): Promise<void> => {
     ))
     .limit(12);
   const active = (await activeFounders(matches)).slice(0, 8);
-  res.json(SearchProfilesResponse.parse(active.map(founderJson)));
+  const viewer = await currentFounder(userId);
+  const visible = viewer
+    ? (await Promise.all(active.map(async (founder) =>
+      await visibleToViewer(viewer.id, founder.id) ? founder : null))).filter(
+        (founder): founder is FounderRow => Boolean(founder),
+      )
+    : active;
+  const followedSearchIds = viewer
+    ? new Set((await db.select({ followedFounderId: accountFollowsTable.followedFounderId })
+      .from(accountFollowsTable).where(and(
+        eq(accountFollowsTable.followerFounderId, viewer.id),
+        inArray(accountFollowsTable.followedFounderId, visible.map((founder) => founder.id)),
+      ))).map((row) => row.followedFounderId))
+    : new Set<number>();
+  res.json(SearchProfilesResponse.parse(visible.map((founder) =>
+    founderJson(founder, followedSearchIds.has(founder.id)))));
+});
+
+router.post("/reports", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+  const body = CreateReportBody.safeParse(req.body);
+  if (!body.success || (body.data.details !== undefined && !body.data.details.trim())) {
+    res.status(400).json({ error: "Invalid report" });
+    return;
+  }
+  const { targetType } = body.data;
+  const targetNumericId = body.data.targetId;
+  const targetId = String(targetNumericId);
+  let author: FounderRow | undefined;
+  let contentSnapshot: string | null = null;
+  let profileSnapshot: string | null = null;
+  let sourceCreatedAt: Date | null = null;
+  let sourceAudioObjectPath: string | null = null;
+  let evidenceAudioObjectPath: string | null = null;
+  if (targetType === "profile") {
+    [author] = await db.select().from(foundersTable)
+      .where(eq(foundersTable.id, targetNumericId)).limit(1);
+    if (!author || !(await isFounderActive(author))) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    profileSnapshot = JSON.stringify(founderJson(author));
+  } else if (targetType === "post") {
+    const [post] = await db.select().from(postsTable)
+      .where(and(eq(postsTable.id, targetNumericId), eq(postsTable.deletionStatus, "active"))).limit(1);
+    if (!post) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId)).limit(1);
+    if (!author || !(await isFounderActive(author))) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    contentSnapshot = post.transcript;
+    sourceCreatedAt = post.createdAt;
+    sourceAudioObjectPath = post.audioUrl;
+  } else {
+    const [comment] = await db.select().from(commentsTable)
+      .where(eq(commentsTable.id, targetNumericId)).limit(1);
+    if (!comment) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, comment.authorId)).limit(1);
+    if (!author || !(await isFounderActive(author))) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    contentSnapshot = comment.transcript;
+    sourceCreatedAt = comment.createdAt;
+    const [parent] = await db.select({ deletionStatus: postsTable.deletionStatus })
+      .from(postsTable).where(eq(postsTable.id, comment.postId)).limit(1);
+    if (!parent || parent.deletionStatus !== "active") {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    sourceAudioObjectPath = comment.audioUrl;
+  }
+  if (author.id === viewer.founder.id) {
+    res.status(400).json({ error: "You cannot report yourself", code: "SELF_REPORT" });
+    return;
+  }
+  const existing = await db.select({ id: accountReportsTable.id })
+    .from(accountReportsTable)
+    .where(and(
+      eq(accountReportsTable.reporterUserId, viewer.userId),
+      eq(accountReportsTable.targetType, targetType),
+      eq(accountReportsTable.targetId, targetId),
+    )).limit(1);
+  if (existing.length) {
+    res.status(200).json(CreateReportResponse.parse({ id: existing[0].id, status: "received" }));
+    return;
+  }
+  const limit = await consumeRateLimit(`report:${viewer.userId}`, 10, 60 * 60 * 1000);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", limit.retryAfter);
+    res.status(429).json({ error: "Too many reports", code: "RATE_LIMITED" });
+    return;
+  }
+  if (sourceAudioObjectPath) {
+    try {
+      evidenceAudioObjectPath = await objectStorage.copyToEvidence(sourceAudioObjectPath);
+    } catch {
+      res.status(502).json({ error: "Report evidence could not be preserved", code: "EVIDENCE_PRESERVATION_FAILED" });
+      return;
+    }
+  }
+  const [report] = await db.insert(accountReportsTable).values({
+    reporterUserId: viewer.userId,
+    reporterFounderId: viewer.founder.id,
+    targetType,
+    targetId,
+    reason: body.data.reason,
+    details: body.data.details?.trim() || null,
+    targetAuthorId: author.id,
+    targetAuthorHandle: author.handle,
+    contentSnapshot,
+    profileSnapshot,
+    evidenceAudioObjectPath,
+    sourceCreatedAt,
+  }).onConflictDoNothing({
+    target: [
+      accountReportsTable.reporterUserId,
+      accountReportsTable.targetType,
+      accountReportsTable.targetId,
+    ],
+  }).returning({ id: accountReportsTable.id }).catch(async (error) => {
+    if (evidenceAudioObjectPath) await objectStorage.deleteEvidence(evidenceAudioObjectPath).catch(() => undefined);
+    throw error;
+  });
+  if (!report) {
+    const [duplicate] = await db.select({ id: accountReportsTable.id })
+      .from(accountReportsTable).where(and(
+        eq(accountReportsTable.reporterUserId, viewer.userId),
+        eq(accountReportsTable.targetType, targetType),
+        eq(accountReportsTable.targetId, targetId),
+      )).limit(1);
+    if (duplicate) {
+      if (evidenceAudioObjectPath) await objectStorage.deleteEvidence(evidenceAudioObjectPath).catch(() => undefined);
+      res.status(200).json(CreateReportResponse.parse({ id: duplicate.id, status: "received" }));
+      return;
+    }
+    if (evidenceAudioObjectPath) await objectStorage.deleteEvidence(evidenceAudioObjectPath).catch(() => undefined);
+    res.status(409).json({ error: "Report could not be recorded", code: "REPORT_CONFLICT" });
+    return;
+  }
+  await auditSecurityEvent(req, "account_report_created", viewer.userId, { targetType, targetId });
+  res.status(201).json(CreateReportResponse.parse({ id: report.id, status: "received" }));
+});
+
+router.get("/account/blocks", async (req, res): Promise<void> => {
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+  const rows = await db.select({ founder: foundersTable, block: accountBlocksTable })
+    .from(accountBlocksTable)
+    .innerJoin(foundersTable, eq(foundersTable.id, accountBlocksTable.blockedFounderId))
+    .where(eq(accountBlocksTable.blockerFounderId, viewer.founder.id))
+    .orderBy(desc(accountBlocksTable.createdAt));
+  res.json(ListBlockedAccountsResponse.parse(rows.map(({ founder, block }) => ({
+    id: founder.id, handle: founder.handle, name: founder.name, createdAt: block.createdAt,
+  }))));
+});
+
+router.put("/profiles/:handle/block", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+  const params = BlockAccountParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: "Invalid profile" }); return; }
+  const [target] = await db.select().from(foundersTable)
+    .where(eq(foundersTable.handle, params.data.handle)).limit(1);
+  if (!target || !(await isFounderActive(target))) { res.status(404).json({ error: "Profile not found" }); return; }
+  if (target.id === viewer.founder.id) { res.status(400).json({ error: "You cannot block yourself", code: "SELF_BLOCK" }); return; }
+  await db.transaction(async (tx) => {
+    await lockFounderPair(tx, viewer.founder.id, target.id);
+    await tx.insert(accountBlocksTable).values({
+      blockerFounderId: viewer.founder.id, blockedFounderId: target.id,
+    }).onConflictDoNothing();
+    await tx.delete(accountFollowsTable).where(or(
+      and(eq(accountFollowsTable.followerFounderId, viewer.founder.id), eq(accountFollowsTable.followedFounderId, target.id)),
+      and(eq(accountFollowsTable.followerFounderId, target.id), eq(accountFollowsTable.followedFounderId, viewer.founder.id)),
+    ));
+  });
+  await auditSecurityEvent(req, "account_block_created", viewer.userId, { targetFounderId: target.id });
+  res.json(BlockAccountResponse.parse({ blocked: true, handle: target.handle }));
+});
+
+router.delete("/profiles/:handle/block", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+  const params = BlockAccountParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: "Invalid profile" }); return; }
+  const [target] = await db.select().from(foundersTable).where(eq(foundersTable.handle, params.data.handle)).limit(1);
+  if (!target) { res.status(404).json({ error: "Profile not found" }); return; }
+  await db.delete(accountBlocksTable).where(and(
+    eq(accountBlocksTable.blockerFounderId, viewer.founder.id),
+    eq(accountBlocksTable.blockedFounderId, target.id),
+  ));
+  await auditSecurityEvent(req, "account_block_removed", viewer.userId, { targetFounderId: target.id });
+  res.json(BlockAccountResponse.parse({ blocked: false, handle: target.handle }));
+});
+
+router.get("/profiles/:handle/block", async (req, res): Promise<void> => {
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+  const params = BlockAccountParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: "Invalid profile" }); return; }
+  const [target] = await db.select({ id: foundersTable.id, handle: foundersTable.handle })
+    .from(foundersTable).where(eq(foundersTable.handle, params.data.handle)).limit(1);
+  if (!target) { res.status(404).json({ error: "Profile not found" }); return; }
+  res.json(BlockAccountResponse.parse({
+    blocked: await foundersBlocked(viewer.founder.id, target.id),
+    handle: target.handle,
+  }));
 });
 
 router.get("/profiles/:handle", async (req, res): Promise<void> => {
@@ -530,6 +832,11 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Profile not found" });
     return;
   }
+  const viewerForVisibility = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (viewerForVisibility && !(await visibleToViewer(viewerForVisibility.id, founder.id))) {
+    res.status(404).json({ error: "Profile not found" });
+    return;
+  }
   const rows = (await db
     .select()
     .from(postsTable)
@@ -538,11 +845,23 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active");
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
+  const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
+    .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
+  const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
+    .from(accountFollowsTable).where(eq(accountFollowsTable.followerFounderId, founder.id));
   res.json(
     GetProfileResponse.parse({
-      founder: founderJson(founder),
-      followerCount: founder.followerCount,
-      followingCount: founder.followingCount,
+      founder: {
+        ...founderJson(founder),
+        isFollowing: viewer
+          ? Boolean((await db.select({ id: accountFollowsTable.id }).from(accountFollowsTable).where(and(
+            eq(accountFollowsTable.followerFounderId, viewer.id),
+            eq(accountFollowsTable.followedFounderId, founder.id),
+          )).limit(1))[0])
+          : false,
+      },
+      followerCount: Number(followerCount),
+      followingCount: Number(followingCount),
       postCount: rows.length,
       posts: await hydratePosts(rows, viewer?.id),
       suggestedQuestions: [
@@ -630,11 +949,15 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
     .where(eq(postsTable.authorId, founder.id))
     .orderBy(desc(postsTable.createdAt)))
     .filter((post) => post.transcriptionStatus === "ready");
+  const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
+    .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
+  const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
+    .from(accountFollowsTable).where(eq(accountFollowsTable.followerFounderId, founder.id));
   res.json(
     UpdateProfileResponse.parse({
-      founder: founderJson(founder),
-      followerCount: founder.followerCount,
-      followingCount: founder.followingCount,
+      founder: { ...founderJson(founder), isFollowing: false },
+      followerCount: Number(followerCount),
+      followingCount: Number(followingCount),
       postCount: rows.length,
       posts: await hydratePosts(rows, founder.id),
       suggestedQuestions: [
@@ -706,6 +1029,11 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
     : [];
   if (!post?.audioUrl?.startsWith("/objects/uploads/") || !(await isFounderActive(author))) {
     await auditSecurityEvent(req, "audio_denial", getAuthenticatedUserId(req));
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
+  const audioViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (audioViewer && !(await visibleToViewer(audioViewer.id, post.authorId))) {
     res.status(404).json({ error: "Audio not found" });
     return;
   }
@@ -885,6 +1213,12 @@ router.post("/posts", async (req, res): Promise<void> => {
     res.status(400).json({ error: "One or more tagged accounts are unavailable" });
     return;
   }
+  const blockedMention = (await Promise.all(mentionedFounders.map(async (founder) =>
+    await foundersBlocked(author.id, founder.id) ? founder : null))).find(Boolean);
+  if (blockedMention) {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
   if (!body.data.audioObjectPath) {
     await auditSecurityEvent(req, "publish_denied", userId, { reason: "missing_audio" });
     res.status(400).json({ error: "An audio recording is required to publish." });
@@ -893,13 +1227,19 @@ router.post("/posts", async (req, res): Promise<void> => {
   let publication:
     | { status: "created"; created: PostRow }
     | { status: "upload_missing" }
-    | { status: "account_deleting" };
+    | { status: "account_deleting" }
+    | { status: "blocked" };
   try {
     publication = await db.transaction(async (tx) => {
       await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
       const [user] = await tx.select({ deletionStatus: usersTable.deletionStatus })
         .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
       if (user?.deletionStatus !== "active") return { status: "account_deleting" as const };
+      const mentionPairs = [...mentionedFounders].sort((left, right) => left.id - right.id);
+      for (const mentioned of mentionPairs) {
+        await lockFounderPair(tx, author.id, mentioned.id);
+        if (await foundersBlocked(author.id, mentioned.id)) return { status: "blocked" as const };
+      }
       const [claimedUpload] = await tx.delete(profileImageUploadsTable).where(and(
         eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
         eq(profileImageUploadsTable.userId, userId),
@@ -938,6 +1278,10 @@ router.post("/posts", async (req, res): Promise<void> => {
   if (publication.status === "upload_missing") {
     await auditSecurityEvent(req, "audio_denial", userId, { reason: "upload_not_owned" });
     res.status(403).json({ error: "This voice recording does not belong to you" });
+    return;
+  }
+  if (publication.status === "blocked") {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
     return;
   }
   const { created } = publication;
@@ -989,6 +1333,10 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
     return;
   }
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (viewer && !(await visibleToViewer(viewer.id, author.id))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   res.json(GetPostResponse.parse(postJson(
     post,
     author,
@@ -1015,6 +1363,11 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (viewer && !(await visibleToViewer(viewer.id, parent.authorId))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
   const rows = await db.select().from(commentsTable)
     .where(and(
       eq(commentsTable.postId, params.data.postId),
@@ -1026,10 +1379,16 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
       .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.authorId))])))
     : [];
   const byId = new Map(authors.map((author) => [author.id, author]));
+  const blockedAuthorIds = new Set(viewer
+    ? (await Promise.all(authors.map(async (author) =>
+      await foundersBlocked(viewer.id, author.id) ? author.id : null))).filter(
+        (id): id is number => id !== null,
+      )
+    : []);
   res.json(GetPostCommentsResponse.parse(
     rows.flatMap((row) => {
       const author = byId.get(row.authorId);
-      return author ? [commentJson(row, author)] : [];
+      return author && !blockedAuthorIds.has(author.id) ? [commentJson(row, author)] : [];
     }),
   ));
 });
@@ -1064,10 +1423,15 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  if (await foundersBlocked(author.id, post.authorId)) {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
   let publication:
     | { status: "created"; created: CommentRow }
     | { status: "upload_missing" }
-    | { status: "author_or_post_missing" };
+    | { status: "author_or_post_missing" }
+    | { status: "blocked" };
   try {
     publication = await db.transaction(async (tx) => {
       await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
@@ -1082,6 +1446,10 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
       )).limit(1);
       if (!activeUser || !activePost) {
         return { status: "author_or_post_missing" as const };
+      }
+      await lockFounderPair(tx, author.id, post.authorId);
+      if (await foundersBlocked(author.id, post.authorId)) {
+        return { status: "blocked" as const };
       }
       const [claimedUpload] = await tx.delete(profileImageUploadsTable).where(and(
         eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
@@ -1115,6 +1483,10 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
   if (publication.status === "upload_missing") {
     await auditSecurityEvent(req, "audio_denial", userId, { reason: "comment_upload_not_owned" });
     res.status(403).json({ error: "This voice recording does not belong to you" });
+    return;
+  }
+  if (publication.status === "blocked") {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
     return;
   }
   const { created } = publication;
@@ -1187,6 +1559,14 @@ router.get("/comments/:commentId/audio", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Audio not found" });
     return;
   }
+  const commentAudioViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (commentAudioViewer && (
+    !(await visibleToViewer(commentAudioViewer.id, parent.authorId))
+    || !(await visibleToViewer(commentAudioViewer.id, comment.authorId))
+  )) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
   try {
     const metadata = await objectStorage.streamPrivate(comment.audioUrl);
     res.setHeader("Content-Type", metadata.contentType);
@@ -1222,6 +1602,11 @@ router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
     ? await db.select().from(foundersTable).where(eq(foundersTable.id, post.authorId)).limit(1)
     : [];
   if (!post || post.transcriptionStatus !== "ready" || !(await isFounderActive(author))) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+  const shareViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (shareViewer && !(await visibleToViewer(shareViewer.id, post.authorId))) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
@@ -1328,6 +1713,12 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const [targetPost] = await db.select({ authorId: postsTable.authorId }).from(postsTable)
+    .where(eq(postsTable.id, params.data.postId)).limit(1);
+  if (targetPost && await foundersBlocked(viewer.id, targetPost.authorId)) {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
     const [activeUser] = await tx.select({ deletionStatus: usersTable.deletionStatus })
@@ -1343,6 +1734,8 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
       eq(postsTable.deletionStatus, "active"),
     ));
     if (!current) return { status: "post_missing" as const };
+    await lockFounderPair(tx, viewer.id, current.authorId);
+    if (await foundersBlocked(viewer.id, current.authorId)) return { status: "blocked" as const };
 
     const [existingReaction] = await tx.select().from(postReactionsTable).where(and(
       eq(postReactionsTable.postId, current.id),
@@ -1385,6 +1778,10 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  if (result.status === "blocked") {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
   const { updated, nextReaction } = result;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
   if (nextReaction) {
@@ -1423,6 +1820,10 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
       eq(postsTable.deletionStatus, "active"),
     ));
     if (!post) return { status: "post_missing" as const };
+    await lockFounderPair(tx, viewer.id, post.authorId);
+    if (await foundersBlocked(viewer.id, post.authorId)) {
+      return { status: "blocked" as const };
+    }
     const [existing] = await tx.select().from(postReshuutsTable).where(and(
       eq(postReshuutsTable.postId, post.id),
       eq(postReshuutsTable.founderId, viewer.id),
@@ -1440,6 +1841,10 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
   }
   if (result.status === "post_missing") {
     res.status(404).json({ error: "Post not found" });
+    return;
+  }
+  if (result.status === "blocked") {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
     return;
   }
   const { updated, isReshuuted } = result;
@@ -1476,12 +1881,49 @@ router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
-  const isFollowing = !founder.isFollowing;
-  const followerCount = Math.max(0, founder.followerCount + (isFollowing ? 1 : -1));
-  await db
-    .update(foundersTable)
-    .set({ isFollowing, followerCount })
-    .where(and(eq(foundersTable.id, founder.id)));
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (!viewer) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (founder.id === viewer.id) {
+    res.status(400).json({ error: "You cannot follow yourself" });
+    return;
+  }
+  if (await foundersBlocked(viewer.id, founder.id)) {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
+  const isFollowing = await db.transaction(async (tx) => {
+    await lockFounderPair(tx, viewer.id, founder.id);
+    if (await foundersBlocked(viewer.id, founder.id)) {
+      throw new Error("BLOCKED_RELATIONSHIP");
+    }
+    const [existingFollow] = await tx.select({ id: accountFollowsTable.id })
+      .from(accountFollowsTable).where(and(
+        eq(accountFollowsTable.followerFounderId, viewer.id),
+        eq(accountFollowsTable.followedFounderId, founder.id),
+      )).limit(1);
+    if (existingFollow) {
+      await tx.delete(accountFollowsTable).where(eq(accountFollowsTable.id, existingFollow.id));
+      return false;
+    }
+    await tx.insert(accountFollowsTable).values({
+      followerFounderId: viewer.id,
+      followedFounderId: founder.id,
+    }).onConflictDoNothing();
+    return true;
+  }).catch((error) => {
+    if (error instanceof Error && error.message === "BLOCKED_RELATIONSHIP") return null;
+    throw error;
+  });
+  if (isFollowing === null) {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` })
+    .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
+  const followerCount = Number(count);
   res.json(ToggleFollowResponse.parse({ isFollowing, followerCount }));
 });
 
@@ -1501,16 +1943,26 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Founder not found" });
     return;
   }
-  const posts = await db
-    .select()
-    .from(postsTable)
-    .where(and(
-      eq(postsTable.authorId, founder.id),
-      eq(postsTable.transcriptionStatus, "ready"),
-      eq(postsTable.deletionStatus, "active"),
-    ))
-    .orderBy(desc(postsTable.createdAt))
-    .limit(ASK_MINIMUM_POSTS);
+  const askViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const posts = await db.transaction(async (tx) => {
+    if (askViewer) {
+      await lockFounderPair(tx, askViewer.id, founder.id);
+      if (await foundersBlocked(askViewer.id, founder.id)) return null;
+    }
+    return tx.select()
+      .from(postsTable)
+      .where(and(
+        eq(postsTable.authorId, founder.id),
+        eq(postsTable.transcriptionStatus, "ready"),
+        eq(postsTable.deletionStatus, "active"),
+      ))
+      .orderBy(desc(postsTable.createdAt))
+      .limit(ASK_MINIMUM_POSTS);
+  });
+  if (!posts) {
+    res.status(404).json({ error: "Founder not found" });
+    return;
+  }
   if (posts.length < ASK_MINIMUM_POSTS) {
     res.status(403).json({ error: `Ask Me unlocks after ${ASK_MINIMUM_POSTS} published SHÜÜTs.` });
     return;

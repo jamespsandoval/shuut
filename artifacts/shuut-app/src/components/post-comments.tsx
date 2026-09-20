@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react"
-import { useGetPostComments, getGetPostCommentsQueryKey } from "@workspace/api-client-react"
+import { useGetPostComments, getGetPostCommentsQueryKey, useGetProfile } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { CommentComposer } from "./comment-composer"
 import { AudioPlayer } from "./audio-player"
 import { formatDistanceToNow } from "date-fns"
 import { Link } from "wouter"
 import { Loader2 } from "lucide-react"
+import { ModerationActions } from "./moderation-actions"
 
 export function PostComments({
   postId,
@@ -17,6 +18,7 @@ export function PostComments({
   onComposerClose?: () => void
 }) {
   const queryClient = useQueryClient()
+  const { data: currentProfile } = useGetProfile("me")
   
   type PendingComment = { id: number; timestamp: number; failed?: boolean }
   const [pendingComments, setPendingComments] = useState<PendingComment[]>([])
@@ -119,6 +121,7 @@ export function PostComments({
                 <span className="text-[13px] text-muted-foreground whitespace-nowrap">
                   {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
                 </span>
+                <ModerationActions targetType="comment" targetId={comment.id} targetLabel="this comment" authorHandle={comment.author.handle} isSelf={currentProfile?.founder.handle === comment.author.handle} />
               </div>
               <p className="text-[15px] text-foreground mb-3 whitespace-pre-wrap break-words leading-relaxed">{comment.transcript}</p>
               {comment.audioUrl && (

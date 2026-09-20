@@ -1125,3 +1125,60 @@ export const AskFounderResponse = zod.object({
 })
 
 
+
+export const createReportBodyDetailsMax = 1000;
+
+
+
+export const CreateReportBody = zod.object({
+  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetId": zod.number().int().min(1).describe('Canonical numeric target ID; aliases are rejected'),
+  "reason": zod.enum(['spam', 'harassment', 'hate', 'sexual_content', 'violence', 'impersonation', 'other']),
+  "details": zod.string().max(createReportBodyDetailsMax).optional()
+})
+
+export const CreateReportResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['received'])
+})
+
+
+export const ListBlockedAccountsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "handle": zod.string(),
+  "name": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListBlockedAccountsResponse = zod.array(ListBlockedAccountsResponseItem)
+
+
+export const GetBlockStatusParams = zod.object({
+  "handle": zod.coerce.string()
+})
+
+export const GetBlockStatusResponse = zod.object({
+  "blocked": zod.boolean(),
+  "handle": zod.string()
+})
+
+
+export const BlockAccountParams = zod.object({
+  "handle": zod.coerce.string()
+})
+
+export const BlockAccountResponse = zod.object({
+  "blocked": zod.boolean(),
+  "handle": zod.string()
+})
+
+
+export const UnblockAccountParams = zod.object({
+  "handle": zod.coerce.string()
+})
+
+export const UnblockAccountResponse = zod.object({
+  "blocked": zod.boolean(),
+  "handle": zod.string()
+})
+
+

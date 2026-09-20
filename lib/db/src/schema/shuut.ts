@@ -65,6 +65,21 @@ export const postReactionsTable = pgTable(
   ],
 );
 
+export const accountFollowsTable = pgTable(
+  "shuut_account_follows",
+  {
+    id: serial("id").primaryKey(),
+    followerFounderId: integer("follower_founder_id").notNull(),
+    followedFounderId: integer("followed_founder_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_account_follows_pair_idx").on(table.followerFounderId, table.followedFounderId),
+    index("shuut_account_follows_follower_idx").on(table.followerFounderId),
+    index("shuut_account_follows_followed_idx").on(table.followedFounderId),
+  ],
+);
+
 export const postReshuutsTable = pgTable(
   "shuut_post_reshuuts",
   {
@@ -352,7 +367,58 @@ export const securityAuditEventsTable = pgTable(
   ],
 );
 
+/**
+ * Account relationships are kept independently from profile rows so a block
+ * remains durable while either side is being deleted.  The pair is stored in
+ * canonical order, making a block mutual for reads without duplicating rows.
+ */
+export const accountBlocksTable = pgTable(
+  "shuut_account_blocks",
+  {
+    id: serial("id").primaryKey(),
+    blockerFounderId: integer("blocker_founder_id").notNull(),
+    blockedFounderId: integer("blocked_founder_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_account_blocks_pair_idx").on(table.blockerFounderId, table.blockedFounderId),
+    index("shuut_account_blocks_blocker_idx").on(table.blockerFounderId),
+    index("shuut_account_blocks_blocked_idx").on(table.blockedFounderId),
+  ],
+);
+
+export const accountReportsTable = pgTable(
+  "shuut_account_reports",
+  {
+    id: serial("id").primaryKey(),
+    reporterUserId: text("reporter_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+    reporterFounderId: integer("reporter_founder_id"),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    reason: text("reason").notNull(),
+    details: text("details"),
+    targetAuthorId: integer("target_author_id"),
+    targetAuthorHandle: text("target_author_handle"),
+    contentSnapshot: text("content_snapshot"),
+    profileSnapshot: text("profile_snapshot"),
+    evidenceAudioObjectPath: text("evidence_audio_object_path"),
+    contentHash: text("content_hash"),
+    sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_account_reports_reporter_target_idx").on(
+      table.reporterUserId,
+      table.targetType,
+      table.targetId,
+    ),
+    index("shuut_account_reports_target_idx").on(table.targetType, table.targetId),
+  ],
+);
+
 export type FounderRow = typeof foundersTable.$inferSelect;
 export type PostRow = typeof postsTable.$inferSelect;
 export type CommentRow = typeof commentsTable.$inferSelect;
 export type NotificationRow = typeof notificationsTable.$inferSelect;
+export type AccountBlockRow = typeof accountBlocksTable.$inferSelect;
+export type AccountReportRow = typeof accountReportsTable.$inferSelect;

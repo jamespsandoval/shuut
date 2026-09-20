@@ -47,6 +47,8 @@ async function signedPutUrl(bucketName: string, objectName: string): Promise<str
 }
 
 export class ObjectStorageService {
+  constructor(private readonly storageClient: Pick<Storage, "bucket"> = storage) {}
+
   privateDir() {
     const value = process.env.PRIVATE_OBJECT_DIR;
     if (!value) throw new Error("PRIVATE_OBJECT_DIR is not configured");
@@ -66,10 +68,35 @@ export class ObjectStorageService {
     if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) throw new Error("Invalid object path");
     const relative = objectPath.replace(/^\/objects\//, "");
     const { bucketName, objectName } = parsePath(`${this.privateDir()}/${relative}`);
-    const file = storage.bucket(bucketName).file(objectName);
+    const file = this.storageClient.bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     if (!exists) throw new Error("Object not found");
     return file;
+  }
+
+  async copyToEvidence(objectPath: string): Promise<string> {
+    if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) {
+      throw new Error("Invalid source object path");
+    }
+    const sourceRelative = objectPath.replace(/^\/objects\//, "");
+    const { bucketName, objectName } = parsePath(`${this.privateDir()}/${sourceRelative}`);
+    const evidenceId = randomUUID();
+    const evidencePath = `/objects/evidence/${evidenceId}`;
+    const evidenceRelative = evidencePath.replace(/^\/objects\//, "");
+    const destinationLocation = parsePath(`${this.privateDir()}/${evidenceRelative}`);
+    if (destinationLocation.bucketName !== bucketName) {
+      throw new Error("Evidence destination bucket does not match source bucket");
+    }
+    const destination = this.storageClient.bucket(bucketName).file(destinationLocation.objectName);
+    await this.storageClient.bucket(bucketName).file(objectName).copy(destination);
+    return evidencePath;
+  }
+
+  async deleteEvidence(objectPath: string): Promise<void> {
+    if (!/^\/objects\/evidence\/[A-Za-z0-9-]+$/.test(objectPath)) return;
+    const relative = objectPath.replace(/^\/objects\//, "");
+    const { bucketName, objectName } = parsePath(`${this.privateDir()}/${relative}`);
+    await this.storageClient.bucket(bucketName).file(objectName).delete({ ignoreNotFound: true });
   }
 
   async setAcl(objectPath: string, policy: ObjectAclPolicy) {
@@ -112,7 +139,7 @@ export class ObjectStorageService {
     if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) return;
     const relative = objectPath.replace(/^\/objects\//, "");
     const { bucketName, objectName } = parsePath(`${this.privateDir()}/${relative}`);
-    await storage.bucket(bucketName).file(objectName).delete({ ignoreNotFound: true });
+    await this.storageClient.bucket(bucketName).file(objectName).delete({ ignoreNotFound: true });
   }
 
   async stream(objectPath: string, range?: { start: number; end: number }) {
