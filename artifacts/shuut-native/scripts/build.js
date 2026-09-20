@@ -3,7 +3,10 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
-const { resolveStaticBuildApiBaseUrl } = require('./release-config');
+const {
+  isProductionStaticBuild,
+  resolveStaticBuildApiBaseUrl,
+} = require('./release-config');
 
 let metroProcess = null;
 
@@ -80,7 +83,10 @@ function getApiBaseUrl(deploymentDomain) {
   return resolveStaticBuildApiBaseUrl({
     configuredApiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
     deploymentDomain,
-    production: process.env.NODE_ENV === 'production',
+    production: isProductionStaticBuild({
+      nodeEnv: process.env.NODE_ENV,
+      internalAppDomain: process.env.REPLIT_INTERNAL_APP_DOMAIN,
+    }),
   });
 }
 

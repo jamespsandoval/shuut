@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   EXPECTED_IOS_BUNDLE_IDENTIFIER,
   PRODUCTION_API_BASE_URL,
+  isProductionStaticBuild,
   resolveStaticBuildApiBaseUrl,
   validateReleaseConfig,
 } = require('./release-config');
@@ -58,6 +59,17 @@ test('production static deployment keeps the canonical API origin', () => {
     deploymentDomain: 'shuut-me.replit.app',
     production: true,
   }), PRODUCTION_API_BASE_URL);
+});
+
+test('Replit deployment is production even before NODE_ENV is set', () => {
+  assert.equal(isProductionStaticBuild({
+    nodeEnv: undefined,
+    internalAppDomain: 'shuut-me.replit.app',
+  }), true);
+  assert.equal(isProductionStaticBuild({
+    nodeEnv: undefined,
+    internalAppDomain: undefined,
+  }), false);
 });
 
 test('development static deployment can use its deployment domain', () => {

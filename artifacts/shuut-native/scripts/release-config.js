@@ -43,6 +43,13 @@ function resolveStaticBuildApiBaseUrl({
   return normalizeApiBaseUrl(`https://${deploymentDomain}`, true);
 }
 
+function isProductionStaticBuild({
+  nodeEnv,
+  internalAppDomain,
+}) {
+  return nodeEnv === 'production' || Boolean(internalAppDomain?.trim());
+}
+
 function validateReleaseConfig({
   appConfig,
   configuredApiBaseUrl,
@@ -117,6 +124,7 @@ if (require.main === module) {
 module.exports = {
   EXPECTED_IOS_BUNDLE_IDENTIFIER,
   PRODUCTION_API_BASE_URL,
+  isProductionStaticBuild,
   normalizeApiBaseUrl,
   resolveStaticBuildApiBaseUrl,
   validateReleaseConfig,
