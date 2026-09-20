@@ -39,3 +39,6 @@ yarn-error.*
 .vercel
 
 .env
+
+# Release debug artifacts contain source and must stay in private storage.
+release-diagnostics/
