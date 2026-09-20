@@ -58,7 +58,22 @@ export const VerifyEmailResponse = zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
 })
 })
 
@@ -94,7 +109,22 @@ export const VerifyLoginResponse = zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
 })
 })
 
@@ -153,7 +183,22 @@ export const VerifyMobileLoginResponse = zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
 })
 }).and(zod.object({
   "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
@@ -184,7 +229,22 @@ export const VerifyMobileEmailResponse = zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
 })
 }).and(zod.object({
   "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
@@ -249,7 +309,47 @@ export const GetCurrentUserResponse = zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
+})
+})
+
+
+export const acceptLegalPolicyConsentBodySourceDefault = `web`;
+
+export const AcceptLegalPolicyConsentBody = zod.object({
+  "termsVersion": zod.string(),
+  "communityGuidelinesVersion": zod.string(),
+  "source": zod.enum(['web', 'native', 'ios', 'android']).default(acceptLegalPolicyConsentBodySourceDefault)
+})
+
+export const AcceptLegalPolicyConsentResponse = zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
 })
 })
 
@@ -325,7 +425,22 @@ export const ConfirmPasskeyRecoveryResponse = zod.union([zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
 })
 }).and(zod.object({
   "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
@@ -366,7 +481,22 @@ export const CompleteOnboardingResponse = zod.object({
   "onboardingComplete": zod.boolean(),
   "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
   "passkeyEnrolled": zod.boolean(),
-  "passkeyVerified": zod.boolean()
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
 })
 })
 

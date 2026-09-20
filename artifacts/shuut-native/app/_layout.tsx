@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from '../hooks/useAuthStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setBaseUrl, setDefaultCredentials } from '@workspace/api-client-react';
 import { GlobalRecordButton } from '../components/GlobalRecordButton';
+import { LegalConsentGate } from '../components/LegalConsentGate';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -24,7 +25,7 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  const { authState } = useAuth();
+  const { authState, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -54,22 +55,34 @@ function RootLayoutNav() {
     return null;
   }
 
+  const inPublicContent = segments[0] === 'public';
+  const needsLegalConsent =
+    authState === 'ready' &&
+    !inPublicContent &&
+    user?.legalPolicyConsent.required === true;
+
   return (
     <ThemeProvider value={DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(main)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="compose"
-          options={{
-            headerShown: false,
-            animation: 'none',
-            gestureEnabled: false,
-          }}
-        />
-        <Stack.Screen name="public/[slug]" options={{ headerShown: false }} />
-      </Stack>
-      {authState === 'ready' && <GlobalRecordButton />}
+      {needsLegalConsent ? (
+        <LegalConsentGate returnTo={`/${segments.join('/') || '(main)/feed'}`} />
+      ) : (
+        <>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(main)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="compose"
+              options={{
+                headerShown: false,
+                animation: 'none',
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen name="public/[slug]" options={{ headerShown: false }} />
+          </Stack>
+          {authState === 'ready' && <GlobalRecordButton />}
+        </>
+      )}
     </ThemeProvider>
   );
 }

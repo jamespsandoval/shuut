@@ -71,6 +71,7 @@ import {
 import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/security";
 import { createPostShareToken } from "../lib/postShareToken";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
+import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
 
 const router: IRouter = Router();
 const ASK_MINIMUM_POSTS = 5;
@@ -554,6 +555,7 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
 });
 
 router.patch("/profiles/:handle", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   await ensureSeeded();
   const params = UpdateProfileParams.safeParse(req.params);
   const body = UpdateProfileBody.safeParse(req.body);
@@ -645,6 +647,7 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
 });
 
 router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
@@ -749,6 +752,7 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
 });
 
 router.post("/transcriptions", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   const body = TranscribeAudioBody.safeParse(req.body);
   if (!userId || !body.success) {
@@ -850,6 +854,7 @@ router.get("/storage/objects/*path", async (req, res): Promise<void> => {
 });
 
 router.post("/posts", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   await ensureSeeded();
   const userId = getAuthenticatedUserId(req);
   if (!userId) {
@@ -1030,6 +1035,7 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
 });
 
 router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   const params = CreatePostCommentParams.safeParse(req.params);
   const body = CreatePostCommentBody.safeParse(req.body);
@@ -1194,6 +1200,7 @@ router.get("/comments/:commentId/audio", async (req, res): Promise<void> => {
 });
 
 router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const params = CreatePostShareLinkParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1227,6 +1234,7 @@ router.post("/posts/:postId/share-link", async (req, res): Promise<void> => {
 });
 
 router.patch("/posts/:postId", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   const params = UpdatePostParams.safeParse(req.params);
   const body = UpdatePostBody.safeParse(req.body);
@@ -1307,6 +1315,7 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
 });
 
 router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const params = SetReactionParams.safeParse(req.params);
   const body = SetReactionBody.safeParse(req.body);
   if (!params.success || !body.success) {
@@ -1391,6 +1400,7 @@ router.put("/posts/:postId/reaction", async (req, res): Promise<void> => {
 });
 
 router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const params = ReshuutPostParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1452,6 +1462,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
 });
 
 router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   const params = ToggleFollowParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

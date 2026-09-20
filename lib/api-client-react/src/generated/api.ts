@@ -39,6 +39,10 @@ import type {
   Founder,
   GetFeedParams,
   HealthStatus,
+  LegalPolicyConsentInput,
+  LegalPolicyConsentRequiredError,
+  LegalPolicyConsentStatus,
+  LegalPolicyVersionMismatchError,
   LoginInput,
   MobileAuthSession,
   MobilePasskeyGrantInput,
@@ -1366,6 +1370,88 @@ export function useGetCurrentUser<TData = Awaited<ReturnType<typeof getCurrentUs
 
 
 
+
+export const getAcceptLegalPolicyConsentUrl = () => {
+
+
+
+
+  return `/api/auth/legal-policy-consent`
+}
+
+export const acceptLegalPolicyConsent = async (legalPolicyConsentInput: LegalPolicyConsentInput, options?: Parameters<typeof customFetch>[1]): Promise<LegalPolicyConsentStatus> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LegalPolicyConsentStatus>(getAcceptLegalPolicyConsentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(legalPolicyConsentInput)
+  }
+);}
+
+
+
+
+
+export const getAcceptLegalPolicyConsentMutationKey = () => ['acceptLegalPolicyConsent'] as const;
+
+export const getAcceptLegalPolicyConsentMutationOptions = <TError = ErrorType<void | LegalPolicyVersionMismatchError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptLegalPolicyConsent>>, TError,AcceptLegalPolicyConsentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptLegalPolicyConsent>>, TError,AcceptLegalPolicyConsentMutationVariables, TContext> => {
+
+const mutationKey = getAcceptLegalPolicyConsentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptLegalPolicyConsent>>, AcceptLegalPolicyConsentMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  acceptLegalPolicyConsent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptLegalPolicyConsentMutationResult = NonNullable<Awaited<ReturnType<typeof acceptLegalPolicyConsent>>>
+    export type AcceptLegalPolicyConsentMutationBody = BodyType<LegalPolicyConsentInput>
+    export type AcceptLegalPolicyConsentMutationError = ErrorType<void | LegalPolicyVersionMismatchError>
+    export type AcceptLegalPolicyConsentMutationVariables = {data: BodyType<LegalPolicyConsentInput>}
+
+    export const useAcceptLegalPolicyConsent = <TError = ErrorType<void | LegalPolicyVersionMismatchError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptLegalPolicyConsent>>, TError,AcceptLegalPolicyConsentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptLegalPolicyConsent>>,
+        TError,
+        AcceptLegalPolicyConsentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAcceptLegalPolicyConsentMutationOptions(options));
+    }
 
 export const getBeginPasskeyRegistrationUrl = () => {
 
@@ -2726,7 +2812,7 @@ return customFetch<ProfileDetail>(getUpdateProfileUrl(handle),
 
 export const getUpdateProfileMutationKey = () => ['updateProfile'] as const;
 
-export const getUpdateProfileMutationOptions = <TError = ErrorType<unknown>,
+export const getUpdateProfileMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfile>>, TError,UpdateProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateProfile>>, TError,UpdateProfileMutationVariables, TContext> => {
 
@@ -2755,10 +2841,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfile>>>
     export type UpdateProfileMutationBody = BodyType<ProfileUpdate>
-    export type UpdateProfileMutationError = ErrorType<unknown>
+    export type UpdateProfileMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type UpdateProfileMutationVariables = {handle: string;data: BodyType<ProfileUpdate>}
 
-    export const useUpdateProfile = <TError = ErrorType<unknown>,
+    export const useUpdateProfile = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfile>>, TError,UpdateProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateProfile>>,
@@ -2808,7 +2894,7 @@ return customFetch<UploadUrlResponse>(getRequestUploadUrlUrl(),
 
 export const getRequestUploadUrlMutationKey = () => ['requestUploadUrl'] as const;
 
-export const getRequestUploadUrlMutationOptions = <TError = ErrorType<unknown>,
+export const getRequestUploadUrlMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext> => {
 
@@ -2837,10 +2923,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RequestUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestUploadUrl>>>
     export type RequestUploadUrlMutationBody = BodyType<UploadUrlRequest>
-    export type RequestUploadUrlMutationError = ErrorType<unknown>
+    export type RequestUploadUrlMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type RequestUploadUrlMutationVariables = {data: BodyType<UploadUrlRequest>}
 
-    export const useRequestUploadUrl = <TError = ErrorType<unknown>,
+    export const useRequestUploadUrl = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof requestUploadUrl>>,
@@ -2890,7 +2976,7 @@ return customFetch<AudioTranscript>(getTranscribeAudioUrl(),
 
 export const getTranscribeAudioMutationKey = () => ['transcribeAudio'] as const;
 
-export const getTranscribeAudioMutationOptions = <TError = ErrorType<unknown>,
+export const getTranscribeAudioMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeAudio>>, TError,TranscribeAudioMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof transcribeAudio>>, TError,TranscribeAudioMutationVariables, TContext> => {
 
@@ -2919,10 +3005,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type TranscribeAudioMutationResult = NonNullable<Awaited<ReturnType<typeof transcribeAudio>>>
     export type TranscribeAudioMutationBody = BodyType<AudioTranscriptionInput>
-    export type TranscribeAudioMutationError = ErrorType<unknown>
+    export type TranscribeAudioMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type TranscribeAudioMutationVariables = {data: BodyType<AudioTranscriptionInput>}
 
-    export const useTranscribeAudio = <TError = ErrorType<unknown>,
+    export const useTranscribeAudio = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeAudio>>, TError,TranscribeAudioMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof transcribeAudio>>,
@@ -3043,7 +3129,7 @@ return customFetch<Post>(getCreatePostUrl(),
 
 export const getCreatePostMutationKey = () => ['createPost'] as const;
 
-export const getCreatePostMutationOptions = <TError = ErrorType<unknown>,
+export const getCreatePostMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPost>>, TError,CreatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createPost>>, TError,CreatePostMutationVariables, TContext> => {
 
@@ -3072,10 +3158,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreatePostMutationResult = NonNullable<Awaited<ReturnType<typeof createPost>>>
     export type CreatePostMutationBody = BodyType<PostInput>
-    export type CreatePostMutationError = ErrorType<unknown>
+    export type CreatePostMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type CreatePostMutationVariables = {data: BodyType<PostInput>}
 
-    export const useCreatePost = <TError = ErrorType<unknown>,
+    export const useCreatePost = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPost>>, TError,CreatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createPost>>,
@@ -3343,7 +3429,7 @@ return customFetch<Post>(getUpdatePostUrl(postId),
 
 export const getUpdatePostMutationKey = () => ['updatePost'] as const;
 
-export const getUpdatePostMutationOptions = <TError = ErrorType<unknown>,
+export const getUpdatePostMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePost>>, TError,UpdatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updatePost>>, TError,UpdatePostMutationVariables, TContext> => {
 
@@ -3372,10 +3458,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdatePostMutationResult = NonNullable<Awaited<ReturnType<typeof updatePost>>>
     export type UpdatePostMutationBody = BodyType<PostEditInput>
-    export type UpdatePostMutationError = ErrorType<unknown>
+    export type UpdatePostMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type UpdatePostMutationVariables = {postId: number;data: BodyType<PostEditInput>}
 
-    export const useUpdatePost = <TError = ErrorType<unknown>,
+    export const useUpdatePost = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePost>>, TError,UpdatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updatePost>>,
@@ -3426,7 +3512,7 @@ return customFetch<Post>(getSetReactionUrl(postId),
 
 export const getSetReactionMutationKey = () => ['setReaction'] as const;
 
-export const getSetReactionMutationOptions = <TError = ErrorType<unknown>,
+export const getSetReactionMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setReaction>>, TError,SetReactionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof setReaction>>, TError,SetReactionMutationVariables, TContext> => {
 
@@ -3455,10 +3541,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SetReactionMutationResult = NonNullable<Awaited<ReturnType<typeof setReaction>>>
     export type SetReactionMutationBody = BodyType<ReactionInput>
-    export type SetReactionMutationError = ErrorType<unknown>
+    export type SetReactionMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type SetReactionMutationVariables = {postId: number;data: BodyType<ReactionInput>}
 
-    export const useSetReaction = <TError = ErrorType<unknown>,
+    export const useSetReaction = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setReaction>>, TError,SetReactionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof setReaction>>,
@@ -3580,7 +3666,7 @@ return customFetch<VoiceCommentSubmission>(getCreatePostCommentUrl(postId),
 
 export const getCreatePostCommentMutationKey = () => ['createPostComment'] as const;
 
-export const getCreatePostCommentMutationOptions = <TError = ErrorType<unknown>,
+export const getCreatePostCommentMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostComment>>, TError,CreatePostCommentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createPostComment>>, TError,CreatePostCommentMutationVariables, TContext> => {
 
@@ -3609,10 +3695,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreatePostCommentMutationResult = NonNullable<Awaited<ReturnType<typeof createPostComment>>>
     export type CreatePostCommentMutationBody = BodyType<VoiceCommentInput>
-    export type CreatePostCommentMutationError = ErrorType<unknown>
+    export type CreatePostCommentMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type CreatePostCommentMutationVariables = {postId: number;data: BodyType<VoiceCommentInput>}
 
-    export const useCreatePostComment = <TError = ErrorType<unknown>,
+    export const useCreatePostComment = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostComment>>, TError,CreatePostCommentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createPostComment>>,
@@ -3719,7 +3805,7 @@ export const reshuutPost = async (postId: number, options?: Parameters<typeof cu
 
 export const getReshuutPostMutationKey = () => ['reshuutPost'] as const;
 
-export const getReshuutPostMutationOptions = <TError = ErrorType<unknown>,
+export const getReshuutPostMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reshuutPost>>, TError,ReshuutPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof reshuutPost>>, TError,ReshuutPostMutationVariables, TContext> => {
 
@@ -3748,10 +3834,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ReshuutPostMutationResult = NonNullable<Awaited<ReturnType<typeof reshuutPost>>>
 
-    export type ReshuutPostMutationError = ErrorType<unknown>
+    export type ReshuutPostMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type ReshuutPostMutationVariables = {postId: number}
 
-    export const useReshuutPost = <TError = ErrorType<unknown>,
+    export const useReshuutPost = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reshuutPost>>, TError,ReshuutPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof reshuutPost>>,
@@ -3787,7 +3873,7 @@ export const createPostShareLink = async (postId: number, options?: Parameters<t
 
 export const getCreatePostShareLinkMutationKey = () => ['createPostShareLink'] as const;
 
-export const getCreatePostShareLinkMutationOptions = <TError = ErrorType<unknown>,
+export const getCreatePostShareLinkMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostShareLink>>, TError,CreatePostShareLinkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createPostShareLink>>, TError,CreatePostShareLinkMutationVariables, TContext> => {
 
@@ -3816,10 +3902,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreatePostShareLinkMutationResult = NonNullable<Awaited<ReturnType<typeof createPostShareLink>>>
 
-    export type CreatePostShareLinkMutationError = ErrorType<unknown>
+    export type CreatePostShareLinkMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type CreatePostShareLinkMutationVariables = {postId: number}
 
-    export const useCreatePostShareLink = <TError = ErrorType<unknown>,
+    export const useCreatePostShareLink = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostShareLink>>, TError,CreatePostShareLinkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createPostShareLink>>,
@@ -3855,7 +3941,7 @@ export const toggleFollow = async (handle: string, options?: Parameters<typeof c
 
 export const getToggleFollowMutationKey = () => ['toggleFollow'] as const;
 
-export const getToggleFollowMutationOptions = <TError = ErrorType<unknown>,
+export const getToggleFollowMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleFollow>>, TError,ToggleFollowMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof toggleFollow>>, TError,ToggleFollowMutationVariables, TContext> => {
 
@@ -3884,10 +3970,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ToggleFollowMutationResult = NonNullable<Awaited<ReturnType<typeof toggleFollow>>>
 
-    export type ToggleFollowMutationError = ErrorType<unknown>
+    export type ToggleFollowMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
     export type ToggleFollowMutationVariables = {handle: string}
 
-    export const useToggleFollow = <TError = ErrorType<unknown>,
+    export const useToggleFollow = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleFollow>>, TError,ToggleFollowMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof toggleFollow>>,

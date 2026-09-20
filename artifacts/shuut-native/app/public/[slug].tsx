@@ -1,7 +1,7 @@
-import React from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../../hooks/useColors';
 
@@ -24,9 +24,31 @@ export default function PublicContentScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ slug?: string }>();
+  const params = useLocalSearchParams<{ slug?: string; returnTo?: string }>();
+  const webViewRef = useRef<WebView>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
   const slug = params.slug && params.slug in PUBLIC_PAGES ? params.slug as PublicPageSlug : 'about';
   const url = `${PUBLIC_SITE_URL}/${slug}?native=1`;
+  const returnTo = typeof params.returnTo === 'string' && params.returnTo.startsWith('/')
+    ? params.returnTo
+    : '/(main)/settings';
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (canGoBack) {
+        webViewRef.current?.goBack();
+      } else {
+        router.replace(returnTo as never);
+      }
+      return true;
+    });
+    return () => subscription.remove();
+  }, [canGoBack, returnTo, router]);
+
+  const handleNavigationStateChange = (state: WebViewNavigation) => {
+    setCanGoBack(state.canGoBack);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -43,6 +65,7 @@ export default function PublicContentScreen() {
           })
         : (
           <WebView
+            ref={webViewRef}
             source={{ uri: url }}
             style={[
               styles.webView,
@@ -54,6 +77,7 @@ export default function PublicContentScreen() {
             ]}
             contentInsetAdjustmentBehavior="never"
             startInLoadingState
+            onNavigationStateChange={handleNavigationStateChange}
             renderLoading={() => (
               <View style={[styles.loading, { backgroundColor: colors.background }]}>
                 <ActivityIndicator color={colors.primary} />
@@ -65,7 +89,7 @@ export default function PublicContentScreen() {
                 const requestedPath = requestedUrl.pathname.replace(/\/+$/, '');
                 const homePath = PUBLIC_SITE_HOME.pathname.replace(/\/+$/, '');
                 if (requestedUrl.origin === PUBLIC_SITE_HOME.origin && requestedPath === homePath) {
-                  router.back();
+                  router.replace(returnTo as never);
                   return false;
                 }
               } catch {

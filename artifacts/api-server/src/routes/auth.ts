@@ -10,6 +10,8 @@ import {
   RegisterBody,
   VerifyEmailBody,
   VerifyLoginBody,
+  AcceptLegalPolicyConsentBody,
+  AcceptLegalPolicyConsentResponse,
 } from "@workspace/api-zod";
 import {
   authCodesTable,
@@ -19,6 +21,7 @@ import {
   passkeysTable,
   sessionsTable,
   usersTable,
+  legalPolicyAcceptancesTable,
 } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
 import { authCodeEmail } from "../lib/authCodeEmail";
@@ -35,6 +38,12 @@ import {
 import { CSRF_COOKIE, issueCsrfCookie } from "../middlewares/csrf";
 import { ipPrefix, auditSecurityEvent, privacyHash } from "../lib/security";
 import passkeyRouter from "./passkey";
+import {
+  CURRENT_LEGAL_POLICY_VERSIONS,
+  CURRENT_LEGAL_POLICY_CONTENT_HASHES,
+  getLegalPolicyStatus,
+  type LegalPolicySource,
+} from "../lib/legalPolicy";
 
 const router: IRouter = Router();
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -334,6 +343,7 @@ async function sessionJson(user: typeof usersTable.$inferSelect, req?: Request) 
       eligibilityStatus: profile ? "eligible" as const : user.eligibilityStatus as "undecided" | "eligible" | "waitlisted",
       passkeyEnrolled: false,
       passkeyVerified: false,
+      legalPolicyConsent: await getLegalPolicyStatus(user.id),
     },
   };
 }
@@ -744,6 +754,50 @@ router.get("/me", async (req, res): Promise<void> => {
     issueCsrfCookie(res);
   }
   res.json(await sessionJson(user, req));
+});
+
+router.post("/legal-policy-consent", async (req, res): Promise<void> => {
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const body = AcceptLegalPolicyConsentBody.safeParse(req.body ?? {});
+  if (!body.success) {
+    res.status(400).json({ error: "Provide the current legal policy versions and a valid source." });
+    return;
+  }
+  if (
+    body.data.termsVersion !== CURRENT_LEGAL_POLICY_VERSIONS.terms ||
+    body.data.communityGuidelinesVersion !== CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines
+  ) {
+    res.status(409).json({
+      error: "The submitted legal policy versions are no longer current.",
+      code: "LEGAL_POLICY_VERSION_MISMATCH",
+      currentVersions: CURRENT_LEGAL_POLICY_VERSIONS,
+    });
+    return;
+  }
+  const source: LegalPolicySource = body.data.source ?? "web";
+  await db.transaction(async (tx) => {
+    await tx.insert(legalPolicyAcceptancesTable).values([
+      {
+        userId,
+        policyKey: "terms",
+        policyVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+        policyContentHash: CURRENT_LEGAL_POLICY_CONTENT_HASHES.terms,
+        source,
+      },
+      {
+        userId,
+        policyKey: "communityGuidelines",
+        policyVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
+        policyContentHash: CURRENT_LEGAL_POLICY_CONTENT_HASHES.communityGuidelines,
+        source,
+      },
+    ]).onConflictDoNothing();
+  });
+  res.json(AcceptLegalPolicyConsentResponse.parse(await getLegalPolicyStatus(userId)));
 });
 
 router.post("/onboarding", async (req, res): Promise<void> => {

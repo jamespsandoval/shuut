@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { setAuthTokenGetter, getCurrentUser, MobileAuthSession } from "@workspace/api-client-react";
+import { setAuthTokenGetter, getCurrentUser, MobileAuthSession, type AuthUser } from "@workspace/api-client-react";
 import {
   type AuthState,
   type PersistedAuthState,
@@ -37,16 +37,19 @@ const authStorage = {
 
 interface AuthContextType {
   token: string | null;
+  user: AuthUser | null;
   authState: AuthState;
   signIn: (session: MobileAuthSession) => Promise<void>;
   signOut: () => Promise<void>;
   completeOnboarding: (state: 'ready' | 'waitlisted') => void;
+  refreshSession: () => Promise<AuthUser | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [authState, setAuthState] = useState<AuthState>('loading');
 
   useEffect(() => {
@@ -68,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         try {
           const session = await getCurrentUser();
+          setUser(session.user);
           const nextState = resolveAuthSessionState(session);
           await authStorage.setItem(AUTH_STATE_KEY, nextState);
           setAuthState(nextState);
@@ -78,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               authStorage.deleteItem(AUTH_STATE_KEY),
             ]);
             setToken(null);
+            setUser(null);
             setAuthState('unauthenticated');
           } else {
             // Never promote an unknown or pending session during an outage.
@@ -103,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authStorage.setItem(AUTH_STATE_KEY, nextState),
     ]);
     setToken(session.accessToken);
+    setUser(session.user);
     setAuthState(nextState);
   };
 
@@ -117,17 +123,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authStorage.deleteItem(AUTH_STATE_KEY),
     ]);
     setToken(null);
+    setUser(null);
     setAuthState('unauthenticated');
+  };
+
+  const refreshSession = async () => {
+    const session = await getCurrentUser();
+    setUser(session.user);
+    const nextState = resolveAuthSessionState(session);
+    await authStorage.setItem(AUTH_STATE_KEY, nextState);
+    setAuthState(nextState);
+    return session.user;
   };
 
   return (
     <AuthContext.Provider
       value={{
         token,
+        user,
         authState,
         signIn,
         signOut,
-        completeOnboarding
+        completeOnboarding,
+        refreshSession,
       }}
     >
       {children}

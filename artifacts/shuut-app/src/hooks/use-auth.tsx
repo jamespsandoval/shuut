@@ -1,13 +1,6 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { getGetCurrentUserQueryKey, useGetCurrentUser } from '@workspace/api-client-react';
-
-type AuthUser = {
-  id: string;
-  email: string;
-  emailVerified: boolean;
-  onboardingComplete: boolean;
-  eligibilityStatus: 'undecided' | 'eligible' | 'waitlisted';
-};
+import type { AuthUser } from '@workspace/api-client-react';
 
 type AuthContextType = {
   user: AuthUser | null;

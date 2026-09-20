@@ -175,6 +175,29 @@ export const usersTable = pgTable("shuut_users", {
   eligibilityDecidedAt: timestamp("eligibility_decided_at", { withTimezone: true }),
 });
 
+export const legalPolicyAcceptancesTable = pgTable(
+  "shuut_legal_policy_acceptances",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    policyKey: text("policy_key").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    policyContentHash: text("policy_content_hash").notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+    source: text("source").notNull().default("web"),
+  },
+  (table) => [
+    uniqueIndex("shuut_legal_policy_acceptances_user_policy_version_idx").on(
+      table.userId,
+      table.policyKey,
+      table.policyVersion,
+    ),
+    index("shuut_legal_policy_acceptances_user_idx").on(table.userId),
+  ],
+);
+
 export const objectCleanupJobsTable = pgTable(
   "shuut_object_cleanup_jobs",
   {

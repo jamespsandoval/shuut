@@ -190,6 +190,28 @@ paths:
         '200':
           description: Current authenticated user
           content: { application/json: { schema: { $ref: '#/components/schemas/AuthSession' } } }
+  /auth/legal-policy-consent:
+    post:
+      operationId: acceptLegalPolicyConsent
+      tags: [auth]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LegalPolicyConsentInput' }
+      responses:
+        '200':
+          description: Current legal-policy consent status
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentStatus' } } }
+        '400':
+          description: Invalid or missing policy consent versions
+        '401': { description: Unauthorized }
+        '409':
+          description: Submitted policy versions are stale or mismatched
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyVersionMismatchError' } } }
   /auth/passkey/register/options:
     post:
       operationId: beginPasskeyRegistration
@@ -380,6 +402,9 @@ paths:
     patch:
       operationId: updateProfile
       tags: [profiles]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: handle, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -389,10 +414,17 @@ paths:
         '200':
           description: Updated founder profile
           content: { application/json: { schema: { $ref: '#/components/schemas/ProfileDetail' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /storage/uploads/request-url:
     post:
       operationId: requestUploadUrl
       tags: [storage]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/UploadUrlRequest' } } }
@@ -400,10 +432,17 @@ paths:
         '200':
           description: Presigned direct upload URL
           content: { application/json: { schema: { $ref: '#/components/schemas/UploadUrlResponse' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /transcriptions:
     post:
       operationId: transcribeAudio
       tags: [posts]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/AudioTranscriptionInput' } } }
@@ -411,6 +450,10 @@ paths:
         '200':
           description: Audio transcript
           content: { application/json: { schema: { $ref: '#/components/schemas/AudioTranscript' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /storage/objects/{objectPath}:
     get:
       operationId: getStorageObject
@@ -425,6 +468,9 @@ paths:
     post:
       operationId: createPost
       tags: [posts]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/PostInput' } } }
@@ -432,6 +478,10 @@ paths:
         '201':
           description: Published post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /profiles/search:
     get:
       operationId: searchProfiles
@@ -466,6 +516,9 @@ paths:
     patch:
       operationId: updatePost
       tags: [posts]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       requestBody:
@@ -475,10 +528,17 @@ paths:
         '200':
           description: Updated post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /posts/{postId}/reaction:
     put:
       operationId: setReaction
       tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       requestBody:
@@ -488,6 +548,10 @@ paths:
         '200':
           description: Updated post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /posts/{postId}/comments:
     get:
       operationId: getPostComments
@@ -503,6 +567,9 @@ paths:
     post:
       operationId: createPostComment
       tags: [posts]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       requestBody:
@@ -512,6 +579,10 @@ paths:
         '202':
           description: Voice comment accepted for transcription
           content: { application/json: { schema: { $ref: '#/components/schemas/VoiceCommentSubmission' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /comments/{commentId}/audio:
     get:
       operationId: getCommentAudio
@@ -526,32 +597,53 @@ paths:
     post:
       operationId: reshuutPost
       tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       responses:
         '200':
           description: Reshuuted post
           content: { application/json: { schema: { $ref: '#/components/schemas/Post' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /posts/{postId}/share-link:
     post:
       operationId: createPostShareLink
       tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
       responses:
         '200':
           description: Time-limited signed share link
           content: { application/json: { schema: { $ref: '#/components/schemas/PostShareLink' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /profiles/{handle}/follow:
     put:
       operationId: toggleFollow
       tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
       parameters:
         - { name: handle, in: path, required: true, schema: { type: string } }
       responses:
         '200':
           description: Follow state
           content: { application/json: { schema: { $ref: '#/components/schemas/FollowState' } } }
+        '403':
+          description: Current legal policies have not been accepted
+          content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
+        '401': { description: Unauthorized }
   /profiles/{handle}/ask:
     post:
       operationId: askFounder
@@ -578,7 +670,7 @@ components:
   schemas:
     AuthUser:
       type: object
-      required: [id, email, emailVerified, onboardingComplete, eligibilityStatus, passkeyEnrolled, passkeyVerified]
+      required: [id, email, emailVerified, onboardingComplete, eligibilityStatus, passkeyEnrolled, passkeyVerified, legalPolicyConsent]
       properties:
         id: { type: string }
         email: { type: string, format: email }
@@ -587,6 +679,7 @@ components:
         eligibilityStatus: { type: string, enum: [undecided, eligible, waitlisted] }
         passkeyEnrolled: { type: boolean }
         passkeyVerified: { type: boolean }
+        legalPolicyConsent: { $ref: '#/components/schemas/LegalPolicyConsentStatus' }
     AuthSession:
       type: object
       required: [user]
@@ -683,6 +776,46 @@ components:
         lastName: { type: string, minLength: 1, maxLength: 40 }
         handle: { type: string, minLength: 2, maxLength: 30, pattern: '^[a-z0-9_]+$' }
         eligible: { type: boolean }
+    LegalPolicyConsentInput:
+      type: object
+      required: [termsVersion, communityGuidelinesVersion]
+      properties:
+        termsVersion: { type: string }
+        communityGuidelinesVersion: { type: string }
+        source: { type: string, enum: [web, native, ios, android], default: web }
+    LegalPolicyVersionStatus:
+      type: object
+      required: [currentVersion, acceptedVersion, acceptedAt, current]
+      properties:
+        currentVersion: { type: string }
+        acceptedVersion: { type: [string, 'null'] }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        current: { type: boolean }
+    LegalPolicyConsentStatus:
+      type: object
+      required: [required, terms, communityGuidelines]
+      properties:
+        required: { type: boolean }
+        terms: { $ref: '#/components/schemas/LegalPolicyVersionStatus' }
+        communityGuidelines: { $ref: '#/components/schemas/LegalPolicyVersionStatus' }
+    LegalPolicyConsentRequiredError:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string, enum: [LEGAL_POLICY_CONSENT_REQUIRED] }
+    LegalPolicyVersionMismatchError:
+      type: object
+      required: [error, code, currentVersions]
+      properties:
+        error: { type: string }
+        code: { type: string, enum: [LEGAL_POLICY_VERSION_MISMATCH] }
+        currentVersions:
+          type: object
+          required: [terms, communityGuidelines]
+          properties:
+            terms: { type: string }
+            communityGuidelines: { type: string }
     UsernameAvailability:
       type: object
       required: [handle, available]

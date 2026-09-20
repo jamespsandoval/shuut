@@ -21,6 +21,7 @@ import {
   notificationsTable,
   postMentionsTable,
   foundersTable,
+  legalPolicyAcceptancesTable,
   passkeyRecoveriesTable,
   objectCleanupJobsTable,
   passkeysTable,
@@ -32,6 +33,7 @@ import {
   usersTable,
   webauthnChallengesTable,
 } from "@workspace/db";
+import { CURRENT_LEGAL_POLICY_VERSIONS, CURRENT_LEGAL_POLICY_CONTENT_HASHES } from "../src/lib/legalPolicy";
 
 const prefix = `auth-security-${Date.now()}`;
 const userAgent = "SHUUT security regression test";
@@ -341,7 +343,7 @@ async function request(
   });
 }
 
-async function register(email: string): Promise<BrowserSession> {
+async function register(email: string, acceptPolicies = true): Promise<BrowserSession> {
   const registration = await request("/api/auth/register", {
     method: "POST",
     json: { email },
@@ -354,7 +356,20 @@ async function register(email: string): Promise<BrowserSession> {
   assert.equal(verification.status, 200);
   const body = await verification.json() as { user: { passkeyVerified: boolean } };
   assert.equal(body.user.passkeyVerified, false);
-  return parseSession(verification);
+  const session = parseSession(verification);
+  if (acceptPolicies) {
+    const consent = await request("/api/auth/legal-policy-consent", {
+      method: "POST",
+      session,
+      json: {
+        termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+        communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
+        source: "web",
+      },
+    });
+    assert.equal(consent.status, 200);
+  }
+  return session;
 }
 
 async function registrationOptions(session: BrowserSession) {
@@ -422,6 +437,82 @@ after(async () => {
 test("email verification creates a browser session without a passkey gate", async () => {
   const session = await register(`${prefix}-pending@example.test`);
   assert.equal((await request("/api/feed", { session })).status, 200);
+});
+
+test("legal policy consent is reported, recorded immutably, and required for UGC writes", async () => {
+  const email = `${prefix}-legal-consent@example.test`;
+  const session = await register(email, false);
+
+  const before = await request("/api/auth/me", { session });
+  assert.equal(before.status, 200);
+  const beforeBody = await before.json() as {
+    user: { legalPolicyConsent: { required: boolean } };
+  };
+  assert.equal(beforeBody.user.legalPolicyConsent.required, true);
+
+  const blocked = await request("/api/posts/999999/reaction", {
+    method: "PUT",
+    session,
+    json: { emojiType: "rocket" },
+  });
+  assert.equal(blocked.status, 403);
+  assert.deepEqual(await blocked.json(), {
+    error: "Accept the current Terms of Service and Community Guidelines to continue.",
+    code: "LEGAL_POLICY_CONSENT_REQUIRED",
+  });
+
+  const stale = await request("/api/auth/legal-policy-consent", {
+    method: "POST",
+    session,
+    json: { termsVersion: "2020-01-01", communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines },
+  });
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json() as { code: string }).code, "LEGAL_POLICY_VERSION_MISMATCH");
+
+  const accepted = await request("/api/auth/legal-policy-consent", {
+    method: "POST",
+    session,
+    json: {
+      termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+      communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
+      source: "web",
+    },
+  });
+  assert.equal(accepted.status, 200);
+  const acceptedBody = await accepted.json() as {
+    required: boolean;
+    terms: { current: boolean; acceptedVersion: string };
+    communityGuidelines: { current: boolean; acceptedVersion: string };
+  };
+  assert.equal(acceptedBody.required, false);
+  assert.equal(acceptedBody.terms.current, true);
+  assert.equal(acceptedBody.communityGuidelines.current, true);
+
+  const after = await request("/api/auth/me", { session });
+  const afterBody = await after.json() as {
+    user: { legalPolicyConsent: { required: boolean } };
+  };
+  assert.equal(afterBody.user.legalPolicyConsent.required, false);
+
+  const repeated = await request("/api/auth/legal-policy-consent", {
+    method: "POST",
+    session,
+    json: {
+      termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
+      communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
+      source: "web",
+    },
+  });
+  assert.equal(repeated.status, 200);
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, email));
+  const acceptances = await db.select().from(legalPolicyAcceptancesTable)
+    .where(eq(legalPolicyAcceptancesTable.userId, user.id));
+  assert.equal(acceptances.length, 2);
+  assert.deepEqual(
+    new Set(acceptances.map((acceptance) => acceptance.policyContentHash)),
+    new Set(Object.values(CURRENT_LEGAL_POLICY_CONTENT_HASHES)),
+  );
 });
 
 test("CSRF and Origin checks protect pending passkey requests", async () => {

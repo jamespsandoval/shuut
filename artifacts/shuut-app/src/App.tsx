@@ -30,6 +30,7 @@ import Contact from '@/pages/contact';
 import SettingsPage from '@/pages/settings';
 import NotificationsPage from '@/pages/notifications';
 import Waitlist from '@/pages/waitlist';
+import LegalConsentGate from '@/pages/legal-consent-gate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,7 @@ const queryClient = new QueryClient({
 });
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 function HomeRedirect() {
   const { user, isSignedIn, isLoading } = useAuth();
   
@@ -85,6 +87,9 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
           }
           if (!user?.onboardingComplete) {
             return <Redirect to="/" />;
+          }
+          if (user?.legalPolicyConsent?.required) {
+            return <LegalConsentGate />;
           }
           return <Component params={params} />;
         }

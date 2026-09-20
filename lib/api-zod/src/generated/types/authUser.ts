@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AuthUserEligibilityStatus } from './authUserEligibilityStatus';
+import type { LegalPolicyConsentStatus } from './legalPolicyConsentStatus';
 
 export interface AuthUser {
   id: string;
@@ -15,4 +16,5 @@ export interface AuthUser {
   eligibilityStatus: AuthUserEligibilityStatus;
   passkeyEnrolled: boolean;
   passkeyVerified: boolean;
+  legalPolicyConsent: LegalPolicyConsentStatus;
 }

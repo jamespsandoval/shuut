@@ -14,6 +14,21 @@ export const AuthUserEligibilityStatus = {
   waitlisted: 'waitlisted',
 } as const;
 
+export interface LegalPolicyVersionStatus {
+  currentVersion: string;
+  /** @nullable */
+  acceptedVersion: string | null;
+  /** @nullable */
+  acceptedAt: string | null;
+  current: boolean;
+}
+
+export interface LegalPolicyConsentStatus {
+  required: boolean;
+  terms: LegalPolicyVersionStatus;
+  communityGuidelines: LegalPolicyVersionStatus;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -22,6 +37,7 @@ export interface AuthUser {
   eligibilityStatus: AuthUserEligibilityStatus;
   passkeyEnrolled: boolean;
   passkeyVerified: boolean;
+  legalPolicyConsent: LegalPolicyConsentStatus;
 }
 
 export interface AuthSession {
@@ -137,6 +153,52 @@ export interface OnboardingInput {
      */
   handle: string;
   eligible: boolean;
+}
+
+export type LegalPolicyConsentInputSource = typeof LegalPolicyConsentInputSource[keyof typeof LegalPolicyConsentInputSource];
+
+
+export const LegalPolicyConsentInputSource = {
+  web: 'web',
+  native: 'native',
+  ios: 'ios',
+  android: 'android',
+} as const;
+
+export interface LegalPolicyConsentInput {
+  termsVersion: string;
+  communityGuidelinesVersion: string;
+  source?: LegalPolicyConsentInputSource;
+}
+
+export type LegalPolicyConsentRequiredErrorCode = typeof LegalPolicyConsentRequiredErrorCode[keyof typeof LegalPolicyConsentRequiredErrorCode];
+
+
+export const LegalPolicyConsentRequiredErrorCode = {
+  LEGAL_POLICY_CONSENT_REQUIRED: 'LEGAL_POLICY_CONSENT_REQUIRED',
+} as const;
+
+export interface LegalPolicyConsentRequiredError {
+  error: string;
+  code: LegalPolicyConsentRequiredErrorCode;
+}
+
+export type LegalPolicyVersionMismatchErrorCode = typeof LegalPolicyVersionMismatchErrorCode[keyof typeof LegalPolicyVersionMismatchErrorCode];
+
+
+export const LegalPolicyVersionMismatchErrorCode = {
+  LEGAL_POLICY_VERSION_MISMATCH: 'LEGAL_POLICY_VERSION_MISMATCH',
+} as const;
+
+export type LegalPolicyVersionMismatchErrorCurrentVersions = {
+  terms: string;
+  communityGuidelines: string;
+};
+
+export interface LegalPolicyVersionMismatchError {
+  error: string;
+  code: LegalPolicyVersionMismatchErrorCode;
+  currentVersions: LegalPolicyVersionMismatchErrorCurrentVersions;
 }
 
 export interface UsernameAvailability {
