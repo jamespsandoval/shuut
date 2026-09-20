@@ -1,30 +1,39 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform, ActivityIndicator, AppState } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { Founder, Post, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
 import { Pause, Play, Send, Square } from 'lucide-react-native';
-import { useAuth } from '../../hooks/useAuthStore';
 import { MentionPicker } from '../../components/MentionPicker';
 import { KeyboardAwareScrollViewCompat } from '../../components/KeyboardAwareScrollViewCompat';
 import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
 import { useQueryClient } from '@tanstack/react-query';
 import { useVoiceConsentCheck } from '../../hooks/useVoiceConsentCheck';
 import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { RECORDING_RECOVERY_KEY, RecordingRecovery, validateRecovery } from '../../lib/recordingRecovery';
 
 export default function RecordScreen() {
   const colors = useColors();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { token } = useAuth();
 
-  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
-  const recorderState = useAudioRecorderState(recorder);
   const isRecordingRef = useRef(false);
   const isStoppingRef = useRef(false);
   const isScreenActiveRef = useRef(false);
+  const startGenerationRef = useRef(0);
+  const startPendingRef = useRef(false);
+  const requiresExplicitStartRef = useRef(false);
+  const stopRecordingRef = useRef<(message?: string) => Promise<void>>(async () => undefined);
+  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS, (status) => {
+    if (status.mediaServicesDidReset && isRecordingRef.current) {
+      void stopRecordingRef.current('Audio services were interrupted. Your recording was saved for review.');
+    }
+  });
+  const recorderState = useAudioRecorderState(recorder);
+  const [interruptionMessage, setInterruptionMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isStarting, setIsStarting] = useState(true);
   const [reviewRecording, setReviewRecording] = useState<{ uri: string; duration: number } | null>(null);
@@ -32,6 +41,10 @@ export default function RecordScreen() {
   const [transcript, setTranscript] = useState('');
   const [isPreparingTranscript, setIsPreparingTranscript] = useState(false);
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([]);
+  const [recoveryLoaded, setRecoveryLoaded] = useState(false);
+  const [permissionRevoked, setPermissionRevoked] = useState(false);
+  const permissionWasRevokedRef = useRef(false);
+  const publishedPostIdRef = useRef<number | null>(null);
   const spinnerRotation = useRef(new Animated.Value(0)).current;
   const previewPlayer = useAudioPlayer(null);
   const previewStatus = useAudioPlayerStatus(previewPlayer);
@@ -50,6 +63,39 @@ export default function RecordScreen() {
 
   const [initialized, setInitialized] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    void AsyncStorage.getItem(RECORDING_RECOVERY_KEY).then(async (raw) => {
+      if (cancelled) return;
+      if (!raw) {
+        setRecoveryLoaded(true);
+        return;
+      }
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); } catch { await AsyncStorage.removeItem(RECORDING_RECOVERY_KEY); setRecoveryLoaded(true); return; }
+      const descriptor = validateRecovery(parsed);
+      if (!descriptor) { await AsyncStorage.removeItem(RECORDING_RECOVERY_KEY); setRecoveryLoaded(true); return; }
+      try {
+        if (Platform.OS !== 'web' && !(new File(descriptor.uri)).exists) {
+          await AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);
+          Alert.alert('Recording unavailable', 'Your interrupted recording is no longer available on this device.');
+          setRecoveryLoaded(true);
+          return;
+        }
+      } catch {
+        await AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);
+        setRecoveryLoaded(true);
+        return;
+      }
+      if (!cancelled) {
+        setReviewRecording({ uri: descriptor.uri, duration: descriptor.duration });
+        setInterruptionMessage(descriptor.interruptionMessage);
+      }
+      setRecoveryLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const requestUploadUrl = useRequestUploadUrl();
   const createPost = useCreatePost();
   const transcribeAudio = useTranscribeAudio();
@@ -65,13 +111,19 @@ export default function RecordScreen() {
     knownPermission?: PermissionResponse | null,
     shouldContinue: () => boolean = () => true,
   ) => {
+    const generation = ++startGenerationRef.current;
+    const stillValid = () => generation === startGenerationRef.current && isScreenActiveRef.current && shouldContinue();
+    let audioModeConfigured = false;
+    startPendingRef.current = true;
     try {
       setIsStarting(true);
       let perm = knownPermission;
       if (!perm || perm.status !== 'granted') {
         perm = await requestRecordingPermissionsAsync();
-        if (!shouldContinue()) return;
+        if (!stillValid()) return;
         if (perm.status !== 'granted') {
+          requiresExplicitStartRef.current = true;
+          setPermissionRevoked(true);
           Alert.alert(
             'Permission Denied',
             'Please enable microphone access in your settings to record audio.',
@@ -87,45 +139,112 @@ export default function RecordScreen() {
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        allowsBackgroundRecording: false,
+        interruptionMode: 'doNotMix',
       });
-      if (!shouldContinue()) return;
+      audioModeConfigured = true;
+      if (!stillValid()) return;
       await recorder.prepareToRecordAsync();
-      if (!shouldContinue()) return;
+      if (!stillValid()) return;
       recorder.record();
       isRecordingRef.current = true;
+      requiresExplicitStartRef.current = false;
     } catch (err) {
       console.error('Failed to start recording', err);
     } finally {
-      if (shouldContinue()) setIsStarting(false);
+      startPendingRef.current = false;
+      if (!stillValid() && audioModeConfigured) {
+        await setAudioModeAsync({
+          allowsRecording: false,
+          playsInSilentMode: true,
+          shouldPlayInBackground: false,
+          allowsBackgroundRecording: false,
+          interruptionMode: 'doNotMix',
+        }).catch(() => undefined);
+      }
+      setIsStarting(false);
     }
   }, [recorder]);
 
   useFocusEffect(useCallback(() => {
-    let isActive = true;
     isScreenActiveRef.current = true;
     setIsProcessing(false);
-    setIsStarting(true);
-    setReviewRecording(null);
-    setAudioObjectPath(null);
-    setTranscript('');
-    setIsPreparingTranscript(false);
-    setMentionedFounders([]);
+    setIsStarting(!requiresExplicitStartRef.current);
+    // Focus changes must not discard a stopped recording awaiting review.
     isStoppingRef.current = false;
-    setInitialized(false);
+    setInitialized(requiresExplicitStartRef.current);
 
     void refetchConsent();
 
     return () => {
-      isActive = false;
+      if (startPendingRef.current || isRecordingRef.current) {
+        requiresExplicitStartRef.current = true;
+      }
       isScreenActiveRef.current = false;
-      setIsProcessing(false);
-      setIsStarting(true);
+      ++startGenerationRef.current;
+      setIsStarting(false);
       setShowModal(false);
+      if (isRecordingRef.current) {
+        void stopRecordingRef.current('Recording interrupted when leaving SHÜÜT. Your recording was saved for review.');
+      }
     };
   }, [refetchConsent, setShowModal]));
 
   useEffect(() => {
-    if (initialized || isConsentLoading || !isScreenActiveRef.current) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'inactive' || state === 'background') {
+        if (startPendingRef.current || isRecordingRef.current) {
+          requiresExplicitStartRef.current = true;
+          setInitialized(true);
+        }
+        ++startGenerationRef.current;
+        previewPlayer.pause();
+        if (isRecordingRef.current) {
+          void stopRecordingRef.current('Recording interrupted when the app was backgrounded. Your recording was saved for review.');
+        } else {
+          setIsStarting(false);
+          void setAudioModeAsync({
+            allowsRecording: false,
+            playsInSilentMode: true,
+            shouldPlayInBackground: false,
+            allowsBackgroundRecording: false,
+            interruptionMode: 'doNotMix',
+          });
+        }
+      }
+      if (state === 'active') {
+        if (publishedPostIdRef.current !== null) {
+          const newPostId = publishedPostIdRef.current;
+          publishedPostIdRef.current = null;
+          router.dismissTo({
+            pathname: '/(main)/feed',
+            params: { newPostId: String(newPostId) },
+          });
+          return;
+        }
+        void getRecordingPermissionsAsync().then((permission) => {
+          const revoked = permission.status !== 'granted';
+          setPermissionRevoked(revoked);
+          if (revoked && !permissionWasRevokedRef.current) {
+            Alert.alert('Microphone access needed', 'Microphone access is off. Enable it in Settings, then tap Retry to record.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]);
+          }
+          permissionWasRevokedRef.current = revoked;
+        });
+      }
+    });
+    return () => subscription.remove();
+  }, [previewPlayer, router]);
+
+  useEffect(() => {
+    if (!recoveryLoaded || initialized || isConsentLoading || !isScreenActiveRef.current) return;
+    if (reviewRecording) {
+      setIsStarting(false);
+      return;
+    }
 
     if (isConsentError || !consentStatus) {
       setIsStarting(false);
@@ -135,7 +254,7 @@ export default function RecordScreen() {
     setInitialized(true);
 
     const checkAndStart = async () => {
-      const { allowed, loading, error, required } = await checkConsent(async () => {
+      const { required } = await checkConsent(async () => {
         const permission = await getRecordingPermissionsAsync();
         if (!isScreenActiveRef.current) return;
         await startRecording(permission, () => isScreenActiveRef.current);
@@ -146,7 +265,7 @@ export default function RecordScreen() {
     };
 
     void checkAndStart();
-  }, [initialized, isConsentLoading, consentStatus, isConsentError, startRecording, checkConsent]);
+  }, [recoveryLoaded, initialized, isConsentLoading, consentStatus, isConsentError, startRecording, checkConsent, reviewRecording]);
 
   const handleDeclineConsent = () => {
     onDecline();
@@ -171,33 +290,65 @@ export default function RecordScreen() {
     return () => animation.stop();
   }, [isProcessing, spinnerRotation]);
 
-  const stopRecording = async () => {
+  const stopRecording = async (message?: string) => {
     if (isStoppingRef.current || !isRecordingRef.current) return;
     isStoppingRef.current = true;
     isRecordingRef.current = false;
     try {
       setIsProcessing(true);
       const finalDuration = Math.max(1, Math.round((recorderState?.durationMillis || 0) / 1000));
-      await recorder.stop();
-      const uri = recorder.uri;
+      let uri = recorder.uri || recorderState.url;
+      if (recorderState.isRecording) {
+        try {
+          await recorder.stop();
+        } catch (error) {
+          console.error('Recorder stop failed; attempting to salvage the local file', error);
+        }
+      }
+      uri = recorder.uri || recorderState.url || uri;
       if (!uri) throw new Error('The recording file was not created.');
       await setAudioModeAsync({
         allowsRecording: false,
         playsInSilentMode: true,
-      });
+        shouldPlayInBackground: false,
+        allowsBackgroundRecording: false,
+        interruptionMode: 'doNotMix',
+      }).catch((error) => console.error('Failed to restore non-recording audio mode', error));
       setReviewRecording({ uri, duration: finalDuration });
+      setInterruptionMessage(message || null);
       setIsProcessing(false);
-      if (previewTranscript) {
+      const recovery: RecordingRecovery = {
+        uri,
+        duration: finalDuration,
+        interruptionMessage: message || 'Recording stopped. Review it before publishing.',
+        timestamp: Date.now(),
+      };
+      try {
+        await AsyncStorage.setItem(RECORDING_RECOVERY_KEY, JSON.stringify(recovery));
+      } catch (error) {
+        console.error('Could not persist recording recovery', error);
+        Alert.alert('Review ready', 'Your recording is ready to review, but recovery could not be saved if the app closes.');
+      }
+      if (!message && previewTranscript) {
         void prepareTranscript(uri);
       }
     } catch (err) {
       console.error('Failed to stop recording', err);
       setIsProcessing(false);
-      Alert.alert('Could not publish', 'Your SHÜÜT could not be processed. Please try again.');
+      Alert.alert('Recording unavailable', 'Your recording could not be recovered. Please try again.');
     } finally {
       isStoppingRef.current = false;
     }
   };
+  stopRecordingRef.current = stopRecording;
+
+  const previousRecordingStateRef = useRef(false);
+  useEffect(() => {
+    if (previousRecordingStateRef.current && !recorderState.isRecording && isRecordingRef.current && !isStoppingRef.current) {
+      void stopRecordingRef.current('Recording was interrupted unexpectedly. Your recording was saved for review.');
+    }
+    previousRecordingStateRef.current = recorderState.isRecording;
+  }, [recorderState.isRecording]);
 
   useEffect(() => {
     if (recorderState.isRecording && recorderState.durationMillis >= 90_000 && !isProcessing) {
@@ -211,7 +362,7 @@ export default function RecordScreen() {
       isStoppingRef.current = true;
       void recorder.stop().catch(() => undefined);
     }
-    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true, shouldPlayInBackground: false, allowsBackgroundRecording: false, interruptionMode: 'doNotMix' });
   }, [recorder]);
 
   const togglePreview = async () => {
@@ -232,6 +383,8 @@ export default function RecordScreen() {
     setTranscript('');
     setIsPreparingTranscript(false);
     setMentionedFounders([]);
+    setInterruptionMessage(null);
+    void AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);
     router.dismissTo('/(main)/feed');
   };
 
@@ -330,6 +483,15 @@ export default function RecordScreen() {
           mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
       });
+      publishedPostIdRef.current = createdPost.id;
+      try {
+        await AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);
+      } catch (error) {
+        // The server creation is already committed. Never present it as retryable.
+        console.error('Published post recovery cleanup failed', error);
+      }
+      setReviewRecording(null);
+      setIsProcessing(false);
       if (isScreenActiveRef.current) {
         if (createdPost.transcriptionStatus === 'ready') {
           queryClient.setQueriesData<Post[]>({ queryKey: ['feed'] }, (current) => {
@@ -341,6 +503,7 @@ export default function RecordScreen() {
           });
         }
 
+        publishedPostIdRef.current = null;
         router.dismissTo({
           pathname: '/(main)/feed',
           params: { newPostId: String(createdPost.id) },
@@ -388,6 +551,11 @@ export default function RecordScreen() {
           ) : reviewRecording ? (
             <View style={[styles.reviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.reviewTitle, { color: colors.foreground }]}>Ready, Set…</Text>
+              {interruptionMessage && (
+                <Text style={[styles.interruptionMessage, { color: colors.destructive }]}>
+                  {interruptionMessage} Review your recording before publishing.
+                </Text>
+              )}
               <View style={[styles.previewPlayer, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <TouchableOpacity
                   style={[styles.previewPlayButton, { backgroundColor: colors.primary }]}
@@ -485,7 +653,33 @@ export default function RecordScreen() {
             </View>
           ) : (
             <View style={styles.recordCard}>
-              {(isConsentError || (!isConsentLoading && !consentStatus)) ? (
+              {permissionRevoked ? (
+                <View style={styles.recordingState}>
+                  <Text style={[styles.recordingTitle, { color: colors.destructive }]}>MICROPHONE OFF</Text>
+                  <Text style={[styles.timerLimit, { color: colors.foreground, textAlign: 'center', marginBottom: 12 }]}>
+                    Enable microphone access in Settings to record a voice post.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.retryTranscriptButton, { borderColor: colors.border, paddingHorizontal: 16 }]}
+                    onPress={() => {
+                      void getRecordingPermissionsAsync().then((permission) => {
+                        if (permission.status === 'granted') {
+                          setPermissionRevoked(false);
+                          permissionWasRevokedRef.current = false;
+                          void startRecording(permission);
+                        } else {
+                          Alert.alert('Microphone access needed', 'Choose Open Settings to enable microphone access, then tap Retry.');
+                        }
+                      });
+                    }}
+                  >
+                    <Text style={[styles.retryTranscriptText, { color: colors.primary }]}>Retry</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void Linking.openSettings()}>
+                    <Text style={[styles.retryTranscriptText, { color: colors.primary }]}>Open Settings</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (isConsentError || (!isConsentLoading && !consentStatus)) ? (
                 <View style={styles.recordingState}>
                   <Text style={[styles.recordingTitle, { color: colors.destructive }]}>
                     ERROR
@@ -520,7 +714,7 @@ export default function RecordScreen() {
                   styles.recordButton,
                   { backgroundColor: showRecordingState ? colors.destructive : colors.primary, opacity: (isConsentError || (!isConsentLoading && !consentStatus)) ? 0.5 : 1 }
                 ]}
-                onPress={isRecording ? stopRecording : () => void startRecording()}
+                onPress={isRecording ? () => void stopRecording() : () => void startRecording()}
                 disabled={isStarting || showModal || isConsentLoading || isConsentError || !consentStatus}
               >
                 <Square color={colors.primaryForeground} size={32} />
@@ -587,6 +781,12 @@ const styles = StyleSheet.create({
   reviewTitle: {
     fontFamily: 'Inter_700Bold',
     fontSize: 24,
+    textAlign: 'center',
+  },
+  interruptionMessage: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
   },
   previewPlayer: {

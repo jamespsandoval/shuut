@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, Alert, AppState, Linking } from 'react-native';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useGetPost, useGetPostComments, useCreatePostComment, useRequestUploadUrl, useGetProfile } from '@workspace/api-client-react';
 import { ChevronLeft, Mic, Square, Send } from 'lucide-react-native';
@@ -37,30 +37,90 @@ export default function PostDetailScreen() {
     isError: isConsentError
   } = useVoiceConsentCheck();
 
-  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
-  const recorderState = useAudioRecorderState(recorder);
+  const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const interruptedRef = useRef(false);
+  const interruptAlertedRef = useRef(false);
+  const pendingStartRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const recordingStartedRef = useRef(false);
+  const previousRecordingStateRef = useRef(false);
   const isRecordingRef = useRef(false);
-  isRecordingRef.current = recorderState.isRecording;
+  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS, (status) => {
+    if (status.mediaServicesDidReset && isRecordingRef.current) {
+      interruptedRef.current = true;
+      generationRef.current += 1;
+    }
+  });
+  const recorderState = useAudioRecorderState(recorder);
+  isRecordingRef.current = recorderState.isRecording || recordingStartedRef.current;
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
+  const restoreAudioMode = () => setAudioModeAsync({
+    allowsRecording: false, playsInSilentMode: true, shouldPlayInBackground: false,
+    allowsBackgroundRecording: false, interruptionMode: 'doNotMix',
+  }).catch(() => undefined);
+
+  const discardRecording = async (notify = false) => {
+    const wasRecording = isRecordingRef.current;
+    const wasPending = pendingStartRef.current;
+    pendingStartRef.current = false;
+    generationRef.current += 1;
+    if (wasRecording) {
+      stoppingRef.current = true;
+      await recorder.stop().catch(() => undefined);
+      stoppingRef.current = false;
+      recordingStartedRef.current = false;
+      isRecordingRef.current = false;
+      previousRecordingStateRef.current = false;
+      setRecordedUri(null);
+    }
+    if (wasRecording || wasPending) await restoreAudioMode();
+    if (notify && wasRecording && !interruptAlertedRef.current) {
+      interruptAlertedRef.current = true;
+    }
+  };
+
   const startRecording = async () => {
-    const { allowed, error, loading } = await checkConsent(async () => {
+    const generation = ++generationRef.current;
+    pendingStartRef.current = true;
+    const { error } = await checkConsent(async () => {
       try {
         const perm = await getRecordingPermissionsAsync();
         if (perm.status !== 'granted') {
           const newPerm = await requestRecordingPermissionsAsync();
-          if (newPerm.status !== 'granted') return;
+          if (newPerm.status !== 'granted') {
+            Alert.alert('Microphone access needed', 'Enable microphone access in Settings, then try again.', [
+              { text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+            ]);
+            return;
+          }
         }
+        if (!mountedRef.current || generation !== generationRef.current || AppState.currentState !== 'active') return;
+        if (generation !== generationRef.current) return;
         setRecordedUri(null);
         await setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
+          allowsRecording: true, playsInSilentMode: true, shouldPlayInBackground: false,
+          allowsBackgroundRecording: false, interruptionMode: 'doNotMix',
         });
+        if (!mountedRef.current || generation !== generationRef.current || AppState.currentState !== 'active') {
+          pendingStartRef.current = false;
+          await restoreAudioMode(); return;
+        }
         await recorder.prepareToRecordAsync();
+        if (!mountedRef.current || generation !== generationRef.current || AppState.currentState !== 'active') {
+          pendingStartRef.current = false;
+          await restoreAudioMode(); return;
+        }
         recorder.record();
+        pendingStartRef.current = false;
+        recordingStartedRef.current = true;
+        isRecordingRef.current = true;
       } catch (err) {
+        pendingStartRef.current = false;
+        await restoreAudioMode();
         console.error('Failed to start recording', err);
       }
     });
@@ -68,11 +128,18 @@ export default function PostDetailScreen() {
     if (error) {
       Alert.alert('Error', 'Could not verify voice consent. Please try again.');
     }
+    pendingStartRef.current = false;
   };
 
   const stopRecording = async () => {
+    generationRef.current += 1;
+    pendingStartRef.current = false;
+    stoppingRef.current = true;
     try {
       await recorder.stop();
+      recordingStartedRef.current = false;
+      isRecordingRef.current = false;
+      previousRecordingStateRef.current = false;
       const uri = recorder.uri;
       if (uri) {
         setRecordedUri(uri);
@@ -81,6 +148,9 @@ export default function PostDetailScreen() {
       }
     } catch (err) {
       console.error('Failed to stop recording', err);
+    } finally {
+      stoppingRef.current = false;
+      await restoreAudioMode();
     }
   };
 
@@ -90,10 +160,53 @@ export default function PostDetailScreen() {
     }
   }, [recorderState.durationMillis, recorderState.isRecording]);
 
-  useEffect(() => () => {
-    if (isRecordingRef.current) void recorder.stop().catch(() => undefined);
-    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+  useEffect(() => {
+    if (previousRecordingStateRef.current && !recorderState.isRecording && !stoppingRef.current) {
+      interruptedRef.current = true;
+      recordingStartedRef.current = false;
+      interruptAlertedRef.current = true;
+      setRecordedUri(null);
+      void discardRecording(false);
+    }
+    previousRecordingStateRef.current = recorderState.isRecording;
+    if (interruptedRef.current && !recorderState.isRecording) {
+      interruptedRef.current = false;
+      setRecordedUri(null);
+      interruptAlertedRef.current = true;
+      void discardRecording(false);
+    }
+  }, [recorderState.isRecording]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        if (isRecordingRef.current || pendingStartRef.current) void discardRecording(true);
+      }
+      else if (interruptAlertedRef.current) {
+        interruptAlertedRef.current = false;
+        Alert.alert('Recording interrupted', 'Your voice comment was discarded. Please record it again.');
+      }
+    });
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      void discardRecording(false);
+      subscription.remove();
+    };
   }, [recorder]);
+
+  useFocusEffect(useCallback(() => {
+    if (interruptAlertedRef.current && AppState.currentState === 'active') {
+      interruptAlertedRef.current = false;
+      Alert.alert('Recording interrupted', 'Your voice comment was discarded. Please record it again.');
+    }
+    return () => { void discardRecording(true); };
+  }, [recorder]));
+
+  useEffect(() => {
+    if (AppState.currentState !== 'active') return;
+    void getRecordingPermissionsAsync();
+  }, []);
 
   const publishComment = async () => {
     if (!recordedUri) return;
@@ -121,6 +234,7 @@ export default function PostDetailScreen() {
         throw new Error(`Failed to upload voice comment: ${uploadResult.status}`);
       }
 
+      if (!mountedRef.current || AppState.currentState !== 'active') return;
       await createComment.mutateAsync({
         postId,
         data: { audioObjectPath: objectPath, durationSeconds: duration }

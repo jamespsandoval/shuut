@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking } from 'react-native';
 import { useColors } from '../hooks/useColors';
 import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost, useGetProfile } from '@workspace/api-client-react';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil } from 'lucide-react-native';
 import { SafetyActionSheet } from './SafetyActionSheet';
 import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
@@ -46,16 +46,55 @@ export function PostCard({
   const [editText, setEditText] = useState(post.transcript);
 
   // Comment composer state
-  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS);
-  const recorderState = useAudioRecorderState(recorder);
+  const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const interruptedRef = useRef(false);
+  const interruptAlertedRef = useRef(false);
+  const pendingStartRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const recordingStartedRef = useRef(false);
+  const previousRecordingStateRef = useRef(false);
   const isRecordingRef = useRef(false);
-  isRecordingRef.current = recorderState.isRecording;
+  const recorder = useAudioRecorder(SPEECH_RECORDING_OPTIONS, (status) => {
+    if (status.mediaServicesDidReset && isRecordingRef.current) {
+      interruptedRef.current = true;
+      generationRef.current += 1;
+    }
+  });
+  const recorderState = useAudioRecorderState(recorder);
+  isRecordingRef.current = recorderState.isRecording || recordingStartedRef.current;
+  const pathname = usePathname();
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
   const requestUploadUrl = useRequestUploadUrl();
   const createComment = useCreatePostComment();
+
+  const restoreAudioMode = () => setAudioModeAsync({
+    allowsRecording: false, playsInSilentMode: true, shouldPlayInBackground: false,
+    allowsBackgroundRecording: false, interruptionMode: 'doNotMix',
+  }).catch(() => undefined);
+
+  const discardRecording = async (notify = false) => {
+    const wasRecording = isRecordingRef.current;
+    const wasPending = pendingStartRef.current;
+    pendingStartRef.current = false;
+    generationRef.current += 1;
+    if (wasRecording) {
+      stoppingRef.current = true;
+      await recorder.stop().catch(() => undefined);
+      stoppingRef.current = false;
+      recordingStartedRef.current = false;
+      isRecordingRef.current = false;
+      previousRecordingStateRef.current = false;
+      setRecordedUri(null);
+    }
+    if (wasRecording || wasPending) await restoreAudioMode();
+    if (notify && wasRecording && !interruptAlertedRef.current) {
+      interruptAlertedRef.current = true;
+    }
+  };
 
   const {
     checkConsent,
@@ -112,21 +151,43 @@ export function PostCard({
   };
 
   const startRecording = async () => {
-    const { allowed, error, loading } = await checkConsent(async () => {
+    const generation = ++generationRef.current;
+    pendingStartRef.current = true;
+    const { error } = await checkConsent(async () => {
       try {
         const perm = await getRecordingPermissionsAsync();
         if (perm.status !== 'granted') {
           const newPerm = await requestRecordingPermissionsAsync();
-          if (newPerm.status !== 'granted') return;
+          if (newPerm.status !== 'granted') {
+            Alert.alert('Microphone access needed', 'Enable microphone access in Settings, then try again.', [
+              { text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+            ]);
+            return;
+          }
         }
+        if (!mountedRef.current || generation !== generationRef.current || AppState.currentState !== 'active') return;
+        if (generation !== generationRef.current) return;
         setRecordedUri(null);
         await setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
+          allowsRecording: true, playsInSilentMode: true, shouldPlayInBackground: false,
+          allowsBackgroundRecording: false, interruptionMode: 'doNotMix',
         });
+        if (!mountedRef.current || generation !== generationRef.current || AppState.currentState !== 'active') {
+          pendingStartRef.current = false;
+          await restoreAudioMode(); return;
+        }
         await recorder.prepareToRecordAsync();
+        if (!mountedRef.current || generation !== generationRef.current || AppState.currentState !== 'active') {
+          pendingStartRef.current = false;
+          await restoreAudioMode(); return;
+        }
         recorder.record();
+        pendingStartRef.current = false;
+        recordingStartedRef.current = true;
+        isRecordingRef.current = true;
       } catch (err) {
+        pendingStartRef.current = false;
+        await restoreAudioMode();
         console.error('Failed to start recording', err);
       }
     });
@@ -134,11 +195,18 @@ export function PostCard({
     if (error) {
       Alert.alert('Error', 'Could not verify voice consent. Please try again.');
     }
+    pendingStartRef.current = false;
   };
 
   const stopRecording = async () => {
+    generationRef.current += 1;
+    pendingStartRef.current = false;
+    stoppingRef.current = true;
     try {
       await recorder.stop();
+      recordingStartedRef.current = false;
+      isRecordingRef.current = false;
+      previousRecordingStateRef.current = false;
       const uri = recorder.uri;
       if (uri) {
         setRecordedUri(uri);
@@ -147,6 +215,9 @@ export function PostCard({
       }
     } catch (err) {
       console.error('Failed to stop recording', err);
+    } finally {
+      stoppingRef.current = false;
+      await restoreAudioMode();
     }
   };
 
@@ -156,10 +227,44 @@ export function PostCard({
     }
   }, [recorderState.durationMillis, recorderState.isRecording]);
 
-  useEffect(() => () => {
-    if (isRecordingRef.current) void recorder.stop().catch(() => undefined);
-    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+  useEffect(() => {
+    if (previousRecordingStateRef.current && !recorderState.isRecording && !stoppingRef.current) {
+      interruptedRef.current = true;
+      recordingStartedRef.current = false;
+      interruptAlertedRef.current = true;
+      setRecordedUri(null);
+      void discardRecording(false);
+    }
+    previousRecordingStateRef.current = recorderState.isRecording;
+    if (interruptedRef.current && !recorderState.isRecording) {
+      interruptedRef.current = false;
+      setRecordedUri(null);
+      interruptAlertedRef.current = true;
+      void discardRecording(false);
+    }
+  }, [recorderState.isRecording]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        if (isRecordingRef.current || pendingStartRef.current) void discardRecording(true);
+      }
+      else if (interruptAlertedRef.current) {
+        interruptAlertedRef.current = false;
+        Alert.alert('Recording interrupted', 'Your voice comment was discarded. Please record it again.');
+      }
+    });
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      void discardRecording(false);
+      subscription.remove();
+    };
   }, [recorder]);
+
+  useEffect(() => () => {
+    if (isRecordingRef.current || pendingStartRef.current) void discardRecording(true);
+  }, [pathname]);
 
   const publishComment = async () => {
     if (!recordedUri) return;
@@ -187,6 +292,7 @@ export function PostCard({
         throw new Error(`Failed to upload voice comment: ${uploadResult.status}`);
       }
 
+      if (!mountedRef.current || AppState.currentState !== 'active') return;
       await createComment.mutateAsync({
         postId: post.id,
         data: { audioObjectPath: objectPath, durationSeconds: duration }
