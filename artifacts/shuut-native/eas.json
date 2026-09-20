@@ -1,0 +1,17 @@
+{
+  "build": {
+    "production": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://shuut.me"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://shuut.me"
+      }
+    }
+  }
+}

@@ -13,10 +13,9 @@ import { GlobalRecordButton } from '../components/GlobalRecordButton';
 import { LegalConsentGate } from '../components/LegalConsentGate';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { API_BASE_URL } from '../lib/apiUrl';
 
-// Initialize base URL
-const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-setBaseUrl(`https://${domain}`);
+setBaseUrl(API_BASE_URL);
 setDefaultCredentials('omit');
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.

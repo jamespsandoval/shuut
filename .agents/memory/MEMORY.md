@@ -18,3 +18,4 @@
 - [Safety relationship invariants](safety-relationship-invariants.md) — blocks are mutual, serialize with social writes, and remove both directional follows without restoring them on unblock.
 - [Voice moderation safety](voice-moderation-safety.md) — voice content fails closed; removals retain source audio through a serialized 30-day appeal window.
 - [Private upload authorization](private-upload-authorization.md) — sidecar-signed PUT URLs do not bind MIME or size; use server-verified upload tokens for consent-sensitive media.
+- [App Review fixtures](app-review-fixtures.md) — fictional reviewer data is staging-only; production review uses real OTP and reviewer-created activity.

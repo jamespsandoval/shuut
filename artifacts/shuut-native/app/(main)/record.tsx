@@ -14,6 +14,7 @@ import { useVoiceConsentCheck } from '../../hooks/useVoiceConsentCheck';
 import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RECORDING_RECOVERY_KEY, RecordingRecovery, validateRecovery } from '../../lib/recordingRecovery';
+import { resolveApiUrl } from '../../lib/apiUrl';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -433,8 +434,8 @@ export default function RecordScreen() {
     const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
       data: { name: fileName, size: fileSize, contentType },
     });
-    const domain = process.env.EXPO_PUBLIC_DOMAIN || 'localhost:80';
-    const fullUrl = uploadURL.startsWith('http') ? uploadURL : `https://${domain}${uploadURL}`;
+    const fullUrl = resolveApiUrl(uploadURL);
+    if (!fullUrl) throw new Error('Upload URL was empty.');
 
     if (Platform.OS === 'web') {
       const uploadResponse = await fetch(fullUrl, {

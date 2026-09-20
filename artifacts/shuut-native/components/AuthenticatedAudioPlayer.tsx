@@ -4,6 +4,7 @@ import { Play, Pause } from 'lucide-react-native';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useAuth } from '../hooks/useAuthStore';
 import { useColors } from '../hooks/useColors';
+import { resolveApiUrl } from '../lib/apiUrl';
 
 interface AuthenticatedAudioPlayerProps {
   url: string | null | undefined;
@@ -34,8 +35,8 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
         setIsDownloading(true);
         setError(false);
 
-        const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-        const fullUrl = url.startsWith('http') ? url : `https://${domain}${url}`;
+        const fullUrl = resolveApiUrl(url);
+        if (!fullUrl) throw new Error('Audio URL was empty.');
 
         if (Platform.OS === 'web') {
           const response = await fetch(fullUrl, {

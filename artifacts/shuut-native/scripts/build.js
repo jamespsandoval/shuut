@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
+const { normalizeApiBaseUrl } = require('./release-config');
 
 let metroProcess = null;
 
@@ -75,6 +76,23 @@ function getDeploymentDomain() {
   process.exit(1);
 }
 
+function getApiBaseUrl(deploymentDomain) {
+  const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (configured) {
+    return normalizeApiBaseUrl(configured, process.env.NODE_ENV !== 'production');
+  }
+
+  // REPLIT_DEV_DOMAIN is a development ingress, never an implicit release API.
+  if (process.env.NODE_ENV === 'production' &&
+      !process.env.REPLIT_INTERNAL_APP_DOMAIN &&
+      process.env.REPLIT_DEV_DOMAIN) {
+    throw new Error(
+      'EXPO_PUBLIC_API_BASE_URL is required for production static builds; refusing REPLIT_DEV_DOMAIN.',
+    );
+  }
+  return normalizeApiBaseUrl(`https://${deploymentDomain}`, process.env.NODE_ENV !== 'production');
+}
+
 function prepareDirectories(timestamp) {
   console.log('Preparing build directories...');
 
@@ -129,7 +147,7 @@ function getExpoPublicReplId() {
   return process.env.REPL_ID || process.env.EXPO_PUBLIC_REPL_ID;
 }
 
-async function startMetro(expoPublicDomain, expoPublicReplId) {
+async function startMetro(expoPublicDomain, expoPublicReplId, apiBaseUrl) {
   const isRunning = await checkMetroHealth();
   if (isRunning) {
     console.log('Metro already running');
@@ -141,6 +159,7 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
   const env = {
     ...process.env,
     EXPO_PUBLIC_DOMAIN: expoPublicDomain,
+    EXPO_PUBLIC_API_BASE_URL: apiBaseUrl,
     EXPO_PUBLIC_REPL_ID: expoPublicReplId,
   };
 
@@ -527,6 +546,7 @@ async function main() {
   setupSignalHandlers();
 
   const domain = getDeploymentDomain();
+  const apiBaseUrl = getApiBaseUrl(domain);
   const expoPublicReplId = getExpoPublicReplId();
   const baseUrl = `https://${domain}`;
   const timestamp = `${Date.now()}-${process.pid}`;
@@ -534,7 +554,7 @@ async function main() {
   prepareDirectories(timestamp);
   clearMetroCache();
 
-  await startMetro(domain, expoPublicReplId);
+  await startMetro(domain, expoPublicReplId, apiBaseUrl);
 
   const downloadTimeout = 600000;
   const downloadPromise = downloadBundlesAndManifests(timestamp);
@@ -580,10 +600,21 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error('Build failed:', error.message);
-  if (metroProcess) {
-    metroProcess.kill();
+if (process.argv.includes('--check-config')) {
+  try {
+    const domain = getDeploymentDomain();
+    const apiBaseUrl = getApiBaseUrl(domain);
+    console.log(`Static launcher API URL: ${apiBaseUrl}`);
+  } catch (error) {
+    console.error('Build configuration failed:', error.message);
+    process.exitCode = 1;
   }
-  process.exit(1);
-});
+} else {
+  main().catch((error) => {
+    console.error('Build failed:', error.message);
+    if (metroProcess) {
+      metroProcess.kill();
+    }
+    process.exit(1);
+  });
+}

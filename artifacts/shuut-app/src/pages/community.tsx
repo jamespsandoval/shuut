@@ -8,7 +8,7 @@ export default function Community() {
       <div className="space-y-8 text-[15px] text-gray-700 leading-relaxed">
         <section>
           <h2 className="text-xl font-bold text-gray-900 mb-3">Our Core Principles</h2>
-          <p className="mb-4">Be direct, be helpful, and contribute constructively. SHÜÜT is a space for founders to share unvarnished realities, learn from one another, and build authentic connections.</p>
+          <p className="mb-4">Be direct, be helpful, and contribute constructively. SHÜÜT is a space for people to share unvarnished realities, learn from one another, and build authentic connections.</p>
         </section>
 
         <section>

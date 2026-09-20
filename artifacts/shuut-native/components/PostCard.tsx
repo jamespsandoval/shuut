@@ -9,7 +9,7 @@ import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
 import { File } from 'expo-file-system';
 import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
-import { authenticatedImageSource } from '../lib/apiUrl';
+import { authenticatedImageSource, resolveApiUrl } from '../lib/apiUrl';
 import { useAuth } from '../hooks/useAuthStore';
 import { SPEECH_RECORDING_OPTIONS } from '../lib/audioRecording';
 import { formatApproximateTimeAgo } from '../lib/relativeTime';
@@ -280,8 +280,8 @@ export function PostCard({
         data: { name: 'comment.m4a', size: fileObj.size, contentType: 'audio/mp4' }
       });
 
-      const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-      const fullUrl = uploadURL.startsWith('http') ? uploadURL : `https://${domain}${uploadURL}`;
+      const fullUrl = resolveApiUrl(uploadURL);
+      if (!fullUrl) throw new Error('Upload URL was empty.');
 
       const uploadResult = await fileObj.upload(fullUrl, {
         httpMethod: 'PUT',

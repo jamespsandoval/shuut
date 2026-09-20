@@ -14,6 +14,7 @@ import { SafetyActionSheet } from '../../components/SafetyActionSheet';
 
 import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
 import { useVoiceConsentCheck } from '../../hooks/useVoiceConsentCheck';
+import { resolveApiUrl } from '../../lib/apiUrl';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -222,8 +223,8 @@ export default function PostDetailScreen() {
         data: { name: 'comment.m4a', size: fileObj.size, contentType: 'audio/mp4' }
       });
 
-      const domain = process.env.EXPO_PUBLIC_DOMAIN || "localhost:80";
-      const fullUrl = uploadURL.startsWith('http') ? uploadURL : `https://${domain}${uploadURL}`;
+      const fullUrl = resolveApiUrl(uploadURL);
+      if (!fullUrl) throw new Error('Upload URL was empty.');
 
       const uploadResult = await fileObj.upload(fullUrl, {
         httpMethod: 'PUT',
