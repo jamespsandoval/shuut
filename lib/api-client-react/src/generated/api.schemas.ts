@@ -23,8 +23,15 @@ export interface VoiceAiConsentInput {
 export interface VoiceAiConsentStatus {
   required: boolean;
   currentVersion: string;
+  /** @pattern ^sha256:[a-f0-9]{64}$ */
+  currentContentHash: string;
   /** @nullable */
   acceptedVersion: string | null;
+  /**
+     * @nullable
+     * @pattern ^sha256:[a-f0-9]{64}$
+     */
+  acceptedContentHash: string | null;
   /** @nullable */
   acceptedAt: string | null;
   /** @nullable */
@@ -320,6 +327,11 @@ export interface AppealDecisionInput {
 export interface SafeError {
   error: string;
   code: string;
+}
+
+export interface ApiError {
+  error: string;
+  code?: string;
 }
 
 export type ReportInputTargetType = typeof ReportInputTargetType[keyof typeof ReportInputTargetType];
@@ -767,6 +779,11 @@ export interface UploadUrlResponse {
   objectPath: string;
 }
 
+export interface UploadObjectResponse {
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  objectPath: string;
+}
+
 export interface PostInput {
   /**
      * @minLength 1
@@ -941,6 +958,10 @@ export const GetFeedView = {
   everyone: 'everyone',
   following: 'following',
 } as const;
+
+export type PutUploadParams = {
+token: string;
+};
 
 export type SearchProfilesParams = {
 /**

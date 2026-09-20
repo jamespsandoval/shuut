@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApiError,
   AppealDecisionInput,
   AppealInput,
   AskAnswer,
@@ -76,6 +77,7 @@ import type {
   PostShareLink,
   ProfileDetail,
   ProfileUpdate,
+  PutUploadParams,
   ReactionInput,
   RecoveryCodeInput,
   RegistrationInput,
@@ -84,6 +86,7 @@ import type {
   SafeError,
   SanctionInput,
   SearchProfilesParams,
+  UploadObjectResponse,
   UploadUrlRequest,
   UploadUrlResponse,
   UsernameAvailability,
@@ -232,7 +235,7 @@ return customFetch<VoiceAiConsentStatus>(getAcceptVoiceAiConsentUrl(),
 
 export const getAcceptVoiceAiConsentMutationKey = () => ['acceptVoiceAiConsent'] as const;
 
-export const getAcceptVoiceAiConsentMutationOptions = <TError = ErrorType<void>,
+export const getAcceptVoiceAiConsentMutationOptions = <TError = ErrorType<ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptVoiceAiConsent>>, TError,AcceptVoiceAiConsentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof acceptVoiceAiConsent>>, TError,AcceptVoiceAiConsentMutationVariables, TContext> => {
 
@@ -261,10 +264,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type AcceptVoiceAiConsentMutationResult = NonNullable<Awaited<ReturnType<typeof acceptVoiceAiConsent>>>
     export type AcceptVoiceAiConsentMutationBody = BodyType<VoiceAiConsentInput>
-    export type AcceptVoiceAiConsentMutationError = ErrorType<void>
+    export type AcceptVoiceAiConsentMutationError = ErrorType<ApiError>
     export type AcceptVoiceAiConsentMutationVariables = {data: BodyType<VoiceAiConsentInput>}
 
-    export const useAcceptVoiceAiConsent = <TError = ErrorType<void>,
+    export const useAcceptVoiceAiConsent = <TError = ErrorType<ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptVoiceAiConsent>>, TError,AcceptVoiceAiConsentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof acceptVoiceAiConsent>>,
@@ -3057,7 +3060,7 @@ return customFetch<ProfileDetail>(getUpdateProfileUrl(handle),
 
 export const getUpdateProfileMutationKey = () => ['updateProfile'] as const;
 
-export const getUpdateProfileMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
+export const getUpdateProfileMutationOptions = <TError = ErrorType<ApiError | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfile>>, TError,UpdateProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateProfile>>, TError,UpdateProfileMutationVariables, TContext> => {
 
@@ -3086,10 +3089,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfile>>>
     export type UpdateProfileMutationBody = BodyType<ProfileUpdate>
-    export type UpdateProfileMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
+    export type UpdateProfileMutationError = ErrorType<ApiError | LegalPolicyConsentRequiredError>
     export type UpdateProfileMutationVariables = {handle: string;data: BodyType<ProfileUpdate>}
 
-    export const useUpdateProfile = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
+    export const useUpdateProfile = <TError = ErrorType<ApiError | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfile>>, TError,UpdateProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateProfile>>,
@@ -3139,7 +3142,7 @@ return customFetch<UploadUrlResponse>(getRequestUploadUrlUrl(),
 
 export const getRequestUploadUrlMutationKey = () => ['requestUploadUrl'] as const;
 
-export const getRequestUploadUrlMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
+export const getRequestUploadUrlMutationOptions = <TError = ErrorType<ApiError | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext> => {
 
@@ -3168,10 +3171,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RequestUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestUploadUrl>>>
     export type RequestUploadUrlMutationBody = BodyType<UploadUrlRequest>
-    export type RequestUploadUrlMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
+    export type RequestUploadUrlMutationError = ErrorType<ApiError | LegalPolicyConsentRequiredError>
     export type RequestUploadUrlMutationVariables = {data: BodyType<UploadUrlRequest>}
 
-    export const useRequestUploadUrl = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
+    export const useRequestUploadUrl = <TError = ErrorType<ApiError | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,RequestUploadUrlMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof requestUploadUrl>>,
@@ -3180,6 +3183,96 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getRequestUploadUrlMutationOptions(options));
+    }
+
+export const getPutUploadUrl = (params: PutUploadParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/storage/uploads/put?${stringifiedParams}` : `/api/storage/uploads/put`
+}
+
+export const putUpload = async (putUploadBody: Blob,
+    params: PutUploadParams, options?: Parameters<typeof customFetch>[1]): Promise<UploadObjectResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<UploadObjectResponse>(getPutUploadUrl(params),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/jpeg', ...getHeaders(options?.headers) },
+    body: putUploadBody
+  }
+);}
+
+
+
+
+
+export const getPutUploadMutationKey = () => ['putUpload'] as const;
+
+export const getPutUploadMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putUpload>>, TError,PutUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof putUpload>>, TError,PutUploadMutationVariables, TContext> => {
+
+const mutationKey = getPutUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putUpload>>, PutUploadMutationVariables> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  putUpload(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutUploadMutationResult = NonNullable<Awaited<ReturnType<typeof putUpload>>>
+    export type PutUploadMutationBody = BodyType<Blob>
+    export type PutUploadMutationError = ErrorType<ApiError>
+    export type PutUploadMutationVariables = {data: BodyType<Blob>;params: PutUploadParams}
+
+    export const usePutUpload = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putUpload>>, TError,PutUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof putUpload>>,
+        TError,
+        PutUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPutUploadMutationOptions(options));
     }
 
 export const getTranscribeAudioUrl = () => {
@@ -3221,7 +3314,7 @@ return customFetch<AudioTranscript>(getTranscribeAudioUrl(),
 
 export const getTranscribeAudioMutationKey = () => ['transcribeAudio'] as const;
 
-export const getTranscribeAudioMutationOptions = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
+export const getTranscribeAudioMutationOptions = <TError = ErrorType<ApiError | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeAudio>>, TError,TranscribeAudioMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof transcribeAudio>>, TError,TranscribeAudioMutationVariables, TContext> => {
 
@@ -3250,10 +3343,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type TranscribeAudioMutationResult = NonNullable<Awaited<ReturnType<typeof transcribeAudio>>>
     export type TranscribeAudioMutationBody = BodyType<AudioTranscriptionInput>
-    export type TranscribeAudioMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
+    export type TranscribeAudioMutationError = ErrorType<ApiError | LegalPolicyConsentRequiredError>
     export type TranscribeAudioMutationVariables = {data: BodyType<AudioTranscriptionInput>}
 
-    export const useTranscribeAudio = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
+    export const useTranscribeAudio = <TError = ErrorType<ApiError | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeAudio>>, TError,TranscribeAudioMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof transcribeAudio>>,

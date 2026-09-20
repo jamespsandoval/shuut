@@ -4,9 +4,9 @@ import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import app from "../src/app";
 import { ObjectStorageService } from "../src/lib/objectStorage";
-import { createUploadToken } from "../src/lib/uploadToken";
+import { createUploadToken, digestUploadToken } from "../src/lib/uploadToken";
 import { and, eq, like } from "drizzle-orm";
-import { db, pool, usersTable, voiceAiConsentsTable } from "@workspace/db";
+import { db, pool, profileImageUploadsTable, usersTable, voiceAiConsentsTable } from "@workspace/db";
 import { CURRENT_LEGAL_POLICY_VERSIONS } from "../src/lib/legalPolicy";
 import {
   CURRENT_VOICE_AI_CONSENT_VERSION,
@@ -124,7 +124,8 @@ test("consent endpoints enforce auth, current disclosure, idempotence, and revoc
   const initial = await (await request("/api/voice-ai-consent", { session })).json();
   assert.deepEqual(initial, {
     required: true, currentVersion: CURRENT_VOICE_AI_CONSENT_VERSION,
-    acceptedVersion: null, acceptedAt: null, revokedAt: null, canRevoke: false,
+    currentContentHash: VOICE_AI_CONSENT_CONTENT_HASH,
+    acceptedVersion: null, acceptedContentHash: null, acceptedAt: null, revokedAt: null, canRevoke: false,
     summary: VOICE_AI_CONSENT_SUMMARY, details: [...VOICE_AI_CONSENT_DETAILS],
   });
 
@@ -155,6 +156,8 @@ test("consent endpoints enforce auth, current disclosure, idempotence, and revoc
   const accepted = await acceptedResponse.json();
   assert.equal(accepted.required, false);
   assert.equal(accepted.currentVersion, CURRENT_VOICE_AI_CONSENT_VERSION);
+  assert.equal(accepted.currentContentHash, VOICE_AI_CONSENT_CONTENT_HASH);
+  assert.equal(accepted.acceptedContentHash, VOICE_AI_CONSENT_CONTENT_HASH);
   const row = (await db.select().from(voiceAiConsentsTable).where(and(
     eq(voiceAiConsentsTable.userId, user.id),
     eq(voiceAiConsentsTable.consentVersion, CURRENT_VOICE_AI_CONSENT_VERSION),
@@ -207,15 +210,25 @@ test("token upload enforces MIME, exact size, magic bytes, and expiry", async ()
   const saved: Buffer[] = [];
   const originalSave = ObjectStorageService.prototype.saveUpload;
   ObjectStorageService.prototype.saveUpload = async function (_path, data) { saved.push(data); };
-  const objectPath = "/objects/uploads/token-image-test";
+  const objectPath = `/objects/uploads/token-image-${Date.now()}`;
   const jpeg = Buffer.from([0xff, 0xd8, 0xff]);
   const token = createUploadToken(objectPath, "image/jpeg", jpeg.length);
+  await register(`${prefix}-upload-token@example.test`);
+  const tokenUserId = (await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, `${prefix}-upload-token@example.test`)))[0]!.id;
+  await db.insert(profileImageUploadsTable).values({
+    objectPath, userId: tokenUserId, uploadTokenDigest: digestUploadToken(token),
+  });
   const upload = (body: Buffer, contentType: string, tokenValue = token) => fetch(
     `${baseUrl}/api/storage/uploads/put?token=${encodeURIComponent(tokenValue)}`,
     { method: "PUT", headers: { "content-type": contentType, "content-length": String(body.length) }, body },
   );
   try {
-    assert.equal((await upload(jpeg, "image/jpeg")).status, 200);
+    const concurrent = await Promise.all([
+      upload(jpeg, "image/jpeg"),
+      upload(jpeg, "image/jpeg"),
+    ]);
+    assert.deepEqual(concurrent.map((response) => response.status).sort(), [200, 409]);
     assert.equal(saved.length, 1);
     assert.equal((await upload(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), "audio/webm")).status, 400);
     assert.equal((await upload(jpeg, "image/png")).status, 400);
@@ -226,6 +239,19 @@ test("token upload enforces MIME, exact size, magic bytes, and expiry", async ()
     })).toString("base64url");
     assert.equal((await upload(jpeg, "image/jpeg", `${expiredPayload}.invalid`)).status, 400);
     assert.equal(saved.length, 1);
+    const failedPath = `/objects/uploads/token-image-failed-${Date.now()}`;
+    const failedToken = createUploadToken(failedPath, "image/jpeg", jpeg.length);
+    await db.insert(profileImageUploadsTable).values({
+      objectPath: failedPath, userId: tokenUserId, uploadTokenDigest: digestUploadToken(failedToken),
+    });
+    ObjectStorageService.prototype.saveUpload = async function () {
+      throw new Error("simulated storage failure");
+    };
+    const failedResponse = await upload(jpeg, "image/jpeg", failedToken);
+    assert.equal(failedResponse.status, 502);
+    assert.equal((await failedResponse.json()).code, "UPLOAD_STORAGE_FAILED_RETRY_AUTH");
+    ObjectStorageService.prototype.saveUpload = async function (_path, data) { saved.push(data); };
+    assert.equal((await upload(jpeg, "image/jpeg", failedToken)).status, 409);
   } finally {
     ObjectStorageService.prototype.saveUpload = originalSave;
   }

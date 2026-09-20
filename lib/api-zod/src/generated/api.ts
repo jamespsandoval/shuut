@@ -8,10 +8,16 @@
 import * as zod from 'zod';
 
 
+export const getVoiceAiConsentResponseCurrentContentHashRegExp = new RegExp('^sha256:[a-f0-9]{64}$');
+export const getVoiceAiConsentResponseAcceptedContentHashRegExp = new RegExp('^sha256:[a-f0-9]{64}$');
+
+
 export const GetVoiceAiConsentResponse = zod.object({
   "required": zod.boolean(),
   "currentVersion": zod.string(),
+  "currentContentHash": zod.string().regex(getVoiceAiConsentResponseCurrentContentHashRegExp),
   "acceptedVersion": zod.string().nullable(),
+  "acceptedContentHash": zod.string().regex(getVoiceAiConsentResponseAcceptedContentHashRegExp).nullable(),
   "acceptedAt": zod.coerce.date().nullable(),
   "revokedAt": zod.coerce.date().nullable(),
   "canRevoke": zod.boolean(),
@@ -25,10 +31,16 @@ export const AcceptVoiceAiConsentBody = zod.object({
   "source": zod.enum(['web', 'native', 'ios', 'android'])
 })
 
+export const acceptVoiceAiConsentResponseCurrentContentHashRegExp = new RegExp('^sha256:[a-f0-9]{64}$');
+export const acceptVoiceAiConsentResponseAcceptedContentHashRegExp = new RegExp('^sha256:[a-f0-9]{64}$');
+
+
 export const AcceptVoiceAiConsentResponse = zod.object({
   "required": zod.boolean(),
   "currentVersion": zod.string(),
+  "currentContentHash": zod.string().regex(acceptVoiceAiConsentResponseCurrentContentHashRegExp),
   "acceptedVersion": zod.string().nullable(),
+  "acceptedContentHash": zod.string().regex(acceptVoiceAiConsentResponseAcceptedContentHashRegExp).nullable(),
   "acceptedAt": zod.coerce.date().nullable(),
   "revokedAt": zod.coerce.date().nullable(),
   "canRevoke": zod.boolean(),
@@ -37,10 +49,16 @@ export const AcceptVoiceAiConsentResponse = zod.object({
 })
 
 
+export const revokeVoiceAiConsentResponseCurrentContentHashRegExp = new RegExp('^sha256:[a-f0-9]{64}$');
+export const revokeVoiceAiConsentResponseAcceptedContentHashRegExp = new RegExp('^sha256:[a-f0-9]{64}$');
+
+
 export const RevokeVoiceAiConsentResponse = zod.object({
   "required": zod.boolean(),
   "currentVersion": zod.string(),
+  "currentContentHash": zod.string().regex(revokeVoiceAiConsentResponseCurrentContentHashRegExp),
   "acceptedVersion": zod.string().nullable(),
+  "acceptedContentHash": zod.string().regex(revokeVoiceAiConsentResponseAcceptedContentHashRegExp).nullable(),
   "acceptedAt": zod.coerce.date().nullable(),
   "revokedAt": zod.coerce.date().nullable(),
   "canRevoke": zod.boolean(),
@@ -811,6 +829,18 @@ export const RequestUploadUrlBody = zod.object({
 export const RequestUploadUrlResponse = zod.object({
   "uploadURL": zod.string(),
   "objectPath": zod.string()
+})
+
+
+export const PutUploadQueryParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const putUploadResponseObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+
+
+export const PutUploadResponse = zod.object({
+  "objectPath": zod.string().regex(putUploadResponseObjectPathRegExp)
 })
 
 

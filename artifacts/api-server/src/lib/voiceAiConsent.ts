@@ -35,6 +35,8 @@ export async function getVoiceAiConsentStatus(userId: string) {
     required: !current || Boolean(current.revokedAt),
     currentVersion: CURRENT_VOICE_AI_CONSENT_VERSION,
     acceptedVersion: current?.consentVersion ?? latest?.consentVersion ?? null,
+    acceptedContentHash: current?.consentContentHash ?? null,
+    currentContentHash: VOICE_AI_CONSENT_CONTENT_HASH,
     acceptedAt: current?.acceptedAt?.toISOString() ?? latestCurrentVersion?.acceptedAt?.toISOString() ?? latest?.acceptedAt?.toISOString() ?? null,
     revokedAt: latestCurrentVersion?.revokedAt?.toISOString() ?? null,
     canRevoke: Boolean(current),

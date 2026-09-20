@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { SIGNED_UPLOAD_TTL_MS } from "./objectStorage";
 
 type UploadClaims = { objectPath: string; contentType: string; size: number; expiresAt: number };
@@ -15,6 +15,9 @@ export function createUploadToken(objectPath: string, contentType: string, size:
   const signature = createHmac("sha256", secret()).update(body).digest("base64url");
   return `${body}.${signature}`;
 }
+export function digestUploadToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
 export function verifyUploadToken(token: string): UploadClaims | null {
   const [body, signature] = token.split(".");
   if (!body || !signature) return null;
@@ -24,8 +27,9 @@ export function verifyUploadToken(token: string): UploadClaims | null {
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
   try {
     const claims = JSON.parse(Buffer.from(body, "base64url").toString()) as UploadClaims;
-    if (!claims.objectPath || !claims.contentType || !Number.isSafeInteger(claims.size)
-      || !Number.isSafeInteger(claims.expiresAt) || claims.expiresAt < Date.now()) return null;
+    if (!claims.objectPath.startsWith("/objects/uploads/")
+      || !claims.contentType || !Number.isSafeInteger(claims.size)
+      || claims.size < 1 || !Number.isSafeInteger(claims.expiresAt) || claims.expiresAt < Date.now()) return null;
     return claims;
   } catch { return null; }
 }

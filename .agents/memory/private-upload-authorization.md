@@ -7,4 +7,4 @@ Replit App Storage’s signed-object-url sidecar signs only the host for PUT URL
 
 **Why:** A client could request an image upload before granting voice consent, then use the returned direct PUT URL for audio bytes. The storage service would accept the bytes before later API gates rejected processing.
 
-**How to apply:** Keep consent-sensitive private uploads behind a short-lived tamper-proof token that binds object path, MIME, exact size, and expiry. Verify headers, byte length, and file magic before saving server-side. Do not restore direct PUT URLs unless the platform can cryptographically bind and enforce those properties.
+**How to apply:** Keep consent-sensitive private uploads behind a short-lived tamper-proof token that binds object path, MIME, exact size, and expiry. Each token is single-use and must be claimed atomically before storage I/O. If storage fails after the claim, require a fresh authorization rather than making the old token replayable. Verify headers, byte length, and file magic before saving server-side. Do not restore direct PUT URLs unless the platform can cryptographically bind and enforce those properties.

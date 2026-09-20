@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ToastAction } from "@/components/ui/toast"
 import { AudioPlayer } from "./audio-player"
 import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
-import { applyCommentConsentDecision } from "@/lib/comment-consent-flow"
+import { applyCommentConsentDecision, getCommentAutoStartAction } from "@/lib/comment-consent-flow"
 
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
@@ -159,10 +159,15 @@ export function CommentComposer({
   }, [])
 
   useEffect(() => {
-    if (!autoStart || autoStartedRef.current) return
+    // Do not consume the one-shot auto-start attempt while the consent query
+    // is still pending. Previously this effect called startRecording during
+    // the query's loading window; startRecording returned early for safety,
+    // but autoStartedRef then prevented a retry and isStarting stayed true
+    // forever.
+    if (getCommentAutoStartAction(autoStart, autoStartedRef.current, voiceAiConsentLoading) !== "start") return
     autoStartedRef.current = true
     void startRecording()
-  }, [autoStart, startRecording])
+  }, [autoStart, startRecording, voiceAiConsentLoading])
 
   const handleCancel = () => {
     if (audioData) URL.revokeObjectURL(audioData)

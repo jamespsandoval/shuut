@@ -168,6 +168,8 @@ export const profileImageUploadsTable = pgTable(
   {
     objectPath: text("object_path").primaryKey(),
     userId: text("user_id").notNull(),
+    uploadTokenDigest: text("upload_token_digest"),
+    uploadTokenConsumedAt: timestamp("upload_token_consumed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("shuut_profile_image_uploads_user_idx").on(table.userId)],

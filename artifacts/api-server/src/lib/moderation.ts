@@ -18,6 +18,7 @@ import {
   postsTable,
   usersTable,
 } from "@workspace/db";
+import { hasCurrentVoiceAiConsent } from "./voiceAiConsent";
 
 export const MODERATION_POLICY_VERSION = "voice-text-v1";
 const MODEL = "gpt-5-mini";
@@ -213,6 +214,14 @@ async function targetText(targetType: string, targetId: number) {
   return comment?.transcript ?? null;
 }
 
+async function targetOwnerUserId(targetType: string, targetId: number) {
+  const founderId = targetType === "post"
+    ? (await db.select({ authorId: postsTable.authorId }).from(postsTable).where(eq(postsTable.id, targetId)).limit(1))[0]?.authorId
+    : (await db.select({ authorId: commentsTable.authorId }).from(commentsTable).where(eq(commentsTable.id, targetId)).limit(1))[0]?.authorId;
+  if (!founderId) return null;
+  return (await db.select({ userId: foundersTable.userId }).from(foundersTable).where(eq(foundersTable.id, founderId)).limit(1))[0]?.userId ?? null;
+}
+
 export async function enqueueModeration(targetType: "post" | "comment", targetId: number, transcript: string, revision = 1) {
   const hash = contentHash(transcript);
   const [subject] = await db.insert(moderationSubjectsTable).values({
@@ -370,6 +379,14 @@ export async function runModerationSweep(limit = 10) {
       continue;
     }
     try {
+      // Voice transcripts are sent to the managed moderation provider. A
+      // revocation can occur while a job is queued, so this check must be
+      // immediately before dispatch and failure must remain moderation-safe:
+      // failJob retries and eventually opens a high-priority moderation case.
+      const ownerUserId = await targetOwnerUserId(job.targetType, job.targetId);
+      if (!ownerUserId || !(await hasCurrentVoiceAiConsent(ownerUserId))) {
+        throw new Error("VOICE_AI_CONSENT_REQUIRED");
+      }
       await applyResult(job, await provider.classify(text));
     } catch (error) {
       await failJob(job, error instanceof Error ? error.message : "provider_error");

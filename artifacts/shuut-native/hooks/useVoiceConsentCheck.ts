@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useGetVoiceAiConsent } from '@workspace/api-client-react';
+import { resolveVoiceConsentGate } from '../lib/voiceRecordingGuards';
 
 export function useVoiceConsentCheck() {
   const { data: consentStatus, isLoading, isError, refetch } = useGetVoiceAiConsent();
@@ -7,21 +8,27 @@ export function useVoiceConsentCheck() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const checkConsent = useCallback(async (onAllowed: () => void) => {
-    if (isError || (!isLoading && !consentStatus)) {
-      // error state
-      return { allowed: false, error: true };
+    const gate = resolveVoiceConsentGate({
+      status: consentStatus,
+      loading: isLoading,
+      error: isError,
+    });
+    if (gate === 'block') {
+      return {
+        allowed: false,
+        loading: isLoading,
+        error: !isLoading,
+        required: false,
+      };
     }
-    if (isLoading) {
-      return { allowed: false, loading: true };
-    }
-    if (consentStatus?.required) {
+    if (gate === 'prompt') {
       setPendingAction(() => onAllowed);
       setShowModal(true);
-      return { allowed: false, required: true };
+      return { allowed: false, required: true, loading: false, error: false };
     }
 
     onAllowed();
-    return { allowed: true };
+    return { allowed: true, required: false, loading: false, error: false };
   }, [consentStatus, isLoading, isError]);
 
   const onAccept = useCallback(() => {

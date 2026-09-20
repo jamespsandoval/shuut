@@ -40,7 +40,15 @@ paths:
         '200':
           description: Updated voice AI consent status
           content: { application/json: { schema: { $ref: '#/components/schemas/VoiceAiConsentStatus' } } }
-        '409': { description: Stale consent version }
+        '400':
+          description: Invalid consent request
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '401':
+          description: Unauthorized
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '409':
+          description: Stale consent version
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
     delete:
       operationId: revokeVoiceAiConsent
       tags: [voice-ai-consent]
@@ -448,7 +456,9 @@ paths:
         '403':
           description: Current legal policies have not been accepted
           content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
-        '401': { description: Unauthorized }
+        '401':
+          description: Unauthorized
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
   /storage/uploads/request-url:
     post:
       operationId: requestUploadUrl
@@ -466,7 +476,50 @@ paths:
         '403':
           description: Current legal policies have not been accepted
           content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
-        '401': { description: Unauthorized }
+        '401':
+          description: Unauthorized
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '400':
+          description: Invalid upload metadata
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '409':
+          description: Account deletion is already in progress
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '500':
+          description: Upload could not be initialized
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+  /storage/uploads/put:
+    put:
+      operationId: putUpload
+      tags: [storage]
+      parameters:
+        - { name: token, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+          audio/webm: { schema: { type: string, format: binary } }
+          audio/mp4: { schema: { type: string, format: binary } }
+          audio/mpeg: { schema: { type: string, format: binary } }
+          audio/ogg: { schema: { type: string, format: binary } }
+      responses:
+        '200':
+          description: Upload stored
+          content: { application/json: { schema: { $ref: '#/components/schemas/UploadObjectResponse' } } }
+        '400':
+          description: Invalid upload authorization or content
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '409':
+          description: Upload authorization was already used
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '413':
+          description: Upload is too large
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '502':
+          description: Upload storage failure
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
   /transcriptions:
     post:
       operationId: transcribeAudio
@@ -484,7 +537,15 @@ paths:
         '403':
           description: Current legal policies have not been accepted
           content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
-        '401': { description: Unauthorized }
+        '401':
+          description: Unauthorized
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '400':
+          description: Invalid voice recording
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+        '502':
+          description: Provider transcription failure
+          content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
   /storage/objects/{objectPath}:
     get:
       operationId: getStorageObject
@@ -938,11 +999,13 @@ components:
         source: { type: string, enum: [web, native, ios, android] }
     VoiceAiConsentStatus:
       type: object
-      required: [required, currentVersion, acceptedVersion, acceptedAt, revokedAt, canRevoke, summary, details]
+      required: [required, currentVersion, currentContentHash, acceptedVersion, acceptedContentHash, acceptedAt, revokedAt, canRevoke, summary, details]
       properties:
         required: { type: boolean }
         currentVersion: { type: string }
+        currentContentHash: { type: string, pattern: '^sha256:[a-f0-9]{64}$' }
         acceptedVersion: { type: [string, 'null'] }
+        acceptedContentHash: { type: [string, 'null'], pattern: '^sha256:[a-f0-9]{64}$' }
         acceptedAt: { type: [string, 'null'], format: date-time }
         revokedAt: { type: [string, 'null'], format: date-time }
         canRevoke: { type: boolean }
@@ -1091,6 +1154,13 @@ components:
     SafeError:
       type: object
       required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string }
+    ApiError:
+      type: object
+      required: [error]
+      additionalProperties: false
       properties:
         error: { type: string }
         code: { type: string }
@@ -1374,6 +1444,12 @@ components:
       properties:
         uploadURL: { type: string }
         objectPath: { type: string }
+    UploadObjectResponse:
+      type: object
+      required: [objectPath]
+      additionalProperties: false
+      properties:
+        objectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
     PostInput:
       type: object
       required: [audioObjectPath, durationSeconds]

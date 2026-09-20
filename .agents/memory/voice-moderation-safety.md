@@ -9,6 +9,12 @@ Only transcript-ready content with an approved current moderation revision may b
 
 **How to apply:** Route every feed, direct read, audio, share, Ask, notification, and social write through the same distributability rule. Do not add a bypass for a new surface.
 
+Voice-AI consent validity is the combination of the current disclosure version and its server-owned content hash. Recheck that exact current consent immediately before every external provider dispatch, including transcription and transcript moderation; request-time or upload-time checks are not sufficient.
+
+**Why:** Consent can be revoked or a disclosure can change while audio is uploading or a moderation job is queued. A one-time checkbox remains valid only for the exact disclosure accepted and only until revocation.
+
+**How to apply:** Keep unknown consent states fail-closed, bind accepted records to version plus hash, and check again at the final network boundary before bytes or transcripts leave SHÜÜT.
+
 Moderation removals hide content immediately but retain source audio for a 30-day appeal window. Appeal submission and cleanup scheduling must lock the same case row before checking eligibility or queueing deletion.
 
 **Why:** Deleting source audio before an appeal is decided makes a successful restoration impossible; checking appeals before locking leaves a race that can still delete accepted appeals.

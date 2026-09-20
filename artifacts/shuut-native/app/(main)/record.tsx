@@ -15,6 +15,7 @@ import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RECORDING_RECOVERY_KEY, RecordingRecovery, validateRecovery } from '../../lib/recordingRecovery';
 import { resolveApiUrl } from '../../lib/apiUrl';
+import { shouldCancelRecordingForLifecycle } from '../../lib/voiceRecordingGuards';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -108,7 +109,7 @@ export default function RecordScreen() {
     previewPlayer.replace({ uri: reviewRecording.uri });
   }, [previewPlayer, reviewRecording]);
 
-  const startRecording = useCallback(async (
+  const startRecordingAfterConsent = useCallback(async (
     knownPermission?: PermissionResponse | null,
     shouldContinue: () => boolean = () => true,
   ) => {
@@ -168,6 +169,17 @@ export default function RecordScreen() {
     }
   }, [recorder]);
 
+  // All native microphone access is reached through this consent gate,
+  // including retry after returning from Settings.
+  const requestRecordingStart = useCallback(async () => {
+    const { required, error } = await checkConsent(async () => {
+      const permission = await getRecordingPermissionsAsync();
+      if (!isScreenActiveRef.current) return;
+      await startRecordingAfterConsent(permission, () => isScreenActiveRef.current);
+    });
+    if (required || error) setIsStarting(false);
+  }, [checkConsent, startRecordingAfterConsent]);
+
   useFocusEffect(useCallback(() => {
     isScreenActiveRef.current = true;
     setIsProcessing(false);
@@ -195,7 +207,11 @@ export default function RecordScreen() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'inactive' || state === 'background') {
-        if (startPendingRef.current || isRecordingRef.current) {
+        if (shouldCancelRecordingForLifecycle({
+          appIsActive: false,
+          startPending: startPendingRef.current,
+          recording: isRecordingRef.current,
+        })) {
           requiresExplicitStartRef.current = true;
           setInitialized(true);
         }
@@ -255,18 +271,11 @@ export default function RecordScreen() {
     setInitialized(true);
 
     const checkAndStart = async () => {
-      const { required } = await checkConsent(async () => {
-        const permission = await getRecordingPermissionsAsync();
-        if (!isScreenActiveRef.current) return;
-        await startRecording(permission, () => isScreenActiveRef.current);
-      });
-      if (required) {
-        setIsStarting(false);
-      }
+      await requestRecordingStart();
     };
 
     void checkAndStart();
-  }, [recoveryLoaded, initialized, isConsentLoading, consentStatus, isConsentError, startRecording, checkConsent, reviewRecording]);
+  }, [recoveryLoaded, initialized, isConsentLoading, consentStatus, isConsentError, requestRecordingStart, reviewRecording]);
 
   const handleDeclineConsent = () => {
     onDecline();
@@ -667,7 +676,7 @@ export default function RecordScreen() {
                         if (permission.status === 'granted') {
                           setPermissionRevoked(false);
                           permissionWasRevokedRef.current = false;
-                          void startRecording(permission);
+                          void requestRecordingStart();
                         } else {
                           Alert.alert('Microphone access needed', 'Choose Open Settings to enable microphone access, then tap Retry.');
                         }
@@ -715,7 +724,7 @@ export default function RecordScreen() {
                   styles.recordButton,
                   { backgroundColor: showRecordingState ? colors.destructive : colors.primary, opacity: (isConsentError || (!isConsentLoading && !consentStatus)) ? 0.5 : 1 }
                 ]}
-                onPress={isRecording ? () => void stopRecording() : () => void startRecording()}
+                onPress={isRecording ? () => void stopRecording() : () => void requestRecordingStart()}
                 disabled={isStarting || showModal || isConsentLoading || isConsentError || !consentStatus}
               >
                 <Square color={colors.primaryForeground} size={32} />

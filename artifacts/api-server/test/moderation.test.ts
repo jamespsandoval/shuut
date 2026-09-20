@@ -16,9 +16,11 @@ import {
   pool,
   sessionsTable,
   usersTable,
+  voiceAiConsentsTable,
 } from "@workspace/db";
 import { enqueueModeration, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
 import { CURRENT_LEGAL_POLICY_VERSIONS } from "../src/lib/legalPolicy";
+import { CURRENT_VOICE_AI_CONSENT_VERSION, VOICE_AI_CONSENT_CONTENT_HASH } from "../src/lib/voiceAiConsent";
 
 const prefix = `moderation-${Date.now()}`;
 const emails: Array<{ To: string; Subject: string; TextBody: string }> = [];
@@ -129,6 +131,11 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   const [operatorUser] = await db.select().from(usersTable).where(eq(usersTable.email, operatorEmail));
   const [adminUser] = await db.select().from(usersTable).where(eq(usersTable.email, adminEmail));
   assert.ok(ownerUser && reporterUser && operatorUser && adminUser);
+  await db.insert(voiceAiConsentsTable).values({
+    userId: ownerUser.id,
+    consentVersion: CURRENT_VOICE_AI_CONSENT_VERSION,
+    consentContentHash: VOICE_AI_CONSENT_CONTENT_HASH,
+  });
   await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
     .where(eq(sessionsTable.userId, ownerUser.id));
   const [owner] = await db.insert(foundersTable).values({
@@ -169,6 +176,34 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   await runModerationSweep();
   const [safeAfter] = await db.select().from(postsTable).where(eq(postsTable.id, safePost.id));
   assert.equal(safeAfter.moderationStatus, "approved");
+
+  const [revokedPost] = await db.insert(postsTable).values({
+    authorId: owner.id, transcript: "must not be sent after revocation", durationSeconds: 2, moderationStatus: "pending",
+  }).returning();
+  await enqueueModeration("post", revokedPost.id, revokedPost.transcript);
+  await db.update(voiceAiConsentsTable).set({ revokedAt: new Date() })
+    .where(and(
+      eq(voiceAiConsentsTable.userId, ownerUser.id),
+      eq(voiceAiConsentsTable.consentVersion, CURRENT_VOICE_AI_CONSENT_VERSION),
+    ));
+  let providerCalls = 0;
+  const consentProvider = setModerationProviderForTests({
+    classify: async () => {
+      providerCalls++;
+      return { categories: [], riskScore: 0 };
+    },
+  });
+  await runModerationSweep();
+  assert.equal(providerCalls, 0);
+  const [revokedJob] = await db.select().from(moderationJobsTable)
+    .where(and(eq(moderationJobsTable.targetType, "post"), eq(moderationJobsTable.targetId, revokedPost.id)));
+  assert.equal(revokedJob.lastErrorCode, "VOICE_AI_CONSENT_REQUIRED");
+  setModerationProviderForTests(consentProvider);
+  await db.update(voiceAiConsentsTable).set({ revokedAt: null })
+    .where(and(
+      eq(voiceAiConsentsTable.userId, ownerUser.id),
+      eq(voiceAiConsentsTable.consentVersion, CURRENT_VOICE_AI_CONSENT_VERSION),
+    ));
 
   const [dangerPost] = await db.insert(postsTable).values({
     authorId: owner.id, transcript: "danger transcript", durationSeconds: 2, moderationStatus: "pending",

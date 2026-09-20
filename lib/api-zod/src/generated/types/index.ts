@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './apiError';
 export * from './appealDecisionInput';
 export * from './appealDecisionInputDecision';
 export * from './appealInput';
@@ -103,6 +104,7 @@ export * from './postTranscriptionStatus';
 export * from './postViewerReaction';
 export * from './profileDetail';
 export * from './profileUpdate';
+export * from './putUploadParams';
 export * from './reactionInput';
 export * from './reactionInputEmojiType';
 export * from './reactionSummary';
@@ -118,6 +120,7 @@ export * from './sanctionInput';
 export * from './sanctionInputType';
 export * from './searchProfilesParams';
 export * from './sourcePost';
+export * from './uploadObjectResponse';
 export * from './uploadUrlRequest';
 export * from './uploadUrlRequestContentType';
 export * from './uploadUrlResponse';

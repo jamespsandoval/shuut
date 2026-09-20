@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
+import { and, eq, isNull } from "drizzle-orm";
+import { db, profileImageUploadsTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { verifyUploadToken } from "../lib/uploadToken";
+import { digestUploadToken, verifyUploadToken } from "../lib/uploadToken";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -47,10 +49,30 @@ router.put("/uploads/put", async (req, res): Promise<void> => {
     return;
   }
   try {
+    // Claim the token exactly once. The conditional UPDATE is the concurrency
+    // boundary: only one simultaneous PUT can proceed for a given token.
+    const [claimed] = await db.update(profileImageUploadsTable)
+      .set({ uploadTokenConsumedAt: new Date() })
+      .where(and(
+        eq(profileImageUploadsTable.objectPath, claims.objectPath),
+        eq(profileImageUploadsTable.uploadTokenDigest, digestUploadToken(token)),
+        isNull(profileImageUploadsTable.uploadTokenConsumedAt),
+      ))
+      .returning({ objectPath: profileImageUploadsTable.objectPath });
+    if (!claimed) {
+      res.status(409).json({ error: "Upload authorization has already been used or is invalid", code: "UPLOAD_TOKEN_USED" });
+      return;
+    }
     await storage.saveUpload(claims.objectPath, data, contentType);
     res.status(200).json({ objectPath: claims.objectPath });
   } catch {
-    res.status(502).json({ error: "Could not save upload" });
+    // The token is deliberately consumed before storage I/O. A failed write
+    // must not make a signed authorization replayable; callers must request a
+    // fresh URL. The pending row remains available to cleanup reconciliation.
+    res.status(502).json({
+      error: "Could not save upload; request a new upload authorization and retry",
+      code: "UPLOAD_STORAGE_FAILED_RETRY_AUTH",
+    });
   }
 });
 

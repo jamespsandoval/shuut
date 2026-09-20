@@ -9,8 +9,15 @@
 export interface VoiceAiConsentStatus {
   required: boolean;
   currentVersion: string;
+  /** @pattern ^sha256:[a-f0-9]{64}$ */
+  currentContentHash: string;
   /** @nullable */
   acceptedVersion: string | null;
+  /**
+     * @nullable
+     * @pattern ^sha256:[a-f0-9]{64}$
+     */
+  acceptedContentHash: string | null;
   /** @nullable */
   acceptedAt: Date | null;
   /** @nullable */

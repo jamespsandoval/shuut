@@ -83,8 +83,8 @@ import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/securi
 import { createPostShareToken } from "../lib/postShareToken";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
-import { requireCurrentVoiceAiConsent } from "../lib/voiceAiConsent";
-import { createUploadToken } from "../lib/uploadToken";
+import { hasCurrentVoiceAiConsent, requireCurrentVoiceAiConsent } from "../lib/voiceAiConsent";
+import { createUploadToken, digestUploadToken } from "../lib/uploadToken";
 import {
   assertCanParticipate,
   canDistributeComment,
@@ -1097,13 +1097,15 @@ router.post("/storage/uploads/request-url", async (req, res): Promise<void> => {
         .limit(1);
       if (user?.deletionStatus !== "active") return null;
       const created = await objectStorage.createUpload(body.data.size, body.data.contentType);
+      const uploadToken = createUploadToken(created.objectPath, body.data.contentType, body.data.size);
       await tx.insert(profileImageUploadsTable).values({
         objectPath: created.objectPath,
         userId,
+        uploadTokenDigest: digestUploadToken(uploadToken),
       });
       return {
         uploadURL: `/api/storage/uploads/put?token=${encodeURIComponent(
-          createUploadToken(created.objectPath, body.data.contentType, body.data.size),
+          uploadToken,
         )}`,
         objectPath: created.objectPath,
       };
@@ -1217,7 +1219,7 @@ router.post("/transcriptions", async (req, res): Promise<void> => {
   }
 
   try {
-    const transcript = await transcribeRecording(body.data.audioObjectPath);
+    const transcript = await transcribeRecording(body.data.audioObjectPath, userId);
     res.json(TranscribeAudioResponse.parse({ transcript }));
   } catch (error) {
     req.log.error({ err: error }, "Failed to transcribe voice recording");
@@ -1225,7 +1227,7 @@ router.post("/transcriptions", async (req, res): Promise<void> => {
   }
 });
 
-async function transcribeRecording(audioObjectPath: string): Promise<string> {
+async function transcribeRecording(audioObjectPath: string, userId: string): Promise<string> {
     const audio = await objectStorage.readAudio(audioObjectPath);
     const form = new FormData();
     form.append("model_id", "scribe_v1");
@@ -1238,6 +1240,12 @@ async function transcribeRecording(audioObjectPath: string): Promise<string> {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       throw new Error("ELEVENLABS_API_KEY is not configured");
+    }
+    // Consent can be revoked while the upload is being read/prepared. Check
+    // immediately before dispatching bytes to the provider as well as at the
+    // request boundary.
+    if (!(await hasCurrentVoiceAiConsent(userId))) {
+      throw new Error("VOICE_AI_CONSENT_REQUIRED");
     }
     const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
       method: "POST",
@@ -1412,7 +1420,7 @@ router.post("/posts", async (req, res): Promise<void> => {
   // Mentions are delivered by the moderation-approved distribution worker.
   res.status(201).json(CreatePostResponse.parse(postJson(created, author, author.id)));
   if (!body.data.transcript && audioObjectPath) {
-    void transcribeRecording(audioObjectPath)
+    void transcribeRecording(audioObjectPath, userId)
       .then(async (transcript) => {
         await db.update(postsTable)
           .set({ transcript, transcriptionStatus: "ready", moderationStatus: "pending", moderationRevision: 1 })
@@ -1639,7 +1647,7 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     commentId: created.id,
   });
   res.status(202).json(CreatePostCommentResponse.parse({ id: created.id, status: "processing" }));
-  void transcribeRecording(created.audioUrl)
+  void transcribeRecording(created.audioUrl, userId)
     .then(async (transcript) => {
       await db.update(commentsTable)
         .set({ transcript, transcriptionStatus: "ready", moderationStatus: "pending", moderationRevision: 1 })
