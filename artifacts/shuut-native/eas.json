@@ -12,6 +12,14 @@
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://shuut.me"
       }
+    },
+    "diagnostics": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://shuut.me",
+        "EXPO_PUBLIC_RELEASE_CHANNEL": "diagnostics",
+        "EXPO_PUBLIC_CRASH_PROBE": "startup"
+      }
     }
   }
 }

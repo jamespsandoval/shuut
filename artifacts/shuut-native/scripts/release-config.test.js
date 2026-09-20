@@ -5,6 +5,7 @@ const {
   PRODUCTION_API_BASE_URL,
   validateReleaseConfig,
 } = require('./release-config');
+const configureApp = require('../app.config');
 
 function appConfig(bundleIdentifier = EXPECTED_IOS_BUNDLE_IDENTIFIER, apiBaseUrl = PRODUCTION_API_BASE_URL) {
   return {
@@ -48,4 +49,43 @@ test('rejects a build variable that disagrees with the embedded API', () => {
     appConfig: appConfig(),
     configuredApiBaseUrl: 'https://example.com',
   }), /does not match/);
+});
+
+test('rejects diagnostics crash flags in a production release', () => {
+  assert.throws(() => validateReleaseConfig({
+    appConfig: appConfig(),
+    releaseChannel: 'diagnostics',
+  }), /must not include/);
+  assert.throws(() => validateReleaseConfig({
+    appConfig: appConfig(),
+    crashProbe: 'startup',
+  }), /must not include/);
+});
+
+test('actual Expo config rejects probe flags for production and permits diagnostics', () => {
+  const original = {
+    EAS_BUILD_PROFILE: process.env.EAS_BUILD_PROFILE,
+    NODE_ENV: process.env.NODE_ENV,
+    EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
+    EXPO_PUBLIC_RELEASE_CHANNEL: process.env.EXPO_PUBLIC_RELEASE_CHANNEL,
+    EXPO_PUBLIC_CRASH_PROBE: process.env.EXPO_PUBLIC_CRASH_PROBE,
+  };
+  const config = appConfig().expo;
+
+  try {
+    process.env.NODE_ENV = 'production';
+    process.env.EXPO_PUBLIC_API_BASE_URL = PRODUCTION_API_BASE_URL;
+    process.env.EXPO_PUBLIC_RELEASE_CHANNEL = 'diagnostics';
+    process.env.EXPO_PUBLIC_CRASH_PROBE = 'startup';
+    process.env.EAS_BUILD_PROFILE = 'production';
+    assert.throws(() => configureApp({ config }), /must not include/);
+
+    process.env.EAS_BUILD_PROFILE = 'diagnostics';
+    assert.equal(configureApp({ config }), config);
+  } finally {
+    for (const [key, value] of Object.entries(original)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });

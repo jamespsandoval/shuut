@@ -14,9 +14,17 @@ import { LegalConsentGate } from '../components/LegalConsentGate';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { API_BASE_URL } from '../lib/apiUrl';
+import { runStartupCrashProbe } from '../lib/startupCrashProbe';
 
 setBaseUrl(API_BASE_URL);
 setDefaultCredentials('omit');
+
+// This can only fire in a purpose-built diagnostics build. Production builds
+// do not set either variable. Keep the stable message for symbolication checks.
+runStartupCrashProbe({
+  channel: process.env.EXPO_PUBLIC_RELEASE_CHANNEL,
+  enabled: process.env.EXPO_PUBLIC_CRASH_PROBE,
+});
 
 // Startup helpers are nonessential. Native-module rejection must not terminate
 // the process before React can paint a recoverable screen.

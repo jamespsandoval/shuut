@@ -9,7 +9,8 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate:release-config": "node scripts/release-config.js",
-    "test:release": "node --experimental-strip-types --test lib/apiUrlConfig.test.ts && node --test scripts/release-config.test.js"
+    "diagnostics:archive": "node scripts/archive-release-diagnostics.js",
+    "test:release": "node --experimental-strip-types --test lib/apiUrlConfig.test.ts lib/startupCrashProbe.test.ts && node --test scripts/release-config.test.js scripts/archive-release-diagnostics.test.js"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -20,3 +20,4 @@
 - [Private upload authorization](private-upload-authorization.md) — sidecar-signed PUT URLs do not bind MIME or size; use server-verified upload tokens for consent-sensitive media.
 - [App Review fixtures](app-review-fixtures.md) — fictional reviewer data is staging-only; production review uses real OTP and reviewer-created activity.
 - [Native App Store identity](native-app-store-identity.md) — preserve the first Replit-published bundle ID and never make runtime startup depend solely on build-shell variables.
+- [Native crash diagnostics](native-crash-diagnostics.md) — keep release artifacts provider-neutral for now; add Sentry only when the creator is ready to connect it.

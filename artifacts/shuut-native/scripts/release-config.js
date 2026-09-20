@@ -28,6 +28,9 @@ function normalizeApiBaseUrl(value, allowDevelopmentHosts = false) {
 function validateReleaseConfig({
   appConfig,
   configuredApiBaseUrl,
+  releaseChannel,
+  crashProbe,
+  buildProfile = 'production',
 }) {
   const bundleIdentifier = appConfig?.expo?.ios?.bundleIdentifier;
   if (bundleIdentifier !== EXPECTED_IOS_BUNDLE_IDENTIFIER) {
@@ -53,6 +56,24 @@ function validateReleaseConfig({
     }
   }
 
+  const hasDiagnosticsFlag =
+    releaseChannel === 'diagnostics' || Boolean(crashProbe?.trim());
+  if (buildProfile === 'production' && hasDiagnosticsFlag) {
+    throw new Error(
+      'Production releases must not include the diagnostics channel or crash probe.',
+    );
+  }
+  if (
+    hasDiagnosticsFlag &&
+    (buildProfile !== 'diagnostics' ||
+      releaseChannel !== 'diagnostics' ||
+      crashProbe !== 'startup')
+  ) {
+    throw new Error(
+      'The startup crash probe requires the diagnostics build profile and both exact diagnostics flags.',
+    );
+  }
+
   return { bundleIdentifier, apiBaseUrl: embedded };
 }
 
@@ -62,6 +83,9 @@ if (require.main === module) {
     const validated = validateReleaseConfig({
       appConfig,
       configuredApiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
+      releaseChannel: process.env.EXPO_PUBLIC_RELEASE_CHANNEL,
+      crashProbe: process.env.EXPO_PUBLIC_CRASH_PROBE,
+      buildProfile: process.env.EAS_BUILD_PROFILE || 'production',
     });
     console.log(
       `Release config is valid (${validated.bundleIdentifier}, ${validated.apiBaseUrl})`,
