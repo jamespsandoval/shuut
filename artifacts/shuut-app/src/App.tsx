@@ -1,9 +1,8 @@
-import { type ReactNode, useEffect, useLayoutEffect } from 'react';
+import { lazy, Suspense, type ReactNode, useEffect, useLayoutEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import NotFound from '@/pages/not-found';
 import {
   Route,
   Switch,
@@ -15,26 +14,28 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import { Loader2 } from 'lucide-react';
 
-import Home from '@/pages/home';
-import PostDetail from '@/pages/post-detail';
-import Profile from '@/pages/profile';
-import Explore from '@/pages/explore';
 import Landing from '@/pages/landing';
-import Onboarding from '@/pages/onboarding';
-import About from '@/pages/about';
-import Community from '@/pages/community';
-import Terms from '@/pages/terms';
-import Privacy from '@/pages/privacy';
-import Cookies from '@/pages/cookies';
-import Contact from '@/pages/contact';
-import SettingsPage from '@/pages/settings';
-import NotificationsPage from '@/pages/notifications';
-import Waitlist from '@/pages/waitlist';
-import LegalConsentGate from '@/pages/legal-consent-gate';
-import ModerationDashboard from '@/pages/moderation/dashboard';
-import ModerationCaseView from '@/pages/moderation/case-view';
-import ModerationAppealView from '@/pages/moderation/appeal-view';
-import AppealsPage from '@/pages/appeals/index';
+
+const NotFound = lazy(() => import('@/pages/not-found'));
+const Home = lazy(() => import('@/pages/home'));
+const PostDetail = lazy(() => import('@/pages/post-detail'));
+const Profile = lazy(() => import('@/pages/profile'));
+const Explore = lazy(() => import('@/pages/explore'));
+const Onboarding = lazy(() => import('@/pages/onboarding'));
+const About = lazy(() => import('@/pages/about'));
+const Community = lazy(() => import('@/pages/community'));
+const Terms = lazy(() => import('@/pages/terms'));
+const Privacy = lazy(() => import('@/pages/privacy'));
+const Cookies = lazy(() => import('@/pages/cookies'));
+const Contact = lazy(() => import('@/pages/contact'));
+const SettingsPage = lazy(() => import('@/pages/settings'));
+const NotificationsPage = lazy(() => import('@/pages/notifications'));
+const Waitlist = lazy(() => import('@/pages/waitlist'));
+const LegalConsentGate = lazy(() => import('@/pages/legal-consent-gate'));
+const ModerationDashboard = lazy(() => import('@/pages/moderation/dashboard'));
+const ModerationCaseView = lazy(() => import('@/pages/moderation/case-view'));
+const ModerationAppealView = lazy(() => import('@/pages/moderation/appeal-view'));
+const AppealsPage = lazy(() => import('@/pages/appeals/index'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -107,28 +108,38 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 function Router() {
   return (
     <RoutedErrorBoundary>
-      <Switch>
-        <Route path="/" component={HomeRedirect} />
-        <Route path="/about" component={About} />
-        <Route path="/community" component={Community} />
-        <Route path="/terms" component={Terms} />
-        <Route path="/privacy" component={Privacy} />
-        <Route path="/cookies" component={Cookies} />
-        <Route path="/contact" component={Contact} />
-        <ProtectedRoute path="/feed" component={Home} />
-        <ProtectedRoute path="/notifications" component={NotificationsPage} />
-        <ProtectedRoute path="/explore" component={Explore} />
-        <ProtectedRoute path="/p/:postId" component={PostDetail} />
-        <ProtectedRoute path="/u/:handle" component={Profile} />
-        <ProtectedRoute path="/settings" component={SettingsPage} />
-        <ProtectedRoute path="/moderation" component={ModerationDashboard} />
-        <ProtectedRoute path="/moderation/appeals" component={ModerationDashboard} />
-        <ProtectedRoute path="/moderation/cases/:id" component={ModerationCaseView} />
-        <ProtectedRoute path="/moderation/appeals/:id" component={ModerationAppealView} />
-        <ProtectedRoute path="/appeals" component={AppealsPage} />
-        <Route component={NotFound} />
-      </Switch>
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <Switch>
+          <Route path="/" component={HomeRedirect} />
+          <Route path="/about" component={About} />
+          <Route path="/community" component={Community} />
+          <Route path="/terms" component={Terms} />
+          <Route path="/privacy" component={Privacy} />
+          <Route path="/cookies" component={Cookies} />
+          <Route path="/contact" component={Contact} />
+          <ProtectedRoute path="/feed" component={Home} />
+          <ProtectedRoute path="/notifications" component={NotificationsPage} />
+          <ProtectedRoute path="/explore" component={Explore} />
+          <ProtectedRoute path="/p/:postId" component={PostDetail} />
+          <ProtectedRoute path="/u/:handle" component={Profile} />
+          <ProtectedRoute path="/settings" component={SettingsPage} />
+          <ProtectedRoute path="/moderation" component={ModerationDashboard} />
+          <ProtectedRoute path="/moderation/appeals" component={ModerationDashboard} />
+          <ProtectedRoute path="/moderation/cases/:id" component={ModerationCaseView} />
+          <ProtectedRoute path="/moderation/appeals/:id" component={ModerationAppealView} />
+          <ProtectedRoute path="/appeals" component={AppealsPage} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
     </RoutedErrorBoundary>
+  );
+}
+
+function RouteLoadingFallback() {
+  return (
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background">
+      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    </div>
   );
 }
 
