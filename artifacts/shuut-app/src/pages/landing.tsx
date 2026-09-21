@@ -133,8 +133,14 @@ export default function Landing() {
                       <Mail className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <Input
+                      id="login-email"
+                      name="email"
                       type="email"
                       autoComplete="email"
+                      inputMode="email"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       placeholder="Email address"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}

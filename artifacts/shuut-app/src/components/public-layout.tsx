@@ -5,9 +5,13 @@ import { ArrowLeft } from 'lucide-react';
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const returnToApp = typeof window === 'undefined'
+  const requestedReturnPath = typeof window === 'undefined'
     ? null
     : new URLSearchParams(window.location.search).get('returnToApp');
+  const returnToApp = requestedReturnPath?.startsWith('/')
+    && !requestedReturnPath.startsWith('//')
+    ? requestedReturnPath
+    : null;
   const isNativeApp = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('native') === '1';
 
@@ -15,10 +19,10 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     <div className="min-h-[100dvh] flex flex-col bg-white text-foreground">
       <div className="w-full px-6 pb-6 pt-[calc(1.5rem+env(safe-area-inset-top))] flex items-center justify-between">
         {returnToApp ? (
-          <a href={returnToApp} className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-gray-900 transition-colors">
+          <Link href={returnToApp} className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-gray-900 transition-colors">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to SHÜÜT
-          </a>
+          </Link>
         ) : (
           <Link href="/" className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-gray-900 transition-colors">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -30,9 +34,9 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       <main className="flex-1 flex flex-col items-center px-6 pb-20 w-full max-w-2xl mx-auto">
         <div className="w-full flex justify-center mb-16">
           {returnToApp ? (
-            <a href={returnToApp}>
+            <Link href={returnToApp}>
               <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[60px] md:h-[80px]" />
-            </a>
+            </Link>
           ) : (
             <Link href="/">
               <img src={`${basePath}/logo.svg`} alt="SHÜÜT" className="h-[60px] md:h-[80px]" />
