@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Layout } from "@/components/layout";
+import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -188,11 +189,13 @@ export default function SettingsPage() {
                   {voiceAiConsent.revokedAt ? (
                     <>Revoked on {new Date(voiceAiConsent.revokedAt).toLocaleDateString()}</>
                   ) : voiceAiConsent.required ? (
-                    voiceAiConsent.acceptedVersion ? "Update required" : "Not accepted"
+                    voiceAiConsent.acceptedVersion
+                      ? "Updated consent required before your next recording"
+                      : "Consent required before your next recording"
                   ) : voiceAiConsent.acceptedVersion ? (
                     <>Accepted (Version {voiceAiConsent.acceptedVersion}) on {voiceAiConsent.acceptedAt ? new Date(voiceAiConsent.acceptedAt).toLocaleDateString() : "unknown"}</>
                   ) : (
-                    "Not accepted"
+                    "Consent required before your next recording"
                   )}
                 </div>
               </div>
@@ -324,6 +327,7 @@ export default function SettingsPage() {
           </Dialog.Root>
         </div>
       </section>
+      <Footer />
     </Layout>
   );
 }
