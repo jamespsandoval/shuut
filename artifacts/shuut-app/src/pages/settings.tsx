@@ -13,10 +13,9 @@ import {
   getGetVoiceAiConsentQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Layout } from "@/components/layout";
-import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -24,6 +23,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 
 export default function SettingsPage() {
+  const settingsReturnPath = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/settings`;
+  const publicPageHref = (path: string) =>
+    `${path}?returnToApp=${encodeURIComponent(settingsReturnPath)}`;
+  const legalAndSupportLinks = [
+    { label: "About SHÜÜT", href: publicPageHref("/about") },
+    { label: "Community Guidelines", href: publicPageHref("/community") },
+    { label: "Privacy Policy", href: publicPageHref("/privacy") },
+    { label: "Terms of Service", href: publicPageHref("/terms") },
+    { label: "Help & Contact", href: publicPageHref("/contact") },
+  ];
   const { data: profile } = useGetProfile("me");
   const updateProfile = useUpdateProfile();
   const deleteAccount = useDeleteAccount();
@@ -251,6 +260,27 @@ export default function SettingsPage() {
           )}
         </div>
 
+        <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+          <div className="px-5 pb-3 pt-5">
+            <h2 className="font-semibold">Legal & Support</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Read about SHÜÜT, our policies, or contact us for help.
+            </p>
+          </div>
+          <div className="divide-y divide-border/50 border-t border-border/50">
+            {legalAndSupportLinks.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="flex min-h-14 items-center justify-between gap-4 px-5 py-4 font-medium transition-colors hover:bg-secondary/40"
+              >
+                <span>{item.label}</span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </Link>
+            ))}
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-destructive/40 bg-card p-5">
           <div className="flex items-start gap-3">
             <div className="rounded-full bg-destructive/10 p-2.5 text-destructive">
@@ -327,7 +357,6 @@ export default function SettingsPage() {
           </Dialog.Root>
         </div>
       </section>
-      <Footer />
     </Layout>
   );
 }

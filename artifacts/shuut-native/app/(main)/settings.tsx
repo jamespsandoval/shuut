@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Alert, ActivityIndicator, Modal, TextInput, Switch, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
-import { Trash2, LogOut } from 'lucide-react-native';
+import { Trash2, LogOut, ChevronRight } from 'lucide-react-native';
 import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile, useListBlockedAccounts, useUnblockAccount, useGetVoiceAiConsent, getGetVoiceAiConsentQueryKey, useRevokeVoiceAiConsent } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
@@ -48,6 +47,13 @@ export default function SettingsScreen() {
       params: { slug, returnTo: '/(main)/settings' },
     });
   };
+  const legalAndSupportLinks = [
+    { label: 'About SHÜÜT', slug: 'about' },
+    { label: 'Community Guidelines', slug: 'community' },
+    { label: 'Privacy Policy', slug: 'privacy' },
+    { label: 'Terms of Service', slug: 'terms' },
+    { label: 'Help & Contact', slug: 'contact' },
+  ];
 
   const handleLogout = async () => {
     try {
@@ -219,6 +225,30 @@ export default function SettingsScreen() {
             )) : <Text style={[styles.cardDesc, { color: colors.mutedForeground, marginTop: 12 }]}>No blocked accounts.</Text>}
         </View>
 
+        <View style={[styles.legalCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={styles.legalCardHeader}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Legal & Support</Text>
+            <Text style={[styles.cardDesc, { color: colors.mutedForeground }]}>
+              Read about SHÜÜT, our policies, or contact us for help.
+            </Text>
+          </View>
+          {legalAndSupportLinks.map((item, index) => (
+            <TouchableOpacity
+              key={item.slug}
+              style={[
+                styles.legalRow,
+                index > 0 && { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+              ]}
+              onPress={() => openPublicPage(item.slug)}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+            >
+              <Text style={[styles.legalRowText, { color: colors.foreground }]}>{item.label}</Text>
+              <ChevronRight color={colors.mutedForeground} size={20} />
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={[styles.card, { borderColor: colors.destructive + '40', backgroundColor: colors.destructive + '05' }]}>
           <View style={styles.cardHeader}>
             <View style={[styles.iconContainer, { backgroundColor: colors.destructive + '1A' }]}>
@@ -240,34 +270,6 @@ export default function SettingsScreen() {
           <LogOut color={colors.foreground} size={20} />
           <Text style={[styles.logoutBtnText, { color: colors.foreground }]}>Log out</Text>
         </TouchableOpacity>
-
-        <View style={styles.legalLinks}>
-          <View style={styles.linksRow}>
-            <TouchableOpacity onPress={() => openPublicPage('about')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>About</Text></TouchableOpacity>
-            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openPublicPage('community')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Community Guidelines</Text></TouchableOpacity>
-            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openPublicPage('contact')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Contact</Text></TouchableOpacity>
-          </View>
-          <View style={[styles.linksRow, { marginTop: 12 }]}>
-            <TouchableOpacity onPress={() => openPublicPage('terms')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Terms of Service</Text></TouchableOpacity>
-            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openPublicPage('privacy')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Privacy Policy</Text></TouchableOpacity>
-            <Text style={[styles.separator, { color: colors.border }]}>|</Text>
-            <TouchableOpacity onPress={() => openPublicPage('cookies')} hitSlop={8}><Text style={[styles.link, { color: colors.mutedForeground }]}>Cookie Policy</Text></TouchableOpacity>
-          </View>
-          <View style={styles.copyright}>
-            <Text style={[styles.copyrightText, { color: colors.mutedForeground }]}>
-              © {new Date().getFullYear()} SHÜÜT — A{' '}
-            </Text>
-            <TouchableOpacity onPress={() => WebBrowser.openBrowserAsync('https://www.doubleportrait.com')} hitSlop={8}>
-              <Text style={[styles.copyrightText, styles.companyLink, { color: colors.mutedForeground }]}>DoublePortrait Labs</Text>
-            </TouchableOpacity>
-            <Text style={[styles.copyrightText, { color: colors.mutedForeground }]}>
-              {' '}Production. All rights reserved.
-            </Text>
-          </View>
-        </View>
       </ScrollView>
 
       <Modal visible={isDeleteModalVisible} transparent animationType="fade">
@@ -439,39 +441,27 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
   },
-  legalLinks: {
-    marginTop: 32,
-    alignItems: 'center',
+  legalCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  linksRow: {
+  legalCardHeader: {
+    padding: 20,
+  },
+  legalRow: {
+    minHeight: 56,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 16,
   },
-  link: {
+  legalRowText: {
+    flex: 1,
     fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-  },
-  separator: {
-    marginHorizontal: 12,
-    fontSize: 12,
-  },
-  copyright: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginTop: 20,
-    paddingHorizontal: 24,
-  },
-  copyrightText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  companyLink: {
-    textDecorationLine: 'underline',
+    fontSize: 15,
   },
   modalOverlay: {
     flex: 1,
