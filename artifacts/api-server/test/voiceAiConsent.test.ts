@@ -99,18 +99,18 @@ after(async () => {
 });
 
 test("voice AI disclosure version and content hash are canonical", () => {
-  assert.equal(CURRENT_VOICE_AI_CONSENT_VERSION, "2026-09-20.2");
+  assert.equal(CURRENT_VOICE_AI_CONSENT_VERSION, "2026-09-21.1");
   assert.equal(
     VOICE_AI_CONSENT_CANONICAL_PAYLOAD,
     `${VOICE_AI_CONSENT_SUMMARY}\n${VOICE_AI_CONSENT_DETAILS.join("\n")}`,
   );
   assert.equal(
     createHash("sha256").update(VOICE_AI_CONSENT_CANONICAL_PAYLOAD).digest("hex"),
-    "7d8c30c0836a9ab3bb8f6c696f8318cc066a2176d7046c1cb8b8eadd09fd7d87",
+    "83aefaa8cea59ea185510d07662723e05cf766184e8155eb84f668f712be7f6d",
   );
   assert.equal(
     VOICE_AI_CONSENT_CONTENT_HASH,
-    "sha256:7d8c30c0836a9ab3bb8f6c696f8318cc066a2176d7046c1cb8b8eadd09fd7d87",
+    "sha256:83aefaa8cea59ea185510d07662723e05cf766184e8155eb84f668f712be7f6d",
   );
 });
 

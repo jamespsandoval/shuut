@@ -4,7 +4,7 @@ export default function Privacy() {
   return (
     <PublicLayout>
       <h1 className="text-3xl font-extrabold tracking-tight mb-2">Privacy Policy</h1>
-      <p className="text-sm font-medium text-gray-400 mb-10 uppercase tracking-wider">Effective: 20 September 2026</p>
+      <p className="text-sm font-medium text-gray-400 mb-10 uppercase tracking-wider">Effective: 21 September 2026</p>
 
       <div className="space-y-8 text-[15px] text-gray-700 leading-relaxed">
         <section>
@@ -14,12 +14,12 @@ export default function Privacy() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">2. How We Use Your Information</h2>
-          <p>We use this information to create and secure accounts, provide voice posting and commenting, display and deliver content you choose to share, generate transcripts, support moderation and appeals, communicate with you, prevent abuse, maintain security and audit records, and comply with legal obligations. Where applicable, processing is based on providing the service, our legitimate interests in a safe and functional platform, legal obligations, or your consent.</p>
+          <p>We use this information to create and secure accounts, provide voice posting and commenting, display and deliver content you choose to share, generate and lightly edit transcripts, support moderation and appeals, communicate with you, prevent abuse, maintain security and audit records, and comply with legal obligations. Where applicable, processing is based on providing the service, our legitimate interests in a safe and functional platform, legal obligations, or your consent.</p>
         </section>
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">3. Transcription & AI Processing</h2>
-          <p>When you grant voice-AI consent and submit a recording, SHÜÜT sends the audio to ElevenLabs for speech-to-text. SHÜÜT sends transcript text to automated safety classification using OpenAI models through Replit-managed AI integrations. These steps can happen asynchronously after recording or upload. They support transcription and safety moderation; depending on the provider terms and account settings in force, providers may also use submitted data to improve their models or services. Automated results can be wrong and may be reviewed or acted on under our policies. Revoking consent stops future voice processing and we send no new audio after revocation, but revocation does not retract content already submitted or processed or affect provider use that occurred before revocation.</p>
+          <p>When you grant voice-AI consent and submit a recording, SHÜÜT sends the audio to ElevenLabs for speech-to-text. SHÜÜT sends transcript text through Replit-managed OpenAI model access to remove filler words and false starts, improve punctuation and grammar without changing your intended meaning, and perform automated safety classification. These steps can happen asynchronously after recording or upload. They support transcription, transcript readability, and safety moderation; depending on the provider terms and account settings in force, providers may also use submitted data to improve their models or services. Automated results can be wrong and may be reviewed or acted on under our policies. Revoking consent stops future voice processing and we send no new audio after revocation, but revocation does not retract content already submitted or processed or affect provider use that occurred before revocation.</p>
         </section>
 
         <section>

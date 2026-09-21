@@ -86,6 +86,7 @@ import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
 import { hasCurrentVoiceAiConsent, requireCurrentVoiceAiConsent } from "../lib/voiceAiConsent";
 import { createUploadToken, digestUploadToken } from "../lib/uploadToken";
+import { polishTranscript } from "../lib/transcriptPolish";
 import {
   assertCanParticipate,
   canDistributeComment,
@@ -1370,7 +1371,7 @@ async function transcribeRecording(audioObjectPath: string, userId: string): Pro
     const result = await response.json() as { text?: string };
     const transcript = result.text?.trim() ?? "";
     if (!transcript) throw new Error("Transcription was empty");
-    return transcript;
+    return polishTranscript(transcript);
 }
 
 router.get("/storage/objects/*path", async (req, res): Promise<void> => {
