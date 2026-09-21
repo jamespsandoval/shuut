@@ -1251,14 +1251,20 @@ router.get("/posts/:postId/image", async (req, res): Promise<void> => {
     eq(postsTable.id, params.data.postId),
     eq(postsTable.deletionStatus, "active"),
   ));
-  if (!post?.imageUrl || !(await canDistributePost(post.id))) {
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const ownVisiblePost = Boolean(
+    post &&
+    viewer?.id === post.authorId &&
+    post.transcriptionStatus === "ready",
+  );
+  if (!post?.imageUrl || (!ownVisiblePost && !(await canDistributePost(post.id)))) {
     res.status(404).json({ error: "Image not found" });
     return;
   }
   try {
     const object = await objectStorage.streamPrivate(post.imageUrl);
     res.setHeader("Content-Type", object.contentType);
-    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Cache-Control", "private, max-age=86400, immutable");
     Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
   } catch {
     res.status(404).json({ error: "Image not found" });

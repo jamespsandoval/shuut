@@ -2242,7 +2242,22 @@ test("post photos and enhanced reSHÜÜTs enforce ownership, transcription, mapp
       json: { audioObjectPath: audio, imageObjectPath: image, durationSeconds: 2, transcript: "Photo post" },
     });
     assert.equal(created.status, 201);
-    assert.equal((await created.json() as { imageUrl: string | null }).imageUrl, `/api/posts/${(await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.audioUrl, audio)))[0].id}/image`);
+    const [createdPost] = await db.select().from(postsTable).where(eq(postsTable.audioUrl, audio));
+    assert.equal((await created.json() as { imageUrl: string | null }).imageUrl, `/api/posts/${createdPost.id}/image`);
+    await db.update(postsTable).set({ moderationStatus: "failed" }).where(eq(postsTable.id, createdPost.id));
+    const originalStreamPrivate = ObjectStorageService.prototype.streamPrivate;
+    ObjectStorageService.prototype.streamPrivate = async () => ({
+      body: Readable.toWeb(Readable.from(Buffer.from("image"))) as ReadableStream,
+      contentType: "image/webp",
+      size: 5,
+    });
+    try {
+      const ownUnmoderatedImage = await request(`/api/posts/${createdPost.id}/image`, { session });
+      assert.equal(ownUnmoderatedImage.status, 200);
+      assert.equal(await ownUnmoderatedImage.text(), "image");
+    } finally {
+      ObjectStorageService.prototype.streamPrivate = originalStreamPrivate;
+    }
     const replay = await request("/api/posts", {
       method: "POST", session,
       json: { audioObjectPath: audio, imageObjectPath: image, durationSeconds: 2, transcript: "Replay" },

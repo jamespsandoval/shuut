@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db, profileImageUploadsTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { digestUploadToken, verifyUploadToken } from "../lib/uploadToken";
+import { optimizeUploadedImage } from "../lib/imageOptimization";
 
 const router: IRouter = Router();
 const storage = new ObjectStorageService();
@@ -48,6 +49,21 @@ router.put("/uploads/put", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Upload content does not match its declared type" });
     return;
   }
+  let storedData = data;
+  let storedContentType = contentType;
+  if (imageTypes.has(contentType)) {
+    try {
+      const optimized = await optimizeUploadedImage(
+        data,
+        contentType as "image/jpeg" | "image/png" | "image/webp",
+      );
+      storedData = Buffer.from(optimized.data);
+      storedContentType = optimized.contentType;
+    } catch {
+      res.status(400).json({ error: "Image could not be processed" });
+      return;
+    }
+  }
   try {
     // Claim the token exactly once. The conditional UPDATE is the concurrency
     // boundary: only one simultaneous PUT can proceed for a given token.
@@ -63,7 +79,7 @@ router.put("/uploads/put", async (req, res): Promise<void> => {
       res.status(409).json({ error: "Upload authorization has already been used or is invalid", code: "UPLOAD_TOKEN_USED" });
       return;
     }
-    await storage.saveUpload(claims.objectPath, data, contentType);
+    await storage.saveUpload(claims.objectPath, storedData, storedContentType);
     res.status(200).json({ objectPath: claims.objectPath });
   } catch {
     // The token is deliberately consumed before storage I/O. A failed write
