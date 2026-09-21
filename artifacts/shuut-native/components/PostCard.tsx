@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking, Alert } from 'react-native';
 import { useColors } from '../hooks/useColors';
 import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost, useGetProfile } from '@workspace/api-client-react';
 import { useRouter, usePathname } from 'expo-router';
-import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil } from 'lucide-react-native';
+import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil, ImagePlus, X } from 'lucide-react-native';
 import { SafetyActionSheet } from './SafetyActionSheet';
 import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { authenticatedImageSource, resolveApiUrl } from '../lib/apiUrl';
@@ -15,7 +16,6 @@ import { SPEECH_RECORDING_OPTIONS } from '../lib/audioRecording';
 import { formatApproximateTimeAgo } from '../lib/relativeTime';
 import { useVoiceConsentCheck } from '../hooks/useVoiceConsentCheck';
 import { VoiceAiConsentModal } from './VoiceAiConsentModal';
-import { Alert } from 'react-native';
 
 export function PostCard({
   post,
@@ -67,6 +67,11 @@ export function PostCard({
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [showReshuutComposer, setShowReshuutComposer] = useState(false);
+  const [reshuutMode, setReshuutMode] = useState<'text' | 'audio'>('text');
+  const [reshuutText, setReshuutText] = useState('');
+  const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null);
 
   const requestUploadUrl = useRequestUploadUrl();
   const createComment = useCreatePostComment();
@@ -118,7 +123,94 @@ export function PostCard({
   };
 
   const handleReshuut = () => {
-    reshuutPost.mutate({ postId: post.id }, { onSuccess: refetchFeed });
+    if (post.isReshuuted) {
+      reshuutPost.mutate({ postId: post.id }, { onSuccess: refetchFeed });
+      return;
+    }
+    setShowReshuutComposer((value) => !value);
+  };
+
+  const chooseReshuutPhoto = () => {
+    Alert.alert('Attach a photo', 'Choose where to get your reSHÜÜT photo.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Take photo', onPress: () => void captureReshuutPhoto(true) },
+      { text: 'Photo library', onPress: () => void captureReshuutPhoto(false) },
+    ]);
+  };
+
+  const captureReshuutPhoto = async (useCamera: boolean) => {
+    const permission = useCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(useCamera ? 'Camera access needed' : 'Photo access needed', permission.canAskAgain ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach a photo.` : `Enable ${useCamera ? 'camera' : 'photo'} access in Settings.`, permission.canAskAgain ? [{ text: 'Not now', style: 'cancel' }] : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }]);
+      return;
+    }
+    const result = useCamera
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82, selectionLimit: 1 });
+    if (!result.canceled && result.assets[0]) {
+      setReshuutPhoto(result.assets[0]);
+      setReshuutImagePath(null);
+    }
+  };
+
+  const uploadReshuutPhoto = async (): Promise<string | undefined> => {
+    if (!reshuutPhoto) return undefined;
+    if (reshuutImagePath) return reshuutImagePath;
+    const file = new File(reshuutPhoto.uri);
+    if (!file.exists) throw new Error('Selected photo is no longer available.');
+    const contentType = reshuutPhoto.mimeType === 'image/png' ? 'image/png' : reshuutPhoto.mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg';
+    const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({ data: { name: 'reshuut-photo.jpg', size: file.size, contentType } });
+    const fullUrl = resolveApiUrl(uploadURL);
+    if (!fullUrl) throw new Error('Photo upload URL was empty.');
+    const uploaded = await file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': contentType } });
+    if (uploaded.status < 200 || uploaded.status >= 300) throw new Error(`Photo upload failed: ${uploaded.status}`);
+    setReshuutImagePath(objectPath);
+    return objectPath;
+  };
+
+  const publishReshuut = async () => {
+    if (reshuutMode === 'text' && !reshuutText.trim() && !reshuutPhoto) {
+      reshuutPost.mutate({ postId: post.id }, { onSuccess: refetchFeed });
+      setShowReshuutComposer(false);
+      return;
+    }
+    if (reshuutMode === 'audio' && !recordedUri) return;
+    try {
+      setIsUploading(true);
+      const imageObjectPath = await uploadReshuutPhoto();
+      let audioObjectPath: string | undefined;
+      if (reshuutMode === 'audio' && recordedUri) {
+        const file = new File(recordedUri);
+        if (!file.exists) throw new Error('Recorded commentary is no longer available.');
+        const upload = await requestUploadUrl.mutateAsync({ data: { name: 'reshuut-commentary.m4a', size: file.size, contentType: 'audio/mp4' } });
+        const fullUrl = resolveApiUrl(upload.uploadURL);
+        if (!fullUrl) throw new Error('Audio upload URL was empty.');
+        const uploaded = await file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': 'audio/mp4' } });
+        if (uploaded.status < 200 || uploaded.status >= 300) throw new Error(`Audio upload failed: ${uploaded.status}`);
+        audioObjectPath = upload.objectPath;
+      }
+      await reshuutPost.mutateAsync({
+        postId: post.id,
+        data: {
+          ...(reshuutMode === 'text' && reshuutText.trim() ? { text: reshuutText.trim() } : {}),
+          ...(audioObjectPath ? { audioObjectPath, durationSeconds: duration } : {}),
+          ...(imageObjectPath ? { imageObjectPath } : {}),
+        },
+      });
+      setShowReshuutComposer(false);
+      setReshuutText('');
+      setReshuutPhoto(null);
+      setReshuutImagePath(null);
+      setRecordedUri(null);
+      refetchFeed();
+    } catch (error) {
+      console.error('Failed to publish reSHÜÜT', error);
+      Alert.alert('Could not reSHÜÜT', 'Your reSHÜÜT could not be processed. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleEdit = async () => {
@@ -382,7 +474,106 @@ export function PostCard({
         </Text>
       )}
 
+      {post.imageUrl && (
+        <Image
+          source={authenticatedImageSource(post.imageUrl, token)}
+          style={styles.postImage}
+          contentFit="cover"
+          accessibilityLabel="Photo attached to this SHÜÜT"
+        />
+      )}
       <AuthenticatedAudioPlayer url={post.audioUrl} durationSeconds={post.durationSeconds} />
+
+      {post.reshuut && post.reshuut.moderationStatus === 'approved' && (
+        <View style={[styles.reshuutContent, { borderColor: colors.border, backgroundColor: colors.background }]}>
+          <Text style={[styles.reshuutContentLabel, { color: colors.mutedForeground }]}>reSHÜÜT by @{post.reshuut.author.handle}</Text>
+          {post.reshuut.mode === 'text' && post.reshuut.text && (
+            <Text style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
+          )}
+          {post.reshuut.mode === 'audio' && (
+            <AuthenticatedAudioPlayer url={post.reshuut.audioUrl} durationSeconds={post.reshuut.durationSeconds ?? 1} />
+          )}
+          {post.reshuut.transcriptionStatus === 'processing' && (
+            <Text style={[styles.reshuutStatus, { color: colors.mutedForeground }]}>Transcribing reSHÜÜT commentary…</Text>
+          )}
+          {post.reshuut.imageUrl && (
+            <Image
+              source={authenticatedImageSource(post.reshuut.imageUrl, token)}
+              style={styles.reshuutImage}
+              contentFit="cover"
+              accessibilityLabel="Photo attached to this reSHÜÜT"
+            />
+          )}
+        </View>
+      )}
+
+      {showReshuutComposer && !post.isReshuuted && (
+        <View style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
+          <Text style={[styles.reshuutComposerTitle, { color: colors.foreground }]}>Add to your reSHÜÜT</Text>
+          <View style={styles.reshuutModeRow}>
+            {(['text', 'audio'] as const).map((mode) => (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.reshuutModeButton, { borderColor: reshuutMode === mode ? colors.primary : colors.border, backgroundColor: reshuutMode === mode ? `${colors.primary}14` : 'transparent' }]}
+                onPress={() => { setReshuutMode(mode); if (mode === 'text') { setRecordedUri(null); void discardRecording(); } }}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${mode} reSHÜÜT commentary`}
+              >
+                <Text style={[styles.reshuutModeText, { color: reshuutMode === mode ? colors.primary : colors.mutedForeground }]}>{mode === 'text' ? 'Written' : 'Voice'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {reshuutMode === 'text' ? (
+            <TextInput
+              style={[styles.reshuutInput, { color: colors.foreground, borderColor: colors.border }]}
+              value={reshuutText}
+              onChangeText={setReshuutText}
+              multiline
+              maxLength={5000}
+              placeholder="Say something about this SHÜÜT…"
+              placeholderTextColor={colors.mutedForeground}
+              accessibilityLabel="Written reSHÜÜT commentary"
+            />
+          ) : (
+            <View style={styles.reshuutVoiceRow}>
+              {recordedUri ? (
+                <>
+                  <AuthenticatedAudioPlayer url={recordedUri} durationSeconds={duration} />
+                  <TouchableOpacity onPress={() => setRecordedUri(null)} accessibilityLabel="Discard recorded reSHÜÜT commentary">
+                    <X color={colors.mutedForeground} size={20} />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity style={styles.reshuutVoiceButton} onPress={recorderState.isRecording ? stopRecording : startRecording} accessibilityLabel={recorderState.isRecording ? 'Stop reSHÜÜT commentary recording' : 'Record reSHÜÜT commentary'}>
+                  {recorderState.isRecording ? <Square color={colors.destructive} size={18} /> : <Mic color={colors.primary} size={18} />}
+                  <Text style={[styles.reshuutModeText, { color: colors.foreground }]}>{recorderState.isRecording ? 'Stop recording' : 'Record commentary'}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {reshuutPhoto ? (
+            <View style={styles.reshuutPhotoPreviewWrap}>
+              <Image source={{ uri: reshuutPhoto.uri }} style={styles.reshuutPhotoPreview} contentFit="cover" />
+              <TouchableOpacity style={styles.reshuutPhotoRemove} onPress={() => { setReshuutPhoto(null); setReshuutImagePath(null); }} accessibilityLabel="Remove reSHÜÜT photo">
+                <X color="#fff" size={16} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.addPhotoButton} onPress={() => void chooseReshuutPhoto()} accessibilityLabel="Add a reSHÜÜT photo">
+              <ImagePlus color={colors.primary} size={18} />
+              <Text style={[styles.reshuutModeText, { color: colors.primary }]}>Add photo</Text>
+            </TouchableOpacity>
+          )}
+          <View style={styles.reshuutComposerActions}>
+            <TouchableOpacity onPress={() => setShowReshuutComposer(false)} accessibilityLabel="Cancel reSHÜÜT">
+              <Text style={[styles.editActionText, { color: colors.mutedForeground }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary }]} onPress={() => void publishReshuut()} disabled={isUploading || (reshuutMode === 'audio' && !recordedUri)}>
+              {isUploading ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Send color={colors.primaryForeground} size={14} />}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.reactionsRow}>
         <TouchableOpacity style={[styles.reactionBtn, post.viewerReaction === 'rocket' && { backgroundColor: `${colors.primary}1A` }]} onPress={() => handleReaction('rocket')}>
@@ -561,6 +752,117 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 12,
+  },
+  postImage: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  reshuutContent: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  reshuutContentLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+  },
+  reshuutContentText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  reshuutStatus: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+  },
+  reshuutImage: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 10,
+  },
+  reshuutComposer: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    gap: 10,
+  },
+  reshuutComposerTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 15,
+  },
+  reshuutModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  reshuutModeButton: {
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  reshuutModeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+  },
+  reshuutInput: {
+    minHeight: 84,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    textAlignVertical: 'top',
+  },
+  reshuutVoiceRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reshuutVoiceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+  },
+  reshuutPhotoPreviewWrap: {
+    height: 130,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  reshuutPhotoPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  reshuutPhotoRemove: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 40,
+  },
+  reshuutComposerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 16,
   },
   editComposer: {
     marginBottom: 12,

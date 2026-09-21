@@ -33,6 +33,7 @@ export const postsTable = pgTable("shuut_posts", {
   transcript: text("transcript").notNull(),
   transcriptionStatus: text("transcription_status").notNull().default("ready"),
   audioUrl: text("audio_url"),
+  imageUrl: text("image_url"),
   durationSeconds: integer("duration_seconds").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   goat: integer("goat").notNull().default(0),
@@ -95,6 +96,14 @@ export const postReshuutsTable = pgTable(
     founderId: integer("founder_id")
       .notNull()
       .references(() => foundersTable.id, { onDelete: "cascade" }),
+    transcript: text("transcript"),
+    transcriptionStatus: text("transcription_status").notNull().default("none"),
+    audioUrl: text("audio_url"),
+    imageUrl: text("image_url"),
+    durationSeconds: integer("duration_seconds"),
+    moderationStatus: text("moderation_status").notNull().default("approved"),
+    moderationRevision: integer("moderation_revision").notNull().default(1),
+    deletionStatus: text("deletion_status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

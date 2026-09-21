@@ -1,5 +1,5 @@
 import { forwardRef, useState, useRef, useEffect, useCallback, useImperativeHandle } from "react"
-import { Mic, Square, Loader2, Send } from "lucide-react"
+import { Mic, Square, Loader2, Send, ImagePlus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatTime } from "@/lib/utils"
@@ -45,6 +45,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null)
   const [transcript, setTranscript] = useState("")
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([])
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageObjectPath, setImageObjectPath] = useState<string | null>(null)
+  const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null)
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -210,11 +215,56 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   }
 
   const handleCancel = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
     setAudioData(null)
     setAudioObjectPath(null)
     setTime(0)
     setTranscript("")
     setMentionedFounders([])
+    setImageFile(null)
+    setImagePreview(null)
+    setImageObjectPath(null)
+    setImageUploadProgress(null)
+    setImageUploadError(null)
+  }
+
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15_000_000) {
+      setImageUploadError("Choose a JPEG, PNG, or WebP image under 15MB.")
+      return
+    }
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+    setImageObjectPath(null)
+    setImageUploadError(null)
+  }
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const csrf = csrfToken()
+    const response = await fetch("/api/storage/uploads/request-url", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || "Could not prepare image upload")
+    await new Promise<void>((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open("PUT", payload.uploadURL)
+      request.setRequestHeader("Content-Type", file.type)
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable) setImageUploadProgress(Math.round(event.loaded / event.total * 100))
+      }
+      request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error("Image upload failed"))
+      request.onerror = () => reject(new Error("Image upload was interrupted"))
+      request.send(file)
+    })
+    return payload.objectPath
   }
 
   const handleSubmit = () => {
@@ -229,15 +279,32 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       return
     }
 
-    createPost.mutate(
-      {
-        data: {
-          ...(previewTranscript ? { transcript } : {}),
-          audioObjectPath,
-          durationSeconds: time || 1, // Fallback if 0
-          mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
+    const publish = async () => {
+      let uploadedImagePath = imageObjectPath
+      if (imageFile && !uploadedImagePath) {
+        setImageUploadProgress(0)
+        setImageUploadError(null)
+        try {
+          uploadedImagePath = await uploadImage(imageFile)
+          setImageObjectPath(uploadedImagePath)
+        } catch (error) {
+          setImageUploadProgress(null)
+          setImageUploadError(error instanceof Error ? error.message : "Image upload failed")
+          toast({ title: "Photo upload failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" })
+          return
         }
-      },
+        setImageUploadProgress(null)
+      }
+      createPost.mutate(
+        {
+          data: {
+            ...(previewTranscript ? { transcript } : {}),
+            audioObjectPath,
+            durationSeconds: time || 1,
+            mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
+            ...(uploadedImagePath ? { imageObjectPath: uploadedImagePath } : {}),
+          }
+        },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
@@ -255,8 +322,9 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             variant: "destructive"
           })
         }
-      }
-    )
+      })
+    }
+    void publish()
   }
 
   const isExpanded = isRecording || audioData !== null;
@@ -264,6 +332,14 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   useEffect(() => {
     onExpandedChange?.(isExpanded)
   }, [isExpanded, onExpandedChange])
+
+  useEffect(() => () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop()
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop())
+    }
+    if (timerRef.current) window.clearInterval(timerRef.current)
+  }, [])
 
   return (
     <>
@@ -357,7 +433,22 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
-            <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
+             <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
+             <div className="flex flex-wrap items-center gap-2">
+               {imagePreview ? (
+                 <div className="relative">
+                   <img src={imagePreview} alt="Photo attachment preview" className="h-24 w-24 rounded-xl object-cover border border-border" />
+                   <button type="button" aria-label="Remove photo attachment" onClick={() => { URL.revokeObjectURL(imagePreview); setImagePreview(null); setImageFile(null); setImageObjectPath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 shadow border border-border"><X className="h-3.5 w-3.5" /></button>
+                 </div>
+               ) : (
+                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-secondary">
+                   <ImagePlus className="h-4 w-4" /> Add photo
+                   <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleImageChange} />
+                 </label>
+               )}
+               {imageUploadProgress !== null && <span className="text-xs text-muted-foreground" aria-live="polite">Uploading photo… {imageUploadProgress}%</span>}
+             </div>
+             {imageUploadError && <p className="text-sm text-destructive" role="alert">{imageUploadError}</p>}
 
             {previewTranscript ? (
               <div className="relative flex-1 flex flex-col min-h-0 group">

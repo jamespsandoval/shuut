@@ -10,6 +10,7 @@ import type { PostModerationStatus } from './postModerationStatus';
 import type { PostTranscriptionStatus } from './postTranscriptionStatus';
 import type { PostViewerReaction } from './postViewerReaction';
 import type { ReactionSummary } from './reactionSummary';
+import type { Reshuut } from './reshuut';
 
 export interface Post {
   id: number;
@@ -19,6 +20,8 @@ export interface Post {
   moderationStatus?: PostModerationStatus;
   /** @nullable */
   audioUrl?: string | null;
+  /** @nullable */
+  imageUrl?: string | null;
   durationSeconds: number;
   createdAt: Date;
   reactions: ReactionSummary;
@@ -31,4 +34,5 @@ export interface Post {
   canDelete: boolean;
   /** @nullable */
   editableUntil: Date | null;
+  reshuut?: Reshuut | null;
 }

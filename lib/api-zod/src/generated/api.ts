@@ -635,6 +635,7 @@ export const GetFeedResponseItem = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -647,7 +648,30 @@ export const GetFeedResponseItem = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })
 export const GetFeedResponse = zod.array(GetFeedResponseItem)
 
@@ -717,6 +741,7 @@ export const GetProfileResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -729,7 +754,30 @@ export const GetProfileResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
@@ -799,6 +847,7 @@ export const UpdateProfileResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -811,7 +860,30 @@ export const UpdateProfileResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
@@ -869,6 +941,7 @@ export const GetStorageObjectResponse = zod.unknown()
 export const createPostBodyTranscriptMax = 5000;
 
 export const createPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+export const createPostBodyImageObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const createPostBodyDurationSecondsMax = 90;
 
 export const createPostBodyMentionedFounderIdsMax = 5;
@@ -878,6 +951,7 @@ export const createPostBodyMentionedFounderIdsMax = 5;
 export const CreatePostBody = zod.object({
   "transcript": zod.string().min(1).max(createPostBodyTranscriptMax).optional(),
   "audioObjectPath": zod.string().regex(createPostBodyAudioObjectPathRegExp),
+  "imageObjectPath": zod.string().regex(createPostBodyImageObjectPathRegExp).optional(),
   "durationSeconds": zod.number().int().min(1).max(createPostBodyDurationSecondsMax),
   "mentionedFounderIds": zod.array(zod.number().int()).max(createPostBodyMentionedFounderIdsMax).optional()
 })
@@ -900,6 +974,7 @@ export const CreatePostResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -912,7 +987,30 @@ export const CreatePostResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })
 
 
@@ -961,6 +1059,7 @@ export const GetPostResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -973,7 +1072,30 @@ export const GetPostResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })
 
 
@@ -1016,6 +1138,7 @@ export const UpdatePostResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -1028,7 +1151,30 @@ export const UpdatePostResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })
 
 
@@ -1058,6 +1204,7 @@ export const SetReactionResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -1070,7 +1217,30 @@ export const SetReactionResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })
 
 
@@ -1131,6 +1301,21 @@ export const ReshuutPostParams = zod.object({
   "postId": zod.coerce.number().int()
 })
 
+export const reshuutPostBodyTextMax = 5000;
+
+export const reshuutPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+export const reshuutPostBodyDurationSecondsMax = 90;
+
+export const reshuutPostBodyImageObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+
+
+export const ReshuutPostBody = zod.object({
+  "text": zod.string().min(1).max(reshuutPostBodyTextMax).optional(),
+  "audioObjectPath": zod.string().regex(reshuutPostBodyAudioObjectPathRegExp).optional(),
+  "durationSeconds": zod.number().int().min(1).max(reshuutPostBodyDurationSecondsMax).optional(),
+  "imageObjectPath": zod.string().regex(reshuutPostBodyImageObjectPathRegExp).optional()
+})
+
 export const ReshuutPostResponse = zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1149,6 +1334,7 @@ export const ReshuutPostResponse = zod.object({
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
   "createdAt": zod.coerce.date(),
   "reactions": zod.object({
@@ -1161,7 +1347,30 @@ export const ReshuutPostResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable()
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
 })
 
 

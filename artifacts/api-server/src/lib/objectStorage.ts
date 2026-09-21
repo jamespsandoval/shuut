@@ -124,6 +124,17 @@ export class ObjectStorageService {
     await setObjectAclPolicy(file, { owner, visibility: "private" });
   }
 
+  async publishImage(objectPath: string, owner: string) {
+    const file = await this.getFile(objectPath);
+    const [metadata] = await file.getMetadata();
+    const contentType = String(metadata.contentType || "");
+    const size = Number(metadata.size || 0);
+    if (!["image/jpeg", "image/png", "image/webp"].includes(contentType) || size < 1 || size > 15_000_000) {
+      throw new Error("Invalid post image");
+    }
+    await setObjectAclPolicy(file, { owner, visibility: "private" });
+  }
+
   async deleteObject(objectPath: string) {
     if (!/^\/objects\/uploads\/[A-Za-z0-9-]+$/.test(objectPath)) return;
     const relative = objectPath.replace(/^\/objects\//, "");

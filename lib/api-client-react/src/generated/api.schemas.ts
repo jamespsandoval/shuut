@@ -699,6 +699,53 @@ export const PostViewerReaction = {
   thumbsDown: 'thumbsDown',
 } as const;
 
+export type ReshuutMode = typeof ReshuutMode[keyof typeof ReshuutMode];
+
+
+export const ReshuutMode = {
+  text: 'text',
+  audio: 'audio',
+} as const;
+
+export type ReshuutTranscriptionStatus = typeof ReshuutTranscriptionStatus[keyof typeof ReshuutTranscriptionStatus];
+
+
+export const ReshuutTranscriptionStatus = {
+  none: 'none',
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
+export type ReshuutModerationStatus = typeof ReshuutModerationStatus[keyof typeof ReshuutModerationStatus];
+
+
+export const ReshuutModerationStatus = {
+  pending: 'pending',
+  processing: 'processing',
+  approved: 'approved',
+  quarantined: 'quarantined',
+  failed: 'failed',
+  removed: 'removed',
+} as const;
+
+export interface Reshuut {
+  id: number;
+  author: Founder;
+  mode: ReshuutMode;
+  /** @nullable */
+  text: string | null;
+  transcriptionStatus: ReshuutTranscriptionStatus;
+  /** @nullable */
+  audioUrl: string | null;
+  /** @nullable */
+  durationSeconds: number | null;
+  /** @nullable */
+  imageUrl: string | null;
+  moderationStatus: ReshuutModerationStatus;
+  createdAt: string;
+}
+
 export interface Post {
   id: number;
   author: Founder;
@@ -707,6 +754,8 @@ export interface Post {
   moderationStatus?: PostModerationStatus;
   /** @nullable */
   audioUrl?: string | null;
+  /** @nullable */
+  imageUrl?: string | null;
   durationSeconds: number;
   createdAt: string;
   reactions: ReactionSummary;
@@ -719,6 +768,7 @@ export interface Post {
   canDelete: boolean;
   /** @nullable */
   editableUntil: string | null;
+  reshuut?: Reshuut | null;
 }
 
 export interface ProfileDetail {
@@ -798,6 +848,8 @@ export interface PostInput {
   transcript?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath: string;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  imageObjectPath?: string;
   /**
      * @minimum 1
      * @maximum 90
@@ -813,6 +865,23 @@ export interface PostEditInput {
      * @maxLength 5000
      */
   transcript: string;
+}
+
+export interface ReshuutInput {
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  text?: string;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  audioObjectPath?: string;
+  /**
+     * @minimum 1
+     * @maximum 90
+     */
+  durationSeconds?: number;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  imageObjectPath?: string;
 }
 
 export interface VoiceCommentInput {

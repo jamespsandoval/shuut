@@ -16,6 +16,7 @@ import {
   moderationJobsTable,
   moderationSubjectsTable,
   postsTable,
+  postReshuutsTable,
   usersTable,
 } from "@workspace/db";
 import { hasCurrentVoiceAiConsent } from "./voiceAiConsent";
@@ -210,6 +211,10 @@ async function targetText(targetType: string, targetId: number) {
     const [post] = await db.select({ transcript: postsTable.transcript }).from(postsTable).where(eq(postsTable.id, targetId));
     return post?.transcript ?? null;
   }
+  if (targetType === "reshuut") {
+    const [reshuut] = await db.select({ transcript: postReshuutsTable.transcript }).from(postReshuutsTable).where(eq(postReshuutsTable.id, targetId));
+    return reshuut?.transcript ?? null;
+  }
   const [comment] = await db.select({ transcript: commentsTable.transcript }).from(commentsTable).where(eq(commentsTable.id, targetId));
   return comment?.transcript ?? null;
 }
@@ -217,12 +222,14 @@ async function targetText(targetType: string, targetId: number) {
 async function targetOwnerUserId(targetType: string, targetId: number) {
   const founderId = targetType === "post"
     ? (await db.select({ authorId: postsTable.authorId }).from(postsTable).where(eq(postsTable.id, targetId)).limit(1))[0]?.authorId
-    : (await db.select({ authorId: commentsTable.authorId }).from(commentsTable).where(eq(commentsTable.id, targetId)).limit(1))[0]?.authorId;
+    : targetType === "reshuut"
+      ? (await db.select({ founderId: postReshuutsTable.founderId }).from(postReshuutsTable).where(eq(postReshuutsTable.id, targetId)).limit(1))[0]?.founderId
+      : (await db.select({ authorId: commentsTable.authorId }).from(commentsTable).where(eq(commentsTable.id, targetId)).limit(1))[0]?.authorId;
   if (!founderId) return null;
   return (await db.select({ userId: foundersTable.userId }).from(foundersTable).where(eq(foundersTable.id, founderId)).limit(1))[0]?.userId ?? null;
 }
 
-export async function enqueueModeration(targetType: "post" | "comment", targetId: number, transcript: string, revision = 1) {
+export async function enqueueModeration(targetType: "post" | "comment" | "reshuut", targetId: number, transcript: string, revision = 1) {
   const hash = contentHash(transcript);
   const [subject] = await db.insert(moderationSubjectsTable).values({
     targetType, targetId, revision, contentHash: hash, status: "pending",
@@ -276,7 +283,9 @@ async function applyResult(job: { id: number; targetType: string; targetId: numb
   const liveText = await targetText(job.targetType, job.targetId);
   const [liveRevision] = job.targetType === "post"
     ? await db.select({ revision: postsTable.moderationRevision }).from(postsTable).where(eq(postsTable.id, job.targetId))
-    : await db.select({ revision: commentsTable.moderationRevision }).from(commentsTable).where(eq(commentsTable.id, job.targetId));
+    : job.targetType === "reshuut"
+      ? await db.select({ revision: postReshuutsTable.moderationRevision }).from(postReshuutsTable).where(eq(postReshuutsTable.id, job.targetId))
+      : await db.select({ revision: commentsTable.moderationRevision }).from(commentsTable).where(eq(commentsTable.id, job.targetId));
   if (liveText === null || !liveRevision || liveRevision.revision !== job.revision || contentHash(liveText) !== job.contentHash) {
     await db.update(moderationJobsTable).set(({ status: "completed", leaseUntil: null, leaseToken: null, lastErrorCode: "superseded_revision", updatedAt: new Date() }) as any).where(and(
       eq(moderationJobsTable.id, job.id),
@@ -307,6 +316,10 @@ async function applyResult(job: { id: number; targetType: string; targetId: numb
         moderationStatus: status, moderationRiskScore: result.riskScore,
         moderationCategories: JSON.stringify(result.categories), moderationErrorCode: null,
       }).where(and(eq(postsTable.id, job.targetId), eq(postsTable.moderationRevision, job.revision)));
+    } else if (job.targetType === "reshuut") {
+      await tx.update(postReshuutsTable).set({
+        moderationStatus: status,
+      }).where(and(eq(postReshuutsTable.id, job.targetId), eq(postReshuutsTable.moderationRevision, job.revision)));
     } else {
       await tx.update(commentsTable).set({
         moderationStatus: status, moderationRiskScore: result.riskScore,
@@ -344,8 +357,13 @@ async function failJob(job: { id: number; targetType: string; targetId: number; 
   )).returning({ id: moderationJobsTable.id }));
   if (exhausted && matched.length) {
     await ensureModerationCase(job.targetType, job.targetId, "high", "moderation_failure");
-    if (job.targetType === "post") await db.update(postsTable).set({ moderationStatus: "failed", moderationErrorCode: errorCode.slice(0, 80) }).where(eq(postsTable.id, job.targetId));
-    else await db.update(commentsTable).set({ moderationStatus: "failed", moderationErrorCode: errorCode.slice(0, 80) }).where(eq(commentsTable.id, job.targetId));
+    if (job.targetType === "post") {
+      await db.update(postsTable).set({ moderationStatus: "failed", moderationErrorCode: errorCode.slice(0, 80) }).where(eq(postsTable.id, job.targetId));
+    } else if (job.targetType === "reshuut") {
+      await db.update(postReshuutsTable).set({ moderationStatus: "failed" }).where(eq(postReshuutsTable.id, job.targetId));
+    } else {
+      await db.update(commentsTable).set({ moderationStatus: "failed", moderationErrorCode: errorCode.slice(0, 80) }).where(eq(commentsTable.id, job.targetId));
+    }
   }
 }
 

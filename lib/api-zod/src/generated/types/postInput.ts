@@ -14,6 +14,8 @@ export interface PostInput {
   transcript?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath: string;
+  /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
+  imageObjectPath?: string;
   /**
      * @minimum 1
      * @maximum 90

@@ -16,6 +16,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RECORDING_RECOVERY_KEY, RecordingRecovery, validateRecovery } from '../../lib/recordingRecovery';
 import { resolveApiUrl } from '../../lib/apiUrl';
 import { shouldCancelRecordingForLifecycle } from '../../lib/voiceRecordingGuards';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
+import { ImagePlus, X } from 'lucide-react-native';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -43,6 +46,8 @@ export default function RecordScreen() {
   const [transcript, setTranscript] = useState('');
   const [isPreparingTranscript, setIsPreparingTranscript] = useState(false);
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [imageObjectPath, setImageObjectPath] = useState<string | null>(null);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [permissionRevoked, setPermissionRevoked] = useState(false);
   const permissionWasRevokedRef = useRef(false);
@@ -393,9 +398,55 @@ export default function RecordScreen() {
     setTranscript('');
     setIsPreparingTranscript(false);
     setMentionedFounders([]);
+    setSelectedPhoto(null);
+    setImageObjectPath(null);
     setInterruptionMessage(null);
     void AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);
     router.dismissTo('/(main)/feed');
+  };
+
+  const choosePhoto = () => {
+    Alert.alert('Attach a photo', 'Choose where to get your SHÜÜT photo.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Take photo', onPress: () => void capturePhoto(true) },
+      { text: 'Photo library', onPress: () => void capturePhoto(false) },
+    ]);
+  };
+
+  const capturePhoto = async (useCamera: boolean) => {
+    try {
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          useCamera ? 'Camera access needed' : 'Photo access needed',
+          permission.canAskAgain
+            ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach an image to your SHÜÜT.`
+            : `${useCamera ? 'Camera' : 'Photo'} access is disabled. Enable it in Settings to attach an image.`,
+          permission.canAskAgain
+            ? [{ text: 'Not now', style: 'cancel' }]
+            : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }],
+        );
+        return;
+      }
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 })
+        : await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.82,
+        selectionLimit: 1,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setSelectedPhoto(result.assets[0]);
+        setImageObjectPath(null);
+      }
+    } catch (error) {
+      console.error('Could not choose SHÜÜT photo', error);
+      Alert.alert('Photo unavailable', 'We could not open your photo library. Please try again.');
+    }
   };
 
   const publishReview = async () => {
@@ -468,6 +519,24 @@ export default function RecordScreen() {
     return objectPath;
   };
 
+  const uploadPhoto = async (): Promise<string | undefined> => {
+    if (!selectedPhoto) return undefined;
+    if (imageObjectPath) return imageObjectPath;
+    const uri = selectedPhoto.uri;
+    const file = new File(uri);
+    if (!file.exists) throw new Error('Selected photo is no longer available on this device.');
+    const contentType = selectedPhoto.mimeType === 'image/png' ? 'image/png' : selectedPhoto.mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg';
+    const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
+      data: { name: `shuut-photo.${contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg'}`, size: file.size, contentType },
+    });
+    const fullUrl = resolveApiUrl(uploadURL);
+    if (!fullUrl) throw new Error('Photo upload URL was empty.');
+    const result = await file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': contentType } });
+    if (result.status < 200 || result.status >= 300) throw new Error(`Failed to upload photo: ${result.status}`);
+    setImageObjectPath(objectPath);
+    return objectPath;
+  };
+
   const prepareTranscript = async (recordingUri: string) => {
     setIsPreparingTranscript(true);
     try {
@@ -485,10 +554,12 @@ export default function RecordScreen() {
   const publishPost = async (recordingUri: string, recordingDuration: number) => {
     try {
       const objectPath = await uploadRecording(recordingUri);
+      const photoPath = await uploadPhoto();
       const createdPost = await createPost.mutateAsync({
         data: {
           audioObjectPath: objectPath,
           durationSeconds: recordingDuration,
+          ...(photoPath ? { imageObjectPath: photoPath } : {}),
           ...(previewTranscript ? { transcript: transcript.trim() } : {}),
           mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
@@ -640,6 +711,25 @@ export default function RecordScreen() {
                   )}
                 </View>
               )}
+              <View style={[styles.photoSection, { borderColor: colors.border }]}>
+                {selectedPhoto ? (
+                  <View style={styles.photoPreviewWrap}>
+                    <Image source={{ uri: selectedPhoto.uri }} style={styles.photoPreview} contentFit="cover" />
+                    <TouchableOpacity
+                      style={[styles.removePhotoButton, { backgroundColor: colors.card }]}
+                      onPress={() => { setSelectedPhoto(null); setImageObjectPath(null); }}
+                      accessibilityLabel="Remove attached photo"
+                    >
+                      <X color={colors.foreground} size={16} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.photoPickerButton} onPress={() => void choosePhoto()} accessibilityLabel="Add a photo">
+                    <ImagePlus color={colors.primary} size={19} />
+                    <Text style={[styles.photoPickerText, { color: colors.primary }]}>Add a photo</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
               <View style={[styles.reviewActions, { borderTopColor: colors.border }]}>
                 <TouchableOpacity
@@ -861,6 +951,41 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
     lineHeight: 23,
+  },
+  photoSection: {
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  photoPreviewWrap: {
+    width: '100%',
+    height: 180,
+    position: 'relative',
+  },
+  photoPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  removePhotoButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPickerButton: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  photoPickerText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
   },
   retryTranscriptButton: {
     minHeight: 44,

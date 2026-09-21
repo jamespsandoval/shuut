@@ -694,6 +694,11 @@ paths:
         - BearerAuth: []
       parameters:
         - { name: postId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReshuutInput' }
       responses:
         '200':
           description: Reshuuted post
@@ -1411,6 +1416,7 @@ components:
         transcriptionStatus: { type: string, enum: [processing, ready, failed] }
         moderationStatus: { type: string, enum: [pending, processing, approved, quarantined, failed, removed] }
         audioUrl: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
         durationSeconds: { type: integer }
         createdAt: { type: string, format: date-time }
         reactions: { $ref: '#/components/schemas/ReactionSummary' }
@@ -1420,6 +1426,10 @@ components:
         canEdit: { type: boolean }
         canDelete: { type: boolean }
         editableUntil: { type: [string, 'null'], format: date-time }
+        reshuut:
+          oneOf:
+            - { $ref: '#/components/schemas/Reshuut' }
+            - { type: 'null' }
     ProfileDetail:
       type: object
       required: [founder, followerCount, followingCount, postCount, posts, suggestedQuestions]
@@ -1466,6 +1476,7 @@ components:
       properties:
         transcript: { type: string, minLength: 1, maxLength: 5000 }
         audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+        imageObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
         durationSeconds: { type: integer, minimum: 1, maximum: 90 }
         mentionedFounderIds:
           type: array
@@ -1477,6 +1488,28 @@ components:
       required: [transcript]
       properties:
         transcript: { type: string, minLength: 1, maxLength: 5000 }
+    ReshuutInput:
+      type: object
+      additionalProperties: false
+      properties:
+        text: { type: string, minLength: 1, maxLength: 5000 }
+        audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+        durationSeconds: { type: integer, minimum: 1, maximum: 90 }
+        imageObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
+    Reshuut:
+      type: object
+      required: [id, author, mode, text, transcriptionStatus, audioUrl, durationSeconds, imageUrl, moderationStatus, createdAt]
+      properties:
+        id: { type: integer }
+        author: { $ref: '#/components/schemas/Founder' }
+        mode: { type: string, enum: [text, audio] }
+        text: { type: [string, 'null'] }
+        transcriptionStatus: { type: string, enum: [none, processing, ready, failed] }
+        audioUrl: { type: [string, 'null'] }
+        durationSeconds: { type: [integer, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        moderationStatus: { type: string, enum: [pending, processing, approved, quarantined, failed, removed] }
+        createdAt: { type: string, format: date-time }
     VoiceCommentInput:
       type: object
       required: [audioObjectPath, durationSeconds]

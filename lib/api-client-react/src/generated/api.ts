@@ -83,6 +83,7 @@ import type {
   RegistrationInput,
   ReportInput,
   ReportResult,
+  ReshuutInput,
   SafeError,
   SanctionInput,
   SearchProfilesParams,
@@ -4126,14 +4127,29 @@ export const getReshuutPostUrl = (postId: number,) => {
   return `/api/posts/${postId}/reshuut`
 }
 
-export const reshuutPost = async (postId: number, options?: Parameters<typeof customFetch>[1]): Promise<Post> => {
+export const reshuutPost = async (postId: number,
+    reshuutInput?: ReshuutInput, options?: Parameters<typeof customFetch>[1]): Promise<Post> => {
 
-  return customFetch<Post>(getReshuutPostUrl(postId),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Post>(getReshuutPostUrl(postId),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reshuutInput)
   }
 );}
 
@@ -4158,9 +4174,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof reshuutPost>>, ReshuutPostMutationVariables> = (props) => {
-          const {postId} = props ?? {};
+          const {postId,data} = props ?? {};
 
-          return  reshuutPost(postId,requestOptions)
+          return  reshuutPost(postId,data,requestOptions)
         }
 
 
@@ -4171,9 +4187,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ReshuutPostMutationResult = NonNullable<Awaited<ReturnType<typeof reshuutPost>>>
-
+    export type ReshuutPostMutationBody = BodyType<ReshuutInput> | undefined
     export type ReshuutPostMutationError = ErrorType<void | LegalPolicyConsentRequiredError>
-    export type ReshuutPostMutationVariables = {postId: number}
+    export type ReshuutPostMutationVariables = {postId: number;data?: BodyType<ReshuutInput>}
 
     export const useReshuutPost = <TError = ErrorType<void | LegalPolicyConsentRequiredError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reshuutPost>>, TError,ReshuutPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

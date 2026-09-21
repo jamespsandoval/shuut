@@ -17,6 +17,7 @@ import {
   GetProfileParams,
   GetProfileResponse,
   ReshuutPostParams,
+  ReshuutPostBody,
   ReshuutPostResponse,
   SetReactionBody,
   SetReactionParams,
@@ -104,7 +105,7 @@ const CLEANUP_RETRY_BASE_MS = 5_000;
 const SIGNED_UPLOAD_EXPIRY_SAFETY_MS = 5_000;
 class AudioVerificationError extends Error {}
 
-type CleanupScope = { type: "post" | "account" | "orphan" | "moderation"; id: string };
+type CleanupScope = { type: "post" | "account" | "orphan" | "moderation" | "reshuut"; id: string };
 
 function cleanupBackoff(attempts: number) {
   return Math.min(60 * 60 * 1000, CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts, 9));
@@ -154,6 +155,9 @@ async function finalizeCleanupScope(scope: CleanupScope) {
         const authoredPosts = await tx.select({ id: postsTable.id })
           .from(postsTable)
           .where(eq(postsTable.authorId, founder.id));
+        const authoredReshuuts = await tx.select({ id: postReshuutsTable.id })
+          .from(postReshuutsTable)
+          .where(eq(postReshuutsTable.founderId, founder.id));
         const authoredComments = await tx.select({ id: commentsTable.id })
           .from(commentsTable)
           .where(authoredPosts.length
@@ -167,10 +171,12 @@ async function finalizeCleanupScope(scope: CleanupScope) {
         // remain as safety evidence and are not deleted here.
         const postIds = authoredPosts.map((post) => post.id);
         const commentIds = authoredComments.map((comment) => comment.id);
-        if (postIds.length || commentIds.length) {
+        const reshuutIds = authoredReshuuts.map((reshuut) => reshuut.id);
+        if (postIds.length || commentIds.length || reshuutIds.length) {
           const targets = [
             ...(postIds.length ? [{ type: "post", ids: postIds }] : []),
             ...(commentIds.length ? [{ type: "comment", ids: commentIds }] : []),
+            ...(reshuutIds.length ? [{ type: "reshuut", ids: reshuutIds }] : []),
           ];
           for (const target of targets) {
             await tx.delete(moderationJobsTable).where(and(
@@ -403,6 +409,7 @@ function postJson(
   viewerFounderId?: number | null,
   viewerReaction?: string | null,
   viewerReshuuted = false,
+  reshuut: ReturnType<typeof reshuutJson> | null = null,
 ) {
   const storedAudio = post.audioUrl;
   const audioUrl = storedAudio?.startsWith("/objects/uploads/")
@@ -415,6 +422,9 @@ function postJson(
     transcriptionStatus: post.transcriptionStatus,
     moderationStatus: post.moderationStatus,
     audioUrl,
+    imageUrl: post.imageUrl?.startsWith("/objects/uploads/")
+      ? `/api/posts/${post.id}/image`
+      : null,
     durationSeconds: post.durationSeconds,
     createdAt: post.createdAt,
     reactions: {
@@ -436,6 +446,22 @@ function postJson(
       viewerFounderId === post.authorId
         ? new Date(post.createdAt.getTime() + POST_EDIT_WINDOW_MS)
         : null,
+    reshuut,
+  };
+}
+
+function reshuutJson(row: typeof postReshuutsTable.$inferSelect, author: FounderRow) {
+  return {
+    id: row.id,
+    author: founderJson(author),
+    mode: row.audioUrl ? "audio" as const : "text" as const,
+    text: row.transcript,
+    transcriptionStatus: row.transcriptionStatus,
+    audioUrl: row.audioUrl ? `/api/reshuuts/${row.id}/audio` : null,
+    durationSeconds: row.durationSeconds,
+    imageUrl: row.imageUrl ? `/api/reshuuts/${row.id}/image` : null,
+    moderationStatus: row.moderationStatus,
+    createdAt: row.createdAt,
   };
 }
 
@@ -526,6 +552,14 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       ))
     : [];
   const reshuutedPostIds = new Set(viewerReshuuts.map((reshuut) => reshuut.postId));
+  const currentReshuuts = viewerFounderId
+    ? await db.select().from(postReshuutsTable).where(and(
+      eq(postReshuutsTable.founderId, viewerFounderId),
+      inArray(postReshuutsTable.postId, rows.map((row) => row.id)),
+      eq(postReshuutsTable.deletionStatus, "active"),
+    ))
+    : [];
+  const reshuutByPostId = new Map(currentReshuuts.map((row) => [row.postId, row]));
   return rows.flatMap((row) => {
     const author = byId.get(row.authorId);
     return author ? [postJson(
@@ -534,6 +568,10 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       viewerFounderId,
       reactionByPostId.get(row.id),
       reshuutedPostIds.has(row.id),
+       (() => {
+         const current = reshuutByPostId.get(row.id);
+         return current ? reshuutJson(current, { ...byId.get(current.founderId)! }) : null;
+       })(),
     )] : [];
   });
 }
@@ -1205,6 +1243,69 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
   }
 });
 
+router.get("/posts/:postId/image", async (req, res): Promise<void> => {
+  const params = GetPostParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: "Invalid post" }); return; }
+  const [post] = await db.select().from(postsTable).where(and(
+    eq(postsTable.id, params.data.postId),
+    eq(postsTable.deletionStatus, "active"),
+  ));
+  if (!post?.imageUrl || !(await canDistributePost(post.id))) {
+    res.status(404).json({ error: "Image not found" });
+    return;
+  }
+  try {
+    const object = await objectStorage.streamPrivate(post.imageUrl);
+    res.setHeader("Content-Type", object.contentType);
+    res.setHeader("Cache-Control", "private, no-store");
+    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Image not found" });
+  }
+});
+
+router.get("/reshuuts/:reshuutId/audio", async (req, res): Promise<void> => {
+  const id = Number(req.params.reshuutId);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid reSHÜÜT" }); return; }
+  const [reshuut] = await db.select().from(postReshuutsTable).where(and(
+    eq(postReshuutsTable.id, id),
+    eq(postReshuutsTable.deletionStatus, "active"),
+  ));
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (!reshuut?.audioUrl || !viewer || (viewer.id !== reshuut.founderId && reshuut.moderationStatus !== "approved")) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
+  try {
+    const object = await objectStorage.streamPrivate(reshuut.audioUrl);
+    res.setHeader("Content-Type", object.contentType);
+    res.setHeader("Cache-Control", "private, no-store");
+    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Audio not found" });
+  }
+});
+
+router.get("/reshuuts/:reshuutId/image", async (req, res): Promise<void> => {
+  const id = Number(req.params.reshuutId);
+  const [reshuut] = Number.isInteger(id)
+    ? await db.select().from(postReshuutsTable).where(and(eq(postReshuutsTable.id, id), eq(postReshuutsTable.deletionStatus, "active")))
+    : [];
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  if (!reshuut?.imageUrl || !viewer || (viewer.id !== reshuut.founderId && reshuut.moderationStatus !== "approved")) {
+    res.status(404).json({ error: "Image not found" });
+    return;
+  }
+  try {
+    const object = await objectStorage.streamPrivate(reshuut.imageUrl);
+    res.setHeader("Content-Type", object.contentType);
+    res.setHeader("Cache-Control", "private, no-store");
+    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+  } catch {
+    res.status(404).json({ error: "Image not found" });
+  }
+});
+
 router.post("/transcriptions", async (req, res): Promise<void> => {
   if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
   if (!(await requireCurrentVoiceAiConsent(req, res))) return;
@@ -1383,8 +1484,17 @@ router.post("/posts", async (req, res): Promise<void> => {
         eq(profileImageUploadsTable.userId, userId),
       )).returning({ objectPath: profileImageUploadsTable.objectPath });
       if (!claimedUpload) return { status: "upload_missing" as const };
+       let claimedImage: { objectPath: string } | undefined;
+       if (body.data.imageObjectPath) {
+         [claimedImage] = await tx.delete(profileImageUploadsTable).where(and(
+           eq(profileImageUploadsTable.objectPath, body.data.imageObjectPath),
+           eq(profileImageUploadsTable.userId, userId),
+         )).returning({ objectPath: profileImageUploadsTable.objectPath });
+         if (!claimedImage) return { status: "upload_missing" as const };
+       }
       try {
         await objectStorage.publishAudio(claimedUpload.objectPath, userId);
+         if (claimedImage) await objectStorage.publishImage(claimedImage.objectPath, userId);
       } catch (error) {
         throw new AudioVerificationError("The voice recording could not be verified", { cause: error });
       }
@@ -1396,6 +1506,7 @@ router.post("/posts", async (req, res): Promise<void> => {
         moderationRevision: 1,
         durationSeconds: body.data.durationSeconds,
         audioUrl: claimedUpload.objectPath,
+         imageUrl: claimedImage?.objectPath ?? null,
       }).returning();
       if (mentionedFounders.length) {
         await tx.insert(postMentionsTable).values(
@@ -1476,12 +1587,20 @@ router.get("/posts/:postId", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Post not found" });
     return;
   }
+  const [currentReshuut] = viewer
+    ? await db.select().from(postReshuutsTable).where(and(
+      eq(postReshuutsTable.postId, post.id),
+      eq(postReshuutsTable.founderId, viewer.id),
+      eq(postReshuutsTable.deletionStatus, "active"),
+    )).limit(1)
+    : [];
   res.json(GetPostResponse.parse(postJson(
     post,
     author,
     viewer?.id,
     await viewerReactionFor(post.id, viewer?.id),
     await viewerReshuutedPost(post.id, viewer?.id),
+    currentReshuut ? reshuutJson(currentReshuut, viewer!) : null,
   )));
 });
 
@@ -1856,9 +1975,16 @@ router.delete("/posts/:postId", async (req, res): Promise<void> => {
     await tx.update(postsTable).set({ deletionStatus: "deleting" }).where(eq(postsTable.id, post.id));
     const commentRecordings = await tx.select({ objectPath: commentsTable.audioUrl })
       .from(commentsTable).where(eq(commentsTable.postId, post.id));
+    const reshuutMedia = await tx.select({
+      audioUrl: postReshuutsTable.audioUrl,
+      imageUrl: postReshuutsTable.imageUrl,
+    }).from(postReshuutsTable).where(eq(postReshuutsTable.postId, post.id));
     const paths = [
       ...(post.audioUrl?.startsWith("/objects/uploads/") ? [post.audioUrl] : []),
+      ...(post.imageUrl?.startsWith("/objects/uploads/") ? [post.imageUrl] : []),
       ...commentRecordings.map((recording) => recording.objectPath),
+      ...reshuutMedia.flatMap((reshuut) => [reshuut.audioUrl, reshuut.imageUrl])
+        .filter((objectPath): objectPath is string => Boolean(objectPath)),
     ];
     if (paths.length) {
       await tx.insert(objectCleanupJobsTable).values(
@@ -1986,6 +2112,21 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const bodyResult = ReshuutPostBody.safeParse(req.body ?? {});
+  if (!bodyResult.success) {
+    res.status(400).json({ error: "Invalid reSHÜÜT content" });
+    return;
+  }
+  const body = bodyResult.data;
+  if (body.audioObjectPath && body.text !== undefined) {
+    res.status(400).json({ error: "Audio reSHÜÜTs cannot include client text" });
+    return;
+  }
+  if (body.audioObjectPath && !body.durationSeconds) {
+    res.status(400).json({ error: "Audio duration is required" });
+    return;
+  }
+  if (body.audioObjectPath && !(await requireCurrentVoiceAiConsent(req, res))) return;
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
   if (!viewer) {
@@ -2015,12 +2156,67 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
       eq(postReshuutsTable.postId, post.id),
       eq(postReshuutsTable.founderId, viewer.id),
     )).limit(1);
-    if (existing) {
+    const hasContent = body.text !== undefined || body.audioObjectPath !== undefined || body.imageObjectPath !== undefined;
+    if (existing && !hasContent) {
+      for (const objectPath of [existing.audioUrl, existing.imageUrl].filter((path): path is string => Boolean(path))) {
+        await tx.insert(objectCleanupJobsTable).values({
+          objectPath,
+          scopeType: "reshuut",
+          scopeId: String(existing.id),
+        }).onConflictDoNothing();
+      }
       await tx.delete(postReshuutsTable).where(eq(postReshuutsTable.id, existing.id));
       return { status: "updated" as const, updated: post, isReshuuted: false };
     }
+    if (hasContent) {
+      let audioPath: string | null = null;
+      let imagePath: string | null = null;
+      if (body.audioObjectPath) {
+        const [claimed] = await tx.delete(profileImageUploadsTable).where(and(
+          eq(profileImageUploadsTable.objectPath, body.audioObjectPath),
+          eq(profileImageUploadsTable.userId, userId!),
+        )).returning({ objectPath: profileImageUploadsTable.objectPath });
+        if (!claimed) return { status: "upload_missing" as const };
+        await objectStorage.publishAudio(claimed.objectPath, userId!);
+        audioPath = claimed.objectPath;
+      }
+      if (body.imageObjectPath) {
+        const [claimed] = await tx.delete(profileImageUploadsTable).where(and(
+          eq(profileImageUploadsTable.objectPath, body.imageObjectPath),
+          eq(profileImageUploadsTable.userId, userId!),
+        )).returning({ objectPath: profileImageUploadsTable.objectPath });
+        if (!claimed) return { status: "upload_missing" as const };
+        await objectStorage.publishImage(claimed.objectPath, userId!);
+        imagePath = claimed.objectPath;
+      }
+      for (const objectPath of [existing?.audioUrl, existing?.imageUrl].filter((path): path is string => Boolean(path))) {
+        if (objectPath !== audioPath && objectPath !== imagePath) {
+          await tx.insert(objectCleanupJobsTable).values({
+            objectPath,
+            scopeType: "reshuut",
+            scopeId: String(existing?.id ?? `${post.id}:${viewer.id}`),
+          }).onConflictDoNothing();
+        }
+      }
+      const values = {
+        postId: post.id,
+        founderId: viewer.id,
+        transcript: body.text ?? null,
+        transcriptionStatus: audioPath ? "processing" : "none",
+        audioUrl: audioPath,
+        imageUrl: imagePath,
+        durationSeconds: body.durationSeconds ?? null,
+        moderationStatus: audioPath || body.text ? "pending" : "approved",
+        moderationRevision: (existing?.moderationRevision ?? 0) + 1,
+        deletionStatus: "active",
+      } as const;
+      const [reshuut] = existing
+        ? await tx.update(postReshuutsTable).set(values).where(eq(postReshuutsTable.id, existing.id)).returning()
+        : await tx.insert(postReshuutsTable).values(values).returning();
+      return { status: "updated" as const, updated: post, isReshuuted: true, reshuut };
+    }
     await tx.insert(postReshuutsTable).values({ postId: post.id, founderId: viewer.id });
-    return { status: "updated" as const, updated: post, isReshuuted: true };
+    return { status: "updated" as const, updated: post, isReshuuted: true, reshuut: null };
   });
   if (result.status === "account_deleting") {
     res.status(409).json({ error: "Account deletion is already in progress" });
@@ -2034,11 +2230,20 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
     return;
   }
+  if (result.status === "upload_missing") {
+    res.status(403).json({ error: "One or more uploads do not belong to you" });
+    return;
+  }
   if (!(await canDistributePost(params.data.postId))) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
   const { updated, isReshuuted } = result;
+  if (!updated) {
+    res.status(500).json({ error: "Could not update reSHÜÜT" });
+    return;
+  }
+  const reshuutContent = "reshuut" in result ? result.reshuut : null;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
   if (isReshuuted) {
     await recordNotification({
@@ -2054,7 +2259,29 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     viewer.id,
     await viewerReactionFor(updated.id, viewer.id),
     isReshuuted,
+    reshuutContent ? reshuutJson(reshuutContent, viewer) : null,
   )));
+  if (reshuutContent?.audioUrl) {
+    void transcribeRecording(reshuutContent.audioUrl, userId!)
+      .then(async (transcript) => {
+        await db.update(postReshuutsTable).set({
+          transcript,
+          transcriptionStatus: "ready",
+          moderationStatus: "pending",
+        }).where(eq(postReshuutsTable.id, reshuutContent.id));
+        await enqueueModeration("reshuut", reshuutContent.id, transcript, reshuutContent.moderationRevision);
+      })
+      .catch(async () => {
+        try {
+          await db.update(postReshuutsTable).set({
+            transcriptionStatus: "failed",
+            moderationStatus: "failed",
+          }).where(eq(postReshuutsTable.id, reshuutContent.id));
+        } catch (error) {
+          req.log.warn({ err: error, reshuutId: reshuutContent.id }, "Could not persist failed reSHÜÜT transcription state");
+        }
+      });
+  }
 });
 
 router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {
@@ -2206,7 +2433,11 @@ router.delete("/account", async (req, res): Promise<void> => {
     const [founder] = await tx.select().from(foundersTable).where(eq(foundersTable.userId, userId)).limit(1);
     const posts = founder
       ? await tx
-        .select({ id: postsTable.id, objectPath: postsTable.audioUrl })
+        .select({
+          id: postsTable.id,
+          audioUrl: postsTable.audioUrl,
+          imageUrl: postsTable.imageUrl,
+        })
         .from(postsTable)
         .where(eq(postsTable.authorId, founder.id))
       : [];
@@ -2217,6 +2448,18 @@ router.delete("/account", async (req, res): Promise<void> => {
         .where(or(
           eq(commentsTable.authorId, founder.id),
           ...(posts.length ? [inArray(commentsTable.postId, posts.map((post) => post.id))] : []),
+        ))
+      : [];
+    const reshuutMedia = founder
+      ? await tx
+        .select({
+          audioUrl: postReshuutsTable.audioUrl,
+          imageUrl: postReshuutsTable.imageUrl,
+        })
+        .from(postReshuutsTable)
+        .where(or(
+          eq(postReshuutsTable.founderId, founder.id),
+          ...(posts.length ? [inArray(postReshuutsTable.postId, posts.map((post) => post.id))] : []),
         ))
       : [];
     const pendingUploads = await tx
@@ -2232,8 +2475,12 @@ router.delete("/account", async (req, res): Promise<void> => {
       if (!existing || existing < nextAttemptAt) cleanupTimes.set(objectPath, nextAttemptAt);
     };
     if (founder?.avatarObjectPath) addObject(founder.avatarObjectPath);
-    for (const recording of [...posts, ...commentRecordings]) {
-      if (recording.objectPath?.startsWith("/objects/uploads/")) addObject(recording.objectPath);
+    for (const objectPath of [
+      ...posts.flatMap((post) => [post.audioUrl, post.imageUrl]),
+      ...commentRecordings.map((recording) => recording.objectPath),
+      ...reshuutMedia.flatMap((reshuut) => [reshuut.audioUrl, reshuut.imageUrl]),
+    ]) {
+      if (objectPath?.startsWith("/objects/uploads/")) addObject(objectPath);
     }
     for (const upload of pendingUploads) {
       addObject(

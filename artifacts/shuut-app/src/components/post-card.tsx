@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, useLocation } from "wouter"
-import { Play, Repeat2, Share, Trash2, Pencil, Loader2, Mic } from "lucide-react"
+import { Play, Repeat2, Share, Trash2, Pencil, Loader2, Mic, ImagePlus, X, Square } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { Post, ReactionInputEmojiType } from "@workspace/api-client-react"
 import { 
@@ -12,6 +12,7 @@ import {
   getGetFeedQueryKey,
   getGetPostQueryKey,
   getGetProfileQueryKey,
+  useGetVoiceAiConsent,
 } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { AudioPlayer } from "./audio-player"
@@ -22,6 +23,8 @@ import { Button } from "@/components/ui/button"
 import { PostComments } from "./post-comments"
 import { canShowPostDeleteAction } from "@/lib/post-permissions"
 import { ModerationActions } from "./moderation-actions"
+import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
+import { ToastAction } from "@/components/ui/toast"
 
 interface PostCardProps {
   post: Post
@@ -50,6 +53,26 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   const [canStillEdit, setCanStillEdit] = useState(post.canEdit)
   const [showComments, setShowComments] = useState(isDetail || isFocused)
   const [autoStartReply, setAutoStartReply] = useState(false)
+  const [showReshuutComposer, setShowReshuutComposer] = useState(false)
+  const [reshuutMode, setReshuutMode] = useState<"text" | "audio">("text")
+  const [reshuutText, setReshuutText] = useState("")
+  const [reshuutImage, setReshuutImage] = useState<File | null>(null)
+  const [reshuutImagePreview, setReshuutImagePreview] = useState<string | null>(null)
+  const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null)
+  const [reshuutAudioPath, setReshuutAudioPath] = useState<string | null>(null)
+  const [reshuutAudioPreview, setReshuutAudioPreview] = useState<string | null>(null)
+  const [reshuutDuration, setReshuutDuration] = useState(0)
+  const [reshuutRecording, setReshuutRecording] = useState(false)
+  const [reshuutUploadProgress, setReshuutUploadProgress] = useState<number | null>(null)
+  const reshuutRecorderRef = useRef<MediaRecorder | null>(null)
+  const reshuutChunksRef = useRef<Blob[]>([])
+  const reshuutTimerRef = useRef<number | null>(null)
+  const reshuutRecordingRef = useRef(false)
+  const reshuutDiscardRef = useRef(false)
+  const reshuutImagePreviewRef = useRef<string | null>(null)
+  const reshuutAudioPreviewRef = useRef<string | null>(null)
+  const [showReshuutConsent, setShowReshuutConsent] = useState(false)
+  const { data: voiceAiConsent, isLoading: voiceAiConsentLoading, isError: voiceAiConsentError, refetch: refetchVoiceAiConsent } = useGetVoiceAiConsent()
 
   useEffect(() => {
     if (isDetail || isFocused) setShowComments(true)
@@ -80,7 +103,145 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     )
   }
 
+  const uploadReshuutFile = async (file: File): Promise<string> => {
+    const csrf = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("shu_csrf="))?.split("=")[1]
+    const response = await fetch("/api/storage/uploads/request-url", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}) },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || "Could not prepare upload")
+    await new Promise<void>((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open("PUT", payload.uploadURL)
+      request.setRequestHeader("Content-Type", file.type)
+      request.upload.onprogress = (event) => event.lengthComputable && setReshuutUploadProgress(Math.round(event.loaded / event.total * 100))
+      request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error("Upload failed"))
+      request.onerror = () => reject(new Error("Upload was interrupted"))
+      request.send(file)
+    })
+    return payload.objectPath
+  }
+
+  const clearReshuutComposer = useCallback(() => {
+    reshuutDiscardRef.current = true
+    if (reshuutRecorderRef.current?.state === "recording") reshuutRecorderRef.current.stop()
+    reshuutRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
+    if (reshuutTimerRef.current) window.clearInterval(reshuutTimerRef.current)
+    if (reshuutImagePreviewRef.current) URL.revokeObjectURL(reshuutImagePreviewRef.current)
+    if (reshuutAudioPreviewRef.current) URL.revokeObjectURL(reshuutAudioPreviewRef.current)
+    reshuutTimerRef.current = null
+    reshuutRecordingRef.current = false
+    setReshuutRecording(false)
+    setReshuutImage(null); setReshuutImagePreview(null); setReshuutImagePath(null)
+    setReshuutAudioPath(null); setReshuutAudioPreview(null); setReshuutText(""); setReshuutDuration(0)
+    setReshuutUploadProgress(null)
+  }, [])
+
+  useEffect(() => () => clearReshuutComposer(), [clearReshuutComposer])
+
   const handleReshuut = () => {
+    if (post.isReshuuted && !post.reshuut) {
+      reshuutPost.mutate({ postId: post.id }, { onSuccess: () => queryClient.invalidateQueries() })
+      return
+    }
+    setShowReshuutComposer((value) => !value)
+  }
+
+  const startReshuutRecording = async () => {
+    if (reshuutRecording) {
+      reshuutRecorderRef.current?.stop()
+      reshuutRecorderRef.current?.stream.getTracks().forEach((track) => track.stop())
+      return
+    }
+    if (voiceAiConsentLoading) {
+      toast({ title: "Checking permissions…", description: "Please wait a moment." })
+      return
+    }
+    if (voiceAiConsentError || !voiceAiConsent) {
+      toast({
+        title: "Could not verify permissions",
+        description: "Please check your connection and try again.",
+        variant: "destructive",
+        action: <ToastAction altText="Retry" onClick={() => refetchVoiceAiConsent()}>Retry</ToastAction>,
+      })
+      return
+    }
+    if (voiceAiConsent.required) {
+      setShowReshuutConsent(true)
+      return
+    }
+    await beginReshuutRecording()
+  }
+
+  const beginReshuutRecording = async () => {
+    if (reshuutRecordingRef.current) return
+    reshuutDiscardRef.current = false
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const recorder = new MediaRecorder(stream)
+    reshuutRecorderRef.current = recorder
+    reshuutChunksRef.current = []
+    recorder.ondataavailable = (event) => { if (event.data.size) reshuutChunksRef.current.push(event.data) }
+    recorder.onstop = async () => {
+      if (reshuutTimerRef.current) window.clearInterval(reshuutTimerRef.current)
+      reshuutTimerRef.current = null
+      reshuutRecordingRef.current = false
+      setReshuutRecording(false)
+      stream.getTracks().forEach((track) => track.stop())
+      if (reshuutDiscardRef.current) return
+      const blob = new Blob(reshuutChunksRef.current, { type: "audio/webm" })
+      const preview = URL.createObjectURL(blob)
+      reshuutAudioPreviewRef.current = preview
+      setReshuutAudioPreview(preview)
+      try {
+        setReshuutUploadProgress(0)
+        setReshuutAudioPath(await uploadReshuutFile(new File([blob], "reshuut.webm", { type: "audio/webm" })))
+      } catch (error) {
+        toast({ title: "Audio upload failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" })
+      } finally { setReshuutUploadProgress(null) }
+    }
+    recorder.start()
+    reshuutRecordingRef.current = true
+    setReshuutRecording(true); setReshuutDuration(0)
+    reshuutTimerRef.current = window.setInterval(() => setReshuutDuration((value) => {
+      if (value >= 89) { recorder.stop(); stream.getTracks().forEach((track) => track.stop()); return value }
+      return value + 1
+    }), 1000)
+  }
+
+  const submitReshuut = async () => {
+    if (reshuutMode === "text" && !reshuutText.trim() && !reshuutImage) {
+      toast({ title: "Add commentary or a photo", variant: "destructive" }); return
+    }
+    try {
+      let imagePath = reshuutImagePath
+      if (reshuutImage && !imagePath) {
+        setReshuutUploadProgress(0)
+        imagePath = await uploadReshuutFile(reshuutImage)
+      }
+      const data = reshuutMode === "audio"
+        ? { ...(reshuutAudioPath ? { audioObjectPath: reshuutAudioPath, durationSeconds: reshuutDuration || 1 } : {}), ...(imagePath ? { imageObjectPath: imagePath } : {}) }
+        : { ...(reshuutText.trim() ? { text: reshuutText.trim() } : {}), ...(imagePath ? { imageObjectPath: imagePath } : {}) }
+      reshuutPost.mutate({ postId: post.id, data }, { onSuccess: () => { setShowReshuutComposer(false); clearReshuutComposer(); queryClient.invalidateQueries(); }, onError: (error) => toast({ title: "Could not reshüüт", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }) })
+    } catch (error) {
+      toast({ title: "Photo upload failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" })
+    } finally { setReshuutUploadProgress(null) }
+  }
+
+  const handleReshuutImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = ""
+    if (!file) return
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15_000_000) {
+      toast({ title: "Invalid image", description: "Choose a JPEG, PNG, or WebP image under 15MB.", variant: "destructive" }); return
+    }
+    if (reshuutImagePreview) URL.revokeObjectURL(reshuutImagePreview)
+    const preview = URL.createObjectURL(file)
+    reshuutImagePreviewRef.current = preview
+    setReshuutImage(file); setReshuutImagePreview(preview); setReshuutImagePath(null)
+  }
+
+  const invalidateReshuut = () => {
     reshuutPost.mutate(
       { postId: post.id },
       {
@@ -162,6 +323,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   }
 
   return (
+    <>
     <article
       id={`post-${post.id}`}
       className={cn(
@@ -250,6 +412,30 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
             </div>
           )}
 
+          {post.imageUrl && (
+            <img src={post.imageUrl} alt={`Photo attached to ${post.author.name}'s SHÜÜT`} className="mb-3 max-h-[28rem] w-full rounded-xl object-cover border border-border/50" loading="lazy" />
+          )}
+
+          {post.reshuut && (
+            <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Repeat2 className="h-3.5 w-3.5" /> ReSHÜÜT commentary
+              </div>
+              {post.reshuut.mode === "text" && post.reshuut.text && <p className="whitespace-pre-wrap text-sm">{post.reshuut.text}</p>}
+              {post.reshuut.mode === "audio" && post.reshuut.audioUrl && (
+                <AudioPlayer audioUrl={post.reshuut.audioUrl} durationSeconds={1} compact />
+              )}
+              {post.reshuut.mode === "audio" && post.reshuut.transcriptionStatus === "processing" && (
+                <p className="mt-2 text-xs text-muted-foreground" role="status">Transcribing reSHÜÜT commentary…</p>
+              )}
+              {post.reshuut.mode === "audio" && post.reshuut.text && post.reshuut.transcriptionStatus === "ready" && (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{post.reshuut.text}</p>
+              )}
+              {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-cover" loading="lazy" />}
+              {post.reshuut.moderationStatus !== "approved" && <p className="mt-2 text-xs text-muted-foreground">Commentary is being reviewed.</p>}
+            </div>
+          )}
+
           {!post.audioUrl && (
             <div
               className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground"
@@ -271,7 +457,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 const isActive = post.viewerReaction === type
                 
                 return (
-                  <button
+             <button
                     key={type}
                     onClick={() => handleReaction(type)}
                     className={cn(
@@ -306,7 +492,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
             {/* Reshüüt */}
             <button
-              onClick={handleReshuut}
+               onClick={handleReshuut}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95 text-muted-foreground hover:text-foreground shrink-0",
                 post.isReshuuted && "text-green-500 font-medium"
@@ -349,6 +535,44 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
             )}
           </div>
 
+          {showReshuutComposer && (
+            <div className="mt-3 rounded-xl border border-border/60 bg-secondary/10 p-3" aria-label="ReSHÜÜT composer">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-semibold">Add to your reSHÜÜT</p>
+                <button type="button" aria-label="Close reSHÜÜT composer" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }} className="rounded-full p-1 hover:bg-secondary"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="mb-3 flex gap-2">
+                <Button type="button" size="sm" variant={reshuutMode === "text" ? "default" : "outline"} onClick={() => setReshuutMode("text")}>Written</Button>
+                <Button type="button" size="sm" variant={reshuutMode === "audio" ? "default" : "outline"} onClick={() => setReshuutMode("audio")}>Voice (transcribed)</Button>
+              </div>
+              {reshuutMode === "text" ? (
+                <Textarea value={reshuutText} onChange={(event) => setReshuutText(event.target.value)} maxLength={5000} placeholder="Say something about this SHÜÜT…" className="mb-3 min-h-24 resize-none" />
+              ) : (
+                <div className="mb-3 flex items-center gap-3">
+                  <Button type="button" variant={reshuutRecording ? "destructive" : "outline"} onClick={() => void startReshuutRecording()} aria-label={reshuutRecording ? "Stop reSHÜÜT recording" : "Record reSHÜÜT commentary"}>
+                    {reshuutRecording ? <Square className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                    {reshuutRecording ? `${reshuutDuration}s` : "Record"}
+                  </Button>
+                  {reshuutAudioPreview && <audio controls src={reshuutAudioPreview} className="h-9 max-w-[15rem]" />}
+                  <span className="text-xs text-muted-foreground">Always transcribed</span>
+                </div>
+              )}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {reshuutImagePreview ? (
+                  <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-20 w-20 rounded-lg object-cover" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>
+                ) : (
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"><ImagePlus className="h-4 w-4" /> Add photo<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleReshuutImage} /></label>
+                )}
+                {reshuutUploadProgress !== null && <span className="text-xs text-muted-foreground" role="status">Uploading… {reshuutUploadProgress}%</span>}
+              </div>
+              <div className="flex justify-end gap-2">
+                {post.isReshuuted && <Button type="button" variant="ghost" onClick={() => { invalidateReshuut(); setShowReshuutComposer(false); clearReshuutComposer() }}>Remove reSHÜÜT</Button>}
+                <Button type="button" variant="ghost" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }}>Cancel</Button>
+                <Button type="button" onClick={() => void submitReshuut()} disabled={reshuutPost.isPending || reshuutUploadProgress !== null || (reshuutMode === "audio" && !reshuutAudioPath)}>Publish reSHÜÜT</Button>
+              </div>
+            </div>
+          )}
+
           {(showComments) && (
             <PostComments
               postId={post.id}
@@ -359,5 +583,15 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
         </div>
       </div>
     </article>
+      <VoiceAiConsentModal
+        open={showReshuutConsent}
+        status={voiceAiConsent}
+        onAccepted={() => {
+          setShowReshuutConsent(false)
+          void beginReshuutRecording()
+        }}
+        onDecline={() => setShowReshuutConsent(false)}
+      />
+    </>
   )
 }

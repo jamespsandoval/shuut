@@ -24,6 +24,7 @@ import {
   securityRateLimitsTable,
   notificationsTable,
   postMentionsTable,
+  postReshuutsTable,
   foundersTable,
   legalPolicyAcceptancesTable,
   moderationCasesTable,
@@ -1632,9 +1633,14 @@ test("notifications require authentication and capture attributed activity witho
     globalThis.fetch = previousFetch;
   }
 
-  for (let attempt = 0; attempt < 3; attempt += 1) await runModerationSweep();
-  const notifications = await db.select().from(notificationsTable)
+  let notifications = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.recipientId, owner.id));
+  for (let attempt = 0; attempt < 20 && notifications.length < 3; attempt += 1) {
+    await runModerationSweep();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    notifications = await db.select().from(notificationsTable)
+      .where(eq(notificationsTable.recipientId, owner.id));
+  }
   assert.equal(notifications.length, 3);
   assert.deepEqual(
     notifications.map((notification) => notification.eventType).sort(),
@@ -2197,6 +2203,227 @@ test("failed comment transcription keeps durable cleanup work until storage retr
   } finally {
     globalThis.fetch = capturedFetch;
     ObjectStorageService.prototype.publishAudio = realPublishAudio;
+    ObjectStorageService.prototype.readAudio = realReadAudio;
+    ObjectStorageService.prototype.deleteObject = realDeleteObject;
+  }
+});
+
+test("post photos and enhanced reSHÜÜTs enforce ownership, transcription, mapping, and cleanup", async () => {
+  const email = `${prefix}-reshuut-media@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() }).where(eq(sessionsTable.userId, user.id));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id, name: "Media Founder",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-14)}media`,
+    bio: "", avatarColor: "#000000",
+  }).returning();
+  const [source] = await db.insert(postsTable).values({
+    authorId: founder.id, transcript: "Source post", durationSeconds: 2, moderationStatus: "approved",
+  }).returning();
+  const realPublishAudio = ObjectStorageService.prototype.publishAudio;
+  const realPublishImage = ObjectStorageService.prototype.publishImage;
+  const realReadAudio = ObjectStorageService.prototype.readAudio;
+  const realDeleteObject = ObjectStorageService.prototype.deleteObject;
+  ObjectStorageService.prototype.publishAudio = async () => {};
+  ObjectStorageService.prototype.publishImage = async () => {};
+  ObjectStorageService.prototype.readAudio = async () => ({ data: Buffer.from("voice"), contentType: "audio/webm" });
+  const deleted: string[] = [];
+  ObjectStorageService.prototype.deleteObject = async (objectPath) => { deleted.push(objectPath); };
+  try {
+    const audio = `/objects/uploads/${prefix}-post-audio`;
+    const image = `/objects/uploads/${prefix}-post-image`;
+    await db.insert(profileImageUploadsTable).values([
+      { objectPath: audio, userId: user.id },
+      { objectPath: image, userId: user.id },
+    ]);
+    const created = await request("/api/posts", {
+      method: "POST", session,
+      json: { audioObjectPath: audio, imageObjectPath: image, durationSeconds: 2, transcript: "Photo post" },
+    });
+    assert.equal(created.status, 201);
+    assert.equal((await created.json() as { imageUrl: string | null }).imageUrl, `/api/posts/${(await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.audioUrl, audio)))[0].id}/image`);
+    const replay = await request("/api/posts", {
+      method: "POST", session,
+      json: { audioObjectPath: audio, imageObjectPath: image, durationSeconds: 2, transcript: "Replay" },
+    });
+    assert.equal(replay.status, 403);
+    const foreignImage = `/objects/uploads/${prefix}-foreign-image`;
+    const foreignUser = `${prefix}-foreign@example.test`;
+    const foreignSession = await register(foreignUser);
+    const [foreign] = await db.select().from(usersTable).where(eq(usersTable.email, foreignUser));
+    await db.insert(profileImageUploadsTable).values({ objectPath: foreignImage, userId: foreign.id });
+    const foreignPost = await request("/api/posts", {
+      method: "POST", session,
+      json: { audioObjectPath: `/objects/uploads/${prefix}-foreign-audio`, imageObjectPath: foreignImage, durationSeconds: 2, transcript: "Nope" },
+    });
+    assert.equal(foreignPost.status, 403);
+
+    const bare = await request(`/api/posts/${source.id}/reshuut`, { method: "POST", session });
+    assert.equal(bare.status, 200);
+    assert.equal((await bare.json() as { isReshuuted: boolean }).isReshuuted, true);
+    const text = await request(`/api/posts/${source.id}/reshuut`, {
+      method: "POST", session, json: { text: "Written context" },
+    });
+    assert.equal(text.status, 200);
+    const textBody = await text.json() as { reshuut: { mode: string; text: string; imageUrl: null } };
+    assert.deepEqual(textBody.reshuut, {
+      id: textBody.reshuut.id, author: textBody.reshuut.author, mode: "text",
+      text: "Written context", transcriptionStatus: "none", audioUrl: null, durationSeconds: null, imageUrl: null,
+      moderationStatus: "pending", createdAt: textBody.reshuut.createdAt,
+    });
+    const previousModerationProvider = setModerationProviderForTests(async () => ({
+      categories: ["spam"],
+      riskScore: 90,
+    }));
+    try {
+      const [textReshuut] = await db.select().from(postReshuutsTable)
+        .where(and(eq(postReshuutsTable.postId, source.id), eq(postReshuutsTable.founderId, founder.id)));
+      await enqueueModeration("reshuut", textReshuut.id, "Written context", textReshuut.moderationRevision);
+      await db.update(moderationJobsTable).set({ nextAttemptAt: new Date(0) }).where(and(
+        eq(moderationJobsTable.targetType, "reshuut"),
+        eq(moderationJobsTable.targetId, textReshuut.id),
+      ));
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await runModerationSweep(100);
+        const [current] = await db.select({ moderationStatus: postReshuutsTable.moderationStatus })
+          .from(postReshuutsTable).where(eq(postReshuutsTable.id, textReshuut.id));
+        if (current?.moderationStatus !== "pending") break;
+      }
+      const [quarantined] = await db.select({ moderationStatus: postReshuutsTable.moderationStatus })
+        .from(postReshuutsTable).where(eq(postReshuutsTable.id, textReshuut.id));
+      assert.equal(quarantined.moderationStatus, "pending");
+    } finally {
+      setModerationProviderForTests(previousModerationProvider);
+    }
+
+    const audioCommentary = `/objects/uploads/${prefix}-reshuut-audio`;
+    const commentaryImage = `/objects/uploads/${prefix}-reshuut-image`;
+    await db.insert(profileImageUploadsTable).values([
+      { objectPath: audioCommentary, userId: user.id },
+      { objectPath: commentaryImage, userId: user.id },
+    ]);
+    const rejectedTranscript = await request(`/api/posts/${source.id}/reshuut`, {
+      method: "POST", session,
+      json: { audioObjectPath: audioCommentary, durationSeconds: 2, text: "Client transcript" },
+    });
+    assert.equal(rejectedTranscript.status, 400);
+    assert.equal((await request("/api/voice-ai-consent", { method: "DELETE", session })).status, 200);
+    const consentRejected = await request(`/api/posts/${source.id}/reshuut`, {
+      method: "POST", session,
+      json: { audioObjectPath: audioCommentary, durationSeconds: 2 },
+    });
+    assert.equal(consentRejected.status, 403);
+    assert.equal((await request("/api/voice-ai-consent", {
+      method: "POST", session,
+      json: { version: CURRENT_VOICE_AI_CONSENT_VERSION, source: "web" },
+    })).status, 200);
+    const audioResponse = await request(`/api/posts/${source.id}/reshuut`, {
+      method: "POST", session,
+      json: { audioObjectPath: audioCommentary, imageObjectPath: commentaryImage, durationSeconds: 2 },
+    });
+    assert.equal(audioResponse.status, 200);
+    const audioBody = await audioResponse.json() as { reshuut: { mode: string; transcriptionStatus: string; moderationStatus: string; imageUrl: string } };
+    assert.equal(audioBody.reshuut.mode, "audio");
+    assert.equal(audioBody.reshuut.transcriptionStatus, "processing");
+    assert.equal(audioBody.reshuut.moderationStatus, "pending");
+    assert.match(audioBody.reshuut.imageUrl, /\/image$/);
+    const [reshuut] = await db.select().from(postReshuutsTable)
+      .where(and(eq(postReshuutsTable.postId, source.id), eq(postReshuutsTable.founderId, founder.id)));
+    assert.equal(reshuut.audioUrl, audioCommentary);
+    assert.equal(reshuut.transcript, null);
+
+    const unreshuut = await request(`/api/posts/${source.id}/reshuut`, { method: "POST", session });
+    assert.equal(unreshuut.status, 200);
+    assert.equal((await unreshuut.json() as { isReshuuted: boolean }).isReshuuted, false);
+    const cleanup = await db.select().from(objectCleanupJobsTable)
+      .where(eq(objectCleanupJobsTable.objectPath, audioCommentary));
+    assert.equal(cleanup.length, 1);
+    await retryDueCleanupJobs();
+    assert.deepEqual(deleted, [audioCommentary, commentaryImage]);
+
+    const deletionAudio = `/objects/uploads/${prefix}-post-delete-audio`;
+    const deletionImage = `/objects/uploads/${prefix}-post-delete-image`;
+    const deletionReshuutAudio = `/objects/uploads/${prefix}-post-delete-reshuut-audio`;
+    const deletionReshuutImage = `/objects/uploads/${prefix}-post-delete-reshuut-image`;
+    const [deletionPost] = await db.insert(postsTable).values({
+      authorId: founder.id, transcript: "Delete me", audioUrl: deletionAudio, imageUrl: deletionImage,
+      durationSeconds: 2, moderationStatus: "approved",
+    }).returning();
+    await db.insert(postReshuutsTable).values({
+      postId: deletionPost.id, founderId: founder.id, audioUrl: deletionReshuutAudio,
+      imageUrl: deletionReshuutImage, transcript: "Delete commentary", transcriptionStatus: "ready",
+      moderationStatus: "approved",
+    });
+    const deletedBeforePost = deleted.length;
+    const deletePostResponse = await request(`/api/posts/${deletionPost.id}`, { method: "DELETE", session });
+    assert.equal(deletePostResponse.status, 200);
+    assert.equal((await deletePostResponse.json() as { status: string }).status, "completed");
+    assert.deepEqual(
+      deleted.slice(deletedBeforePost).sort(),
+      [deletionAudio, deletionImage, deletionReshuutAudio, deletionReshuutImage].sort(),
+    );
+    assert.equal(
+      (await db.select().from(objectCleanupJobsTable).where(eq(objectCleanupJobsTable.scopeId, String(deletionPost.id)))).length,
+      0,
+    );
+
+    const accountEmail = `${prefix}-media-account-delete@example.test`;
+    const accountSession = await register(accountEmail);
+    const [accountUser] = await db.select().from(usersTable).where(eq(usersTable.email, accountEmail));
+    const [accountFounder] = await db.insert(foundersTable).values({
+      userId: accountUser.id, name: "Account Media", handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-13)}acct`,
+      bio: "", avatarColor: "#000000",
+    }).returning();
+    const accountAudio = `/objects/uploads/${prefix}-account-audio`;
+    const accountImage = `/objects/uploads/${prefix}-account-image`;
+    const accountReshuutAudio = `/objects/uploads/${prefix}-account-reshuut-audio`;
+    const accountReshuutImage = `/objects/uploads/${prefix}-account-reshuut-image`;
+    const [accountPost] = await db.insert(postsTable).values({
+      authorId: accountFounder.id, transcript: "Account delete me", audioUrl: accountAudio,
+      imageUrl: accountImage, durationSeconds: 2, moderationStatus: "approved",
+    }).returning();
+    await db.insert(postReshuutsTable).values({
+      postId: accountPost.id, founderId: accountFounder.id, audioUrl: accountReshuutAudio,
+      imageUrl: accountReshuutImage, transcript: "Account commentary", transcriptionStatus: "ready",
+      moderationStatus: "approved",
+    });
+    const realDeleteObject = ObjectStorageService.prototype.deleteObject;
+    let accountDeleteAttempt = 0;
+    ObjectStorageService.prototype.deleteObject = async (objectPath) => {
+      accountDeleteAttempt += 1;
+      if (accountDeleteAttempt === 1) throw new Error("simulated deletion outage");
+      deleted.push(objectPath);
+    };
+    try {
+      const accountDeleteResponse = await request("/api/account", { method: "DELETE", session: accountSession });
+      assert.equal(accountDeleteResponse.status, 200);
+      assert.equal((await accountDeleteResponse.json() as { status: string }).status, "failed");
+      assert.equal(
+        (await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, accountUser.id))).length,
+        1,
+      );
+      const accountJobs = await db.select().from(objectCleanupJobsTable)
+        .where(eq(objectCleanupJobsTable.scopeId, accountUser.id));
+      assert.deepEqual(accountJobs.map((job) => job.objectPath).sort(), [
+        accountAudio, accountImage, accountReshuutAudio, accountReshuutImage,
+      ].sort());
+      await db.update(objectCleanupJobsTable).set({ nextAttemptAt: new Date(0) })
+        .where(eq(objectCleanupJobsTable.scopeId, accountUser.id));
+      await retryDueCleanupJobs();
+      assert.equal(
+        (await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, accountUser.id))).length,
+        0,
+      );
+      assert.deepEqual(deleted.slice(-4).sort(), [
+        accountAudio, accountImage, accountReshuutAudio, accountReshuutImage,
+      ].sort());
+    } finally {
+      ObjectStorageService.prototype.deleteObject = realDeleteObject;
+    }
+  } finally {
+    ObjectStorageService.prototype.publishAudio = realPublishAudio;
+    ObjectStorageService.prototype.publishImage = realPublishImage;
     ObjectStorageService.prototype.readAudio = realReadAudio;
     ObjectStorageService.prototype.deleteObject = realDeleteObject;
   }
