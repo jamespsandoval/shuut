@@ -90,9 +90,9 @@ export default function OnboardingScreen() {
              </View>
              <Text style={[styles.consentText, { color: colors.foreground }]}>
                I agree to the{' '}
-               <Text style={{ color: colors.primary }} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/public/[slug]', params: { slug: 'terms', returnTo: '/(auth)/onboarding' } }); }}>Terms of Service</Text>
+              <Text style={{ color: colors.primary }} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/public/terms' as never, params: { returnTo: '/(auth)/onboarding' } }); }}>Terms of Service</Text>
                {' '}and linked{' '}
-               <Text style={{ color: colors.primary }} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/public/[slug]', params: { slug: 'community', returnTo: '/(auth)/onboarding' } }); }}>Community Guidelines</Text>.
+              <Text style={{ color: colors.primary }} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/public/community' as never, params: { returnTo: '/(auth)/onboarding' } }); }}>Community Guidelines</Text>.
              </Text>
            </Pressable>
           {mutation.error && <Text style={[styles.error, { color: colors.destructive }]}>{mutation.error.message}</Text>}

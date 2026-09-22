@@ -9,7 +9,10 @@ export function LegalFooter() {
   const router = useRouter();
 
   const openPublicPage = (slug: string) => {
-    router.push({ pathname: '/public/[slug]', params: { slug, returnTo: '/(main)/settings' } });
+    router.push({
+      pathname: `/public/${slug}` as never,
+      params: { returnTo: '/(auth)/login' },
+    });
   };
 
   return (

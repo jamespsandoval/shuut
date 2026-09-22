@@ -29,8 +29,8 @@ export function LegalConsentGate({ returnTo = '/(main)/feed' }: { returnTo?: str
 
   const openPolicy = (slug: 'terms' | 'community') => {
     router.push({
-      pathname: '/public/[slug]',
-      params: { slug, returnTo },
+      pathname: `/public/${slug}` as never,
+      params: { returnTo },
     });
   };
 

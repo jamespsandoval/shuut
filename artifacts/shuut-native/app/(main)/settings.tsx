@@ -43,8 +43,8 @@ export default function SettingsScreen() {
 
   const openPublicPage = (slug: string) => {
     router.push({
-      pathname: '/public/[slug]',
-      params: { slug, returnTo: '/(main)/settings' },
+      pathname: `/public/${slug}` as never,
+      params: { returnTo: '/(main)/settings' },
     });
   };
   const legalAndSupportLinks = [
