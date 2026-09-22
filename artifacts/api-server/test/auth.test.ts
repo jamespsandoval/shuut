@@ -2208,7 +2208,7 @@ test("failed comment transcription keeps durable cleanup work until storage retr
   }
 });
 
-test("post photos and enhanced reSHÜÜTs enforce ownership, transcription, mapping, and cleanup", async () => {
+test("post photos and voice reSHÜÜTs enforce ownership, transcription, mapping, and cleanup", async () => {
   const email = `${prefix}-reshuut-media@example.test`;
   const session = await register(email);
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
@@ -2280,37 +2280,7 @@ test("post photos and enhanced reSHÜÜTs enforce ownership, transcription, mapp
     const text = await request(`/api/posts/${source.id}/reshuut`, {
       method: "POST", session, json: { text: "Written context" },
     });
-    assert.equal(text.status, 200);
-    const textBody = await text.json() as { reshuut: { mode: string; text: string; imageUrl: null } };
-    assert.deepEqual(textBody.reshuut, {
-      id: textBody.reshuut.id, author: textBody.reshuut.author, mode: "text",
-      text: "Written context", transcriptionStatus: "none", audioUrl: null, durationSeconds: null, imageUrl: null,
-      moderationStatus: "pending", createdAt: textBody.reshuut.createdAt,
-    });
-    const previousModerationProvider = setModerationProviderForTests(async () => ({
-      categories: ["spam"],
-      riskScore: 90,
-    }));
-    try {
-      const [textReshuut] = await db.select().from(postReshuutsTable)
-        .where(and(eq(postReshuutsTable.postId, source.id), eq(postReshuutsTable.founderId, founder.id)));
-      await enqueueModeration("reshuut", textReshuut.id, "Written context", textReshuut.moderationRevision);
-      await db.update(moderationJobsTable).set({ nextAttemptAt: new Date(0) }).where(and(
-        eq(moderationJobsTable.targetType, "reshuut"),
-        eq(moderationJobsTable.targetId, textReshuut.id),
-      ));
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        await runModerationSweep(100);
-        const [current] = await db.select({ moderationStatus: postReshuutsTable.moderationStatus })
-          .from(postReshuutsTable).where(eq(postReshuutsTable.id, textReshuut.id));
-        if (current?.moderationStatus !== "pending") break;
-      }
-      const [quarantined] = await db.select({ moderationStatus: postReshuutsTable.moderationStatus })
-        .from(postReshuutsTable).where(eq(postReshuutsTable.id, textReshuut.id));
-      assert.equal(quarantined.moderationStatus, "pending");
-    } finally {
-      setModerationProviderForTests(previousModerationProvider);
-    }
+    assert.equal(text.status, 400);
 
     const audioCommentary = `/objects/uploads/${prefix}-reshuut-audio`;
     const commentaryImage = `/objects/uploads/${prefix}-reshuut-image`;
@@ -2318,6 +2288,11 @@ test("post photos and enhanced reSHÜÜTs enforce ownership, transcription, mapp
       { objectPath: audioCommentary, userId: user.id },
       { objectPath: commentaryImage, userId: user.id },
     ]);
+    const photoWithoutVoice = await request(`/api/posts/${source.id}/reshuut`, {
+      method: "POST", session,
+      json: { imageObjectPath: commentaryImage },
+    });
+    assert.equal(photoWithoutVoice.status, 400);
     const rejectedTranscript = await request(`/api/posts/${source.id}/reshuut`, {
       method: "POST", session,
       json: { audioObjectPath: audioCommentary, durationSeconds: 2, text: "Client transcript" },

@@ -1492,7 +1492,6 @@ components:
       type: object
       additionalProperties: false
       properties:
-        text: { type: string, minLength: 1, maxLength: 5000 }
         audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
         durationSeconds: { type: integer, minimum: 1, maximum: 90 }
         imageObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }

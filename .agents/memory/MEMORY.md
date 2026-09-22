@@ -21,4 +21,4 @@
 - [App Review fixtures](app-review-fixtures.md) — fictional reviewer data is staging-only; production review uses real OTP and reviewer-created activity.
 - [Native App Store identity](native-app-store-identity.md) — preserve the first Replit-published bundle ID and never make runtime startup depend solely on build-shell variables.
 - [Native crash diagnostics](native-crash-diagnostics.md) — keep release artifacts provider-neutral for now; add Sentry only when the creator is ready to connect it.
-- [Voice-only reSHÜÜTs](voice-only-reshuuts.md) — reSHÜÜTs may add only a voice note; never offer written commentary or photo attachments.
+- [Voice-first reSHÜÜTs](voice-only-reshuuts.md) — reSHÜÜT commentary must be a voice note; an optional photo is allowed, but written commentary is not.

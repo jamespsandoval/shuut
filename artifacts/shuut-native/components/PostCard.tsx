@@ -68,8 +68,6 @@ export function PostCard({
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [showReshuutComposer, setShowReshuutComposer] = useState(false);
-  const [reshuutMode, setReshuutMode] = useState<'text' | 'audio'>('text');
-  const [reshuutText, setReshuutText] = useState('');
   const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null);
 
@@ -139,19 +137,24 @@ export function PostCard({
   };
 
   const captureReshuutPhoto = async (useCamera: boolean) => {
-    const permission = useCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(useCamera ? 'Camera access needed' : 'Photo access needed', permission.canAskAgain ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach a photo.` : `Enable ${useCamera ? 'camera' : 'photo'} access in Settings.`, permission.canAskAgain ? [{ text: 'Not now', style: 'cancel' }] : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }]);
-      return;
-    }
-    const result = useCamera
-      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82, selectionLimit: 1 });
-    if (!result.canceled && result.assets[0]) {
-      setReshuutPhoto(result.assets[0]);
-      setReshuutImagePath(null);
+    try {
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(useCamera ? 'Camera access needed' : 'Photo access needed', permission.canAskAgain ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach a photo.` : `Enable ${useCamera ? 'camera' : 'photo'} access in Settings.`, permission.canAskAgain ? [{ text: 'Not now', style: 'cancel' }] : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }]);
+        return;
+      }
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82, selectionLimit: 1 });
+      if (!result.canceled && result.assets[0]) {
+        setReshuutPhoto(result.assets[0]);
+        setReshuutImagePath(null);
+      }
+    } catch (error) {
+      console.error('Could not choose reSHÜÜT photo', error);
+      Alert.alert('Photo unavailable', 'We could not open your camera or photo library. Please try again.');
     }
   };
 
@@ -171,17 +174,12 @@ export function PostCard({
   };
 
   const publishReshuut = async () => {
-    if (reshuutMode === 'text' && !reshuutText.trim() && !reshuutPhoto) {
-      reshuutPost.mutate({ postId: post.id }, { onSuccess: refetchFeed });
-      setShowReshuutComposer(false);
-      return;
-    }
-    if (reshuutMode === 'audio' && !recordedUri) return;
+    if (!recordedUri) return;
     try {
       setIsUploading(true);
       const imageObjectPath = await uploadReshuutPhoto();
       let audioObjectPath: string | undefined;
-      if (reshuutMode === 'audio' && recordedUri) {
+      if (recordedUri) {
         const file = new File(recordedUri);
         if (!file.exists) throw new Error('Recorded commentary is no longer available.');
         const upload = await requestUploadUrl.mutateAsync({ data: { name: 'reshuut-commentary.m4a', size: file.size, contentType: 'audio/mp4' } });
@@ -194,13 +192,11 @@ export function PostCard({
       await reshuutPost.mutateAsync({
         postId: post.id,
         data: {
-          ...(reshuutMode === 'text' && reshuutText.trim() ? { text: reshuutText.trim() } : {}),
           ...(audioObjectPath ? { audioObjectPath, durationSeconds: duration } : {}),
           ...(imageObjectPath ? { imageObjectPath } : {}),
         },
       });
       setShowReshuutComposer(false);
-      setReshuutText('');
       setReshuutPhoto(null);
       setReshuutImagePath(null);
       setRecordedUri(null);
@@ -510,47 +506,21 @@ export function PostCard({
       {showReshuutComposer && !post.isReshuuted && (
         <View style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutComposerTitle, { color: colors.foreground }]}>Add to your reSHÜÜT</Text>
-          <View style={styles.reshuutModeRow}>
-            {(['text', 'audio'] as const).map((mode) => (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.reshuutModeButton, { borderColor: reshuutMode === mode ? colors.primary : colors.border, backgroundColor: reshuutMode === mode ? `${colors.primary}14` : 'transparent' }]}
-                onPress={() => { setReshuutMode(mode); if (mode === 'text') { setRecordedUri(null); void discardRecording(); } }}
-                accessibilityRole="button"
-                accessibilityLabel={`Use ${mode} reSHÜÜT commentary`}
-              >
-                <Text style={[styles.reshuutModeText, { color: reshuutMode === mode ? colors.primary : colors.mutedForeground }]}>{mode === 'text' ? 'Written' : 'Voice'}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {reshuutMode === 'text' ? (
-            <TextInput
-              style={[styles.reshuutInput, { color: colors.foreground, borderColor: colors.border }]}
-              value={reshuutText}
-              onChangeText={setReshuutText}
-              multiline
-              maxLength={5000}
-              placeholder="Say something about this SHÜÜT…"
-              placeholderTextColor={colors.mutedForeground}
-              accessibilityLabel="Written reSHÜÜT commentary"
-            />
-          ) : (
-            <View style={styles.reshuutVoiceRow}>
-              {recordedUri ? (
-                <>
-                  <AuthenticatedAudioPlayer url={recordedUri} durationSeconds={duration} />
-                  <TouchableOpacity onPress={() => setRecordedUri(null)} accessibilityLabel="Discard recorded reSHÜÜT commentary">
-                    <X color={colors.mutedForeground} size={20} />
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity style={styles.reshuutVoiceButton} onPress={recorderState.isRecording ? stopRecording : startRecording} accessibilityLabel={recorderState.isRecording ? 'Stop reSHÜÜT commentary recording' : 'Record reSHÜÜT commentary'}>
-                  {recorderState.isRecording ? <Square color={colors.destructive} size={18} /> : <Mic color={colors.primary} size={18} />}
-                  <Text style={[styles.reshuutModeText, { color: colors.foreground }]}>{recorderState.isRecording ? 'Stop recording' : 'Record commentary'}</Text>
+          <View style={styles.reshuutVoiceRow}>
+            {recordedUri ? (
+              <>
+                <AuthenticatedAudioPlayer url={recordedUri} durationSeconds={duration} />
+                <TouchableOpacity onPress={() => setRecordedUri(null)} accessibilityLabel="Discard recorded reSHÜÜT voice note">
+                  <X color={colors.mutedForeground} size={20} />
                 </TouchableOpacity>
-              )}
-            </View>
-          )}
+              </>
+            ) : (
+              <TouchableOpacity style={styles.reshuutVoiceButton} onPress={recorderState.isRecording ? stopRecording : startRecording} accessibilityLabel={recorderState.isRecording ? 'Stop reSHÜÜT voice note recording' : 'Record reSHÜÜT voice note'}>
+                {recorderState.isRecording ? <Square color={colors.destructive} size={18} /> : <Mic color={colors.primary} size={18} />}
+                <Text style={[styles.reshuutModeText, { color: colors.foreground }]}>{recorderState.isRecording ? 'Stop recording' : 'Record voice note'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {reshuutPhoto ? (
             <View style={styles.reshuutPhotoPreviewWrap}>
               <Image source={{ uri: reshuutPhoto.uri }} style={styles.reshuutPhotoPreview} contentFit="cover" />
@@ -568,7 +538,7 @@ export function PostCard({
             <TouchableOpacity onPress={() => setShowReshuutComposer(false)} accessibilityLabel="Cancel reSHÜÜT">
               <Text style={[styles.editActionText, { color: colors.mutedForeground }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary }]} onPress={() => void publishReshuut()} disabled={isUploading || (reshuutMode === 'audio' && !recordedUri)}>
+            <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary, opacity: recordedUri && !isUploading ? 1 : 0.5 }]} onPress={() => void publishReshuut()} disabled={isUploading || !recordedUri}>
               {isUploading ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Send color={colors.primaryForeground} size={14} />}
             </TouchableOpacity>
           </View>
@@ -795,29 +765,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
   },
-  reshuutModeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  reshuutModeButton: {
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    minHeight: 36,
-    justifyContent: 'center',
-  },
   reshuutModeText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
-  },
-  reshuutInput: {
-    minHeight: 84,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
-    textAlignVertical: 'top',
   },
   reshuutVoiceRow: {
     minHeight: 44,

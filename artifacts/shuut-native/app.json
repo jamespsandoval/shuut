@@ -41,8 +41,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "SHÜÜT uses your photo library so you can choose a profile image.",
-          "cameraPermission": false,
+          "photosPermission": "SHÜÜT uses your photo library when you choose a profile image or attach a photo to a voice post or reSHÜÜT.",
+          "cameraPermission": "SHÜÜT uses the camera only when you choose to take a photo for a voice post or reSHÜÜT.",
           "microphonePermission": false
         }
       ],

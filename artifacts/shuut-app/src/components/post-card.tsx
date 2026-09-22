@@ -54,8 +54,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   const [showComments, setShowComments] = useState(isDetail || isFocused)
   const [autoStartReply, setAutoStartReply] = useState(false)
   const [showReshuutComposer, setShowReshuutComposer] = useState(false)
-  const [reshuutMode, setReshuutMode] = useState<"text" | "audio">("text")
-  const [reshuutText, setReshuutText] = useState("")
   const [reshuutImage, setReshuutImage] = useState<File | null>(null)
   const [reshuutImagePreview, setReshuutImagePreview] = useState<string | null>(null)
   const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null)
@@ -135,7 +133,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     reshuutRecordingRef.current = false
     setReshuutRecording(false)
     setReshuutImage(null); setReshuutImagePreview(null); setReshuutImagePath(null)
-    setReshuutAudioPath(null); setReshuutAudioPreview(null); setReshuutText(""); setReshuutDuration(0)
+    setReshuutAudioPath(null); setReshuutAudioPreview(null); setReshuutDuration(0)
     setReshuutUploadProgress(null)
   }, [])
 
@@ -211,8 +209,8 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   }
 
   const submitReshuut = async () => {
-    if (reshuutMode === "text" && !reshuutText.trim() && !reshuutImage) {
-      toast({ title: "Add commentary or a photo", variant: "destructive" }); return
+    if (!reshuutAudioPath) {
+      toast({ title: "Record a voice note first", variant: "destructive" }); return
     }
     try {
       let imagePath = reshuutImagePath
@@ -220,9 +218,11 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
         setReshuutUploadProgress(0)
         imagePath = await uploadReshuutFile(reshuutImage)
       }
-      const data = reshuutMode === "audio"
-        ? { ...(reshuutAudioPath ? { audioObjectPath: reshuutAudioPath, durationSeconds: reshuutDuration || 1 } : {}), ...(imagePath ? { imageObjectPath: imagePath } : {}) }
-        : { ...(reshuutText.trim() ? { text: reshuutText.trim() } : {}), ...(imagePath ? { imageObjectPath: imagePath } : {}) }
+      const data = {
+        audioObjectPath: reshuutAudioPath,
+        durationSeconds: reshuutDuration || 1,
+        ...(imagePath ? { imageObjectPath: imagePath } : {}),
+      }
       reshuutPost.mutate({ postId: post.id, data }, { onSuccess: () => { setShowReshuutComposer(false); clearReshuutComposer(); queryClient.invalidateQueries(); }, onError: (error) => toast({ title: "Could not reshüüт", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }) })
     } catch (error) {
       toast({ title: "Photo upload failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" })
@@ -541,22 +541,14 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 <p className="text-sm font-semibold">Add to your reSHÜÜT</p>
                 <button type="button" aria-label="Close reSHÜÜT composer" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }} className="rounded-full p-1 hover:bg-secondary"><X className="h-4 w-4" /></button>
               </div>
-              <div className="mb-3 flex gap-2">
-                <Button type="button" size="sm" variant={reshuutMode === "text" ? "default" : "outline"} onClick={() => setReshuutMode("text")}>Written</Button>
-                <Button type="button" size="sm" variant={reshuutMode === "audio" ? "default" : "outline"} onClick={() => setReshuutMode("audio")}>Voice (transcribed)</Button>
+              <div className="mb-3 flex items-center gap-3">
+                <Button type="button" variant={reshuutRecording ? "destructive" : "outline"} onClick={() => void startReshuutRecording()} aria-label={reshuutRecording ? "Stop reSHÜÜT recording" : "Record reSHÜÜT voice note"}>
+                  {reshuutRecording ? <Square className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                  {reshuutRecording ? `${reshuutDuration}s` : "Record voice note"}
+                </Button>
+                {reshuutAudioPreview && <audio controls src={reshuutAudioPreview} className="h-9 max-w-[15rem]" />}
+                <span className="text-xs text-muted-foreground">Always transcribed</span>
               </div>
-              {reshuutMode === "text" ? (
-                <Textarea value={reshuutText} onChange={(event) => setReshuutText(event.target.value)} maxLength={5000} placeholder="Say something about this SHÜÜT…" className="mb-3 min-h-24 resize-none" />
-              ) : (
-                <div className="mb-3 flex items-center gap-3">
-                  <Button type="button" variant={reshuutRecording ? "destructive" : "outline"} onClick={() => void startReshuutRecording()} aria-label={reshuutRecording ? "Stop reSHÜÜT recording" : "Record reSHÜÜT commentary"}>
-                    {reshuutRecording ? <Square className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-                    {reshuutRecording ? `${reshuutDuration}s` : "Record"}
-                  </Button>
-                  {reshuutAudioPreview && <audio controls src={reshuutAudioPreview} className="h-9 max-w-[15rem]" />}
-                  <span className="text-xs text-muted-foreground">Always transcribed</span>
-                </div>
-              )}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {reshuutImagePreview ? (
                   <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-20 w-20 rounded-lg object-cover" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>
@@ -568,7 +560,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               <div className="flex justify-end gap-2">
                 {post.isReshuuted && <Button type="button" variant="ghost" onClick={() => { invalidateReshuut(); setShowReshuutComposer(false); clearReshuutComposer() }}>Remove reSHÜÜT</Button>}
                 <Button type="button" variant="ghost" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }}>Cancel</Button>
-                <Button type="button" onClick={() => void submitReshuut()} disabled={reshuutPost.isPending || reshuutUploadProgress !== null || (reshuutMode === "audio" && !reshuutAudioPath)}>Publish reSHÜÜT</Button>
+                <Button type="button" onClick={() => void submitReshuut()} disabled={reshuutPost.isPending || reshuutUploadProgress !== null || !reshuutAudioPath}>Publish reSHÜÜT</Button>
               </div>
             </div>
           )}

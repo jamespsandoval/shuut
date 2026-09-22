@@ -1301,8 +1301,6 @@ export const ReshuutPostParams = zod.object({
   "postId": zod.coerce.number().int()
 })
 
-export const reshuutPostBodyTextMax = 5000;
-
 export const reshuutPostBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
 export const reshuutPostBodyDurationSecondsMax = 90;
 
@@ -1310,7 +1308,6 @@ export const reshuutPostBodyImageObjectPathRegExp = new RegExp('^/objects/upload
 
 
 export const ReshuutPostBody = zod.object({
-  "text": zod.string().min(1).max(reshuutPostBodyTextMax).optional(),
   "audioObjectPath": zod.string().regex(reshuutPostBodyAudioObjectPathRegExp).optional(),
   "durationSeconds": zod.number().int().min(1).max(reshuutPostBodyDurationSecondsMax).optional(),
   "imageObjectPath": zod.string().regex(reshuutPostBodyImageObjectPathRegExp).optional()

@@ -1,10 +1,10 @@
 ---
-name: Voice-only reSHÜÜTs
-description: Product constraint for what users may add when reSHÜÜTing a post.
+name: Voice-first reSHÜÜTs
+description: Product constraint for commentary and optional media when reSHÜÜTing a post.
 ---
 
-reSHÜÜTs must remain voice-centric: users may add only a voice note. Do not offer written commentary, photo attachments, or similar non-voice additions in the reSHÜÜT flow.
+reSHÜÜT commentary must remain voice-centric: users may add a voice note and may optionally attach a photo. Do not offer written commentary.
 
-**Why:** The creator explicitly rejected written and photo reSHÜÜT additions as inconsistent with the app’s voice-centric purpose; the photo action also crashed the TestFlight app.
+**Why:** The creator explicitly rejected written reSHÜÜT commentary as inconsistent with the app’s voice-centric purpose, while clarifying that optional photo attachments should remain supported.
 
-**How to apply:** Treat voice-only reSHÜÜTs as a product invariant across native, web, API contracts, tests, and future feature design.
+**How to apply:** Treat voice commentary plus an optional photo as the reSHÜÜT product invariant across native, web, API contracts, tests, and future feature design.

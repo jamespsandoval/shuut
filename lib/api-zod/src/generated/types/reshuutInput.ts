@@ -7,11 +7,6 @@
  */
 
 export interface ReshuutInput {
-  /**
-     * @minLength 1
-     * @maxLength 5000
-     */
-  text?: string;
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath?: string;
   /**

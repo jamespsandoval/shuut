@@ -2119,18 +2119,22 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  if (req.body && typeof req.body === "object" && Object.prototype.hasOwnProperty.call(req.body, "text")) {
+    res.status(400).json({ error: "Written reSHÜÜT commentary is not supported" });
+    return;
+  }
   const bodyResult = ReshuutPostBody.safeParse(req.body ?? {});
   if (!bodyResult.success) {
     res.status(400).json({ error: "Invalid reSHÜÜT content" });
     return;
   }
   const body = bodyResult.data;
-  if (body.audioObjectPath && body.text !== undefined) {
-    res.status(400).json({ error: "Audio reSHÜÜTs cannot include client text" });
-    return;
-  }
   if (body.audioObjectPath && !body.durationSeconds) {
     res.status(400).json({ error: "Audio duration is required" });
+    return;
+  }
+  if (body.imageObjectPath && !body.audioObjectPath) {
+    res.status(400).json({ error: "A reSHÜÜT photo requires a voice note" });
     return;
   }
   if (body.audioObjectPath && !(await requireCurrentVoiceAiConsent(req, res))) return;
@@ -2163,7 +2167,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
       eq(postReshuutsTable.postId, post.id),
       eq(postReshuutsTable.founderId, viewer.id),
     )).limit(1);
-    const hasContent = body.text !== undefined || body.audioObjectPath !== undefined || body.imageObjectPath !== undefined;
+    const hasContent = body.audioObjectPath !== undefined || body.imageObjectPath !== undefined;
     if (existing && !hasContent) {
       for (const objectPath of [existing.audioUrl, existing.imageUrl].filter((path): path is string => Boolean(path))) {
         await tx.insert(objectCleanupJobsTable).values({
@@ -2208,12 +2212,12 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
       const values = {
         postId: post.id,
         founderId: viewer.id,
-        transcript: body.text ?? null,
+        transcript: null,
         transcriptionStatus: audioPath ? "processing" : "none",
         audioUrl: audioPath,
         imageUrl: imagePath,
         durationSeconds: body.durationSeconds ?? null,
-        moderationStatus: audioPath || body.text ? "pending" : "approved",
+        moderationStatus: audioPath ? "pending" : "approved",
         moderationRevision: (existing?.moderationRevision ?? 0) + 1,
         deletionStatus: "active",
       } as const;
