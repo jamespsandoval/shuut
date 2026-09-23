@@ -397,14 +397,12 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     <>
       <div
         className={cn(
-          "bg-card border-b border-border/50 transition-[height,background-color] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden",
+          "bg-card border-b border-border/50 relative transition-colors duration-200",
           isRecording
-            ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
+            ? "h-[calc(100dvh-3.375rem)] md:h-[60vh] overflow-hidden"
             : audioData
-              ? previewTranscript || rawAccepted
-                ? "h-[min(680px,calc(100dvh-8rem))] md:h-[60vh]"
-                : "h-[320px] md:h-[300px]"
-              : "h-[140px]"
+              ? "z-10 overflow-visible"
+              : "h-[140px] overflow-hidden"
         )}
         data-testid="container-recorder"
       >
@@ -473,18 +471,12 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       <div
         ref={reviewContainerRef}
         className={cn(
-          "flex flex-col transition-[opacity,transform] duration-200 absolute inset-0 p-3 pb-20 md:p-5",
-          audioData ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
+          "flex flex-col transition-opacity duration-200 p-3 md:p-4",
+          audioData ? "relative z-10 opacity-100" : "absolute inset-0 opacity-0 pointer-events-none"
         )}
       >
-        <div className={cn(
-          "flex w-full max-w-2xl mx-auto flex-col rounded-2xl border border-border/60 bg-secondary/10 p-3 shadow-sm md:p-4",
-            previewTranscript || rawAccepted ? "h-full min-h-0" : "gap-3",
-        )}>
-          <div className={cn(
-            "flex flex-col min-h-0",
-            previewTranscript || rawAccepted ? "flex-1 gap-3 md:gap-4" : "gap-3",
-          )}>
+        <div className="flex w-full max-w-2xl mx-auto flex-col gap-2 rounded-2xl border border-border/60 bg-secondary/10 p-3 shadow-sm md:gap-3 md:p-4">
+          <div className="flex flex-col gap-2 md:gap-3">
             <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
@@ -492,7 +484,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
              <div className="flex flex-wrap items-center gap-2">
                {imagePreview ? (
                  <div className="relative">
-                   <img src={imagePreview} alt="Photo attachment preview" className="h-24 w-24 rounded-xl object-cover border border-border" />
+                    <img src={imagePreview} alt="Photo attachment preview" className="h-16 w-16 rounded-xl object-cover border border-border" />
                    <button type="button" aria-label="Remove photo attachment" onClick={() => { URL.revokeObjectURL(imagePreview); setImagePreview(null); setImageFile(null); setImageObjectPath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 shadow border border-border"><X className="h-3.5 w-3.5" /></button>
                  </div>
                ) : (
@@ -506,12 +498,12 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
              {imageUploadError && <p className="text-sm text-destructive" role="alert">{imageUploadError}</p>}
 
             {previewTranscript || rawAccepted ? (
-              <div className="relative flex-1 flex flex-col min-h-0 group">
+               <div className="relative flex flex-col group">
                 <Textarea
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}
                    placeholder={isPreparing ? "Preparing your voice note…" : "Edit your transcript..."}
-                  className="flex-1 resize-none text-lg md:text-xl p-4 md:p-5 pb-12 bg-background/70 border-border/50 focus-visible:ring-primary/50 focus-visible:bg-background rounded-xl md:rounded-2xl shadow-inner transition-colors"
+                   className="min-h-28 md:min-h-32 resize-none text-lg md:text-xl p-4 md:p-5 pb-12 bg-background/70 border-border/50 focus-visible:ring-primary/50 focus-visible:bg-background rounded-xl md:rounded-2xl shadow-inner transition-colors"
                   data-testid="textarea-transcript"
                 />
                 <div className="absolute right-4 bottom-4 text-xs md:text-sm text-muted-foreground font-mono bg-background/80 px-2 py-1 rounded-md backdrop-blur-sm shadow-sm border border-border/50 transition-opacity">
@@ -532,10 +524,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             )}
           </div>
 
-          <div className={cn(
-            "flex flex-row justify-between items-center gap-3 shrink-0 border-t border-border/40",
-            previewTranscript || rawAccepted ? "mt-4 pt-3" : "pt-3",
-          )}>
+           <div className="flex flex-row justify-between items-center gap-3 border-t border-border/40 pt-2">
             <Button variant="ghost" onClick={handleCancel} className="text-muted-foreground h-11 rounded-full px-4 text-sm hover:bg-secondary/80 md:px-6 md:text-base" data-testid="button-cancel-recording">
               Cancel
             </Button>

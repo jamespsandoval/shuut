@@ -13,6 +13,7 @@
 - [Expo QR launch branding](expo-qr-launch-branding.md) — the pre-Expo loading card can use mobile artifact registration, independently of app icon and splash configuration.
 - [Cross-platform feature parity](cross-platform-feature-parity.md) — user-facing SHÜÜT features added to native should also be represented in the desktop web app.
 - [Explicit post tagging](explicit-post-tagging.md) — select accounts manually during final audio review; do not infer tags from spoken handles.
+- [Recorder review layout](recorder-review-layout.md) — keep SHÜÜT visible with tags and photos without adding an internal review scrollbar.
 - [Open referral onboarding](open-referral-onboarding.md) — onboarding no longer screens founders; accept open-text sources and let previously waitlisted applicants finish.
 - [Native post-publish refresh](native-post-publish-refresh.md) — poll silently for transcription-ready posts and dismiss recorder routes back to the existing feed.
 - [Legal policy versioning](legal-policy-versioning.md) — policy copy, version identifiers, and server-owned content hashes must change together before re-consent.
