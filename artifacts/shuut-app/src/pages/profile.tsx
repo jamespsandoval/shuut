@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link, useLocation, useSearch } from "wouter"
-import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey } from "@workspace/api-client-react"
+import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, getGetFeedQueryKey } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
 import { PostCard } from "@/components/post-card"
@@ -358,6 +358,7 @@ export default function Profile() {
               }
             }
           })
+          void queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
         }
       }
     )

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Act
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useGetProfile, useToggleFollow, Post } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, MapPin, Link as LinkIcon } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { authenticatedImageSource } from '../../lib/apiUrl';
@@ -12,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafetyActionSheet } from '../../components/SafetyActionSheet';
 
 export default function ProfileScreen() {
+  const queryClient = useQueryClient();
   const { handle } = useLocalSearchParams<{ handle: string }>();
   const colors = useColors();
   const router = useRouter();
@@ -24,7 +26,10 @@ export default function ProfileScreen() {
 
   const handleFollow = () => {
     toggleFollow.mutate({ handle }, {
-      onSuccess: () => refetch()
+      onSuccess: () => {
+        void refetch();
+        void queryClient.invalidateQueries({ queryKey: ['feed'] });
+      }
     });
   };
 

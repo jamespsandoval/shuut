@@ -13,6 +13,8 @@ import { ToastAction } from "@/components/ui/toast"
 import { AudioPlayer } from "./audio-player"
 import { MentionPicker } from "./mention-picker"
 import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
+import { useAuth } from "@/hooks/use-auth"
+import { discardVoiceDraft, loadVoiceDraft, saveVoiceDraft } from "@/lib/voice-draft"
 
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
@@ -54,12 +56,22 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const [imageObjectPath, setImageObjectPath] = useState<string | null>(null)
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null)
   const [imageUploadError, setImageUploadError] = useState<string | null>(null)
+  const [isPreparing, setIsPreparing] = useState(false)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  const [recoveredDraft, setRecoveredDraft] = useState(false)
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<number | null>(null)
+  const audioBlobRef = useRef<Blob | null>(null)
+  const recordingStartedAtRef = useRef(0)
+  const preparingRef = useRef(false)
+  const mountedRef = useRef(true)
+  const draftGenerationRef = useRef(0)
 
   const createPost = useCreatePost()
+  const { user } = useAuth()
   const { capture } = useAnalytics()
   const transcribeAudio = useTranscribeAudio()
   const { data: profile } = useGetProfile("me")
@@ -69,6 +81,110 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const { toast } = useToast()
 
   const [showConsentModal, setShowConsentModal] = useState(false)
+
+  const prepareRecording = useCallback(async (blob: Blob, existingPath?: string | null) => {
+    if (preparingRef.current) return
+    const generation = draftGenerationRef.current
+    preparingRef.current = true
+    setIsPreparing(true)
+    try {
+      let path = existingPath
+      if (!path) {
+        const csrf = csrfToken()
+        const contentType = blob.type.split(";")[0].toLowerCase()
+        const uploadResponse = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          },
+          body: JSON.stringify({ name: "shuut-recording", size: blob.size, contentType }),
+        })
+        const upload = await uploadResponse.json()
+        if (generation !== draftGenerationRef.current) return
+        if (!uploadResponse.ok) throw new Error(upload.error || "Could not prepare recording upload")
+        const putResponse = await fetch(upload.uploadURL, {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: blob,
+        })
+        if (generation !== draftGenerationRef.current) return
+        if (!putResponse.ok) throw new Error("Recording upload failed")
+        path = upload.objectPath
+        if (mountedRef.current) setAudioObjectPath(path ?? null)
+      }
+      if (!path) throw new Error("Recording upload did not return a file path")
+      const result = await transcribeAudio.mutateAsync({ data: { audioObjectPath: path } })
+      if (!mountedRef.current || generation !== draftGenerationRef.current) return
+      if (result.cleanupStatus === "raw") {
+        setTranscript("")
+        setPendingRawTranscript(result.transcript)
+      } else {
+        setTranscript(result.transcript)
+        setPendingRawTranscript(null)
+      }
+    } catch (error) {
+      if (mountedRef.current && generation === draftGenerationRef.current) toast({
+        title: "Could not prepare your recording",
+        description: `Your recording is still available to review. ${error instanceof Error ? error.message : "Please try again."}`,
+        variant: "destructive",
+      })
+    } finally {
+      if (generation === draftGenerationRef.current) {
+        preparingRef.current = false
+        if (mountedRef.current) setIsPreparing(false)
+      }
+    }
+  }, [toast, transcribeAudio])
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    void loadVoiceDraft(user.id).then((draft) => {
+      if (cancelled || !draft || audioBlobRef.current) return
+      audioBlobRef.current = draft.audio
+      setAudioData(URL.createObjectURL(draft.audio))
+      setTime(draft.durationSeconds)
+      setAudioObjectPath(draft.audioObjectPath)
+      setTranscript(draft.transcript)
+      setPendingRawTranscript(draft.pendingRawTranscript)
+      setRawAccepted(draft.rawAccepted)
+      setRecoveredDraft(true)
+      requestAnimationFrame(() => onReviewReady?.())
+    }).catch(() => {
+      if (!cancelled) setDraftSaveFailed(true)
+    })
+    return () => { cancelled = true }
+  }, [user?.id, onReviewReady])
+
+  useEffect(() => {
+    if (!user?.id || !audioBlobRef.current || !audioData) return
+    const draft = {
+      ownerId: user.id,
+      audio: audioBlobRef.current,
+      durationSeconds: time || 1,
+      audioObjectPath,
+      transcript,
+      pendingRawTranscript,
+      rawAccepted,
+      savedAt: Date.now(),
+    }
+    const timer = window.setTimeout(() => {
+      void saveVoiceDraft(draft).catch(() => setDraftSaveFailed(true))
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [user?.id, audioData, time, audioObjectPath, transcript, pendingRawTranscript, rawAccepted])
+
+  useEffect(() => {
+    if (!isRecording && !isSavingDraft) return
+    const warnOnReload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warnOnReload)
+    return () => window.removeEventListener("beforeunload", warnOnReload)
+  }, [isRecording, isSavingDraft])
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -134,63 +250,44 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       }
 
       mediaRecorderRef.current.onstop = async () => {
+        if (!mountedRef.current) return
+        const generation = draftGenerationRef.current
         const recorderType = mediaRecorderRef.current?.mimeType || chunksRef.current[0]?.type || "audio/webm"
         const contentType = recorderType.split(";")[0].toLowerCase()
         const blob = new Blob(chunksRef.current, { type: contentType })
+        if (!blob.size) {
+          toast({ title: "No audio was recorded", description: "Please try again.", variant: "destructive" })
+          return
+        }
+        const durationSeconds = Math.max(1, Math.ceil((Date.now() - recordingStartedAtRef.current) / 1000))
+        audioBlobRef.current = blob
+        setTime(durationSeconds)
         setAudioData(URL.createObjectURL(blob))
         requestAnimationFrame(() => onReviewReady?.())
-        try {
-          const csrf = csrfToken()
-          const uploadResponse = await fetch("/api/storage/uploads/request-url", {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-              ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-            },
-            body: JSON.stringify({
-              name: "shuut-recording",
-              size: blob.size,
-              contentType,
-            }),
-          })
-          const upload = await uploadResponse.json()
-          if (!uploadResponse.ok) throw new Error(upload.error || "Could not prepare recording upload")
-          const putResponse = await fetch(upload.uploadURL, {
-            method: "PUT",
-            headers: { "Content-Type": contentType },
-            body: blob,
-          })
-          if (!putResponse.ok) throw new Error("Recording upload failed")
-          setAudioObjectPath(upload.objectPath)
-          transcribeAudio.mutate(
-            { data: { audioObjectPath: upload.objectPath } },
-            {
-              onSuccess: (result) => {
-                if (result.cleanupStatus === "raw") {
-                  setTranscript("")
-                  setPendingRawTranscript(result.transcript)
-                } else {
-                  setTranscript(result.transcript)
-                }
-              },
-              onError: () => toast({
-                title: "Transcription failed",
-                description: "Your recording is safe. Try transcription again.",
-                variant: "destructive",
-              }),
-            },
-          )
-        } catch (error) {
-          toast({
-            title: "Recording upload failed",
-            description: error instanceof Error ? error.message : "Please try again.",
-            variant: "destructive",
-          })
+        if (user?.id) {
+          setIsSavingDraft(true)
+          try {
+            await saveVoiceDraft({
+              ownerId: user.id,
+              audio: blob,
+              durationSeconds,
+              audioObjectPath: null,
+              transcript: "",
+              pendingRawTranscript: null,
+              rawAccepted: false,
+              savedAt: Date.now(),
+            })
+          } catch {
+            setDraftSaveFailed(true)
+          } finally {
+            if (mountedRef.current) setIsSavingDraft(false)
+          }
         }
+        if (mountedRef.current && generation === draftGenerationRef.current) void prepareRecording(blob)
       }
 
       mediaRecorderRef.current.start()
+      recordingStartedAtRef.current = Date.now()
       setIsRecording(true)
       setTime(0)
       setAudioData(null)
@@ -210,7 +307,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         variant: "destructive"
       })
     }
-  }, [audioData, isRecording, toast, transcribeAudio, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent])
+  }, [audioData, isRecording, toast, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent, user?.id, prepareRecording, onReviewReady])
 
   useImperativeHandle(ref, () => ({
     startRecording: () => {
@@ -227,6 +324,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   }
 
   const handleCancel = () => {
+    draftGenerationRef.current += 1
+    preparingRef.current = false
+    audioBlobRef.current = null
+    if (audioData) URL.revokeObjectURL(audioData)
+    if (user?.id) void discardVoiceDraft(user.id).catch(() => setDraftSaveFailed(true))
     if (imagePreview) URL.revokeObjectURL(imagePreview)
     setAudioData(null)
     setAudioObjectPath(null)
@@ -240,6 +342,10 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     setImageObjectPath(null)
     setImageUploadProgress(null)
     setImageUploadError(null)
+    setIsPreparing(false)
+    setIsSavingDraft(false)
+    setRecoveredDraft(false)
+    setDraftSaveFailed(false)
   }
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -282,7 +388,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   }
 
   const handleSubmit = () => {
-    if (!audioObjectPath || !transcript.trim() || transcribeAudio.isPending || pendingRawTranscript !== null) {
+    if (!audioObjectPath || !transcript.trim() || isPreparing || pendingRawTranscript !== null) {
       toast({
         title: !audioObjectPath ? "Missing recording" : "Missing transcript",
         description: !audioObjectPath
@@ -343,12 +449,16 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     onExpandedChange?.(isExpanded)
   }, [isExpanded, onExpandedChange])
 
-  useEffect(() => () => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop()
-      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop())
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop()
+        mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop())
+      }
+      if (timerRef.current) window.clearInterval(timerRef.current)
     }
-    if (timerRef.current) window.clearInterval(timerRef.current)
   }, [])
 
   return (
@@ -372,6 +482,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           "flex flex-col items-center justify-center transition-[opacity,transform] duration-200 absolute inset-0",
           !isExpanded ? "opacity-100 translate-y-0 z-10" : "opacity-0 -translate-y-8 pointer-events-none"
         )}
+        inert={isExpanded}
       >
         <div className="flex h-14 items-center justify-center mb-4">
           <img
@@ -395,6 +506,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           "flex flex-col items-center justify-center transition-[opacity,transform] duration-200 absolute inset-0 p-6 pb-20 md:pb-6",
           (isRecording && !audioData) ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
         )}
+        inert={!isRecording || audioData !== null}
       >
         <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto gap-8 md:gap-12">
           <div className="text-center space-y-2">
@@ -431,6 +543,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           "flex flex-col transition-[opacity,transform] duration-200 absolute inset-0 p-3 pb-20 md:p-5",
           audioData ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
         )}
+        inert={audioData === null}
       >
         <div className={cn(
           "flex w-full max-w-2xl mx-auto flex-col rounded-2xl border border-border/60 bg-secondary/10 p-3 shadow-sm md:p-4",
@@ -443,6 +556,16 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
+             {recoveredDraft && (
+               <p className="text-sm text-muted-foreground" role="status">
+                 Your recording was recovered on this device. Check your feed, then review it before posting.
+               </p>
+             )}
+             {draftSaveFailed && (
+               <p className="text-sm text-destructive" role="alert">
+                 This recording could not be saved for recovery. Keep this page open until you finish.
+               </p>
+             )}
              <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
              <div className="flex flex-wrap items-center gap-2">
                {imagePreview ? (
@@ -465,7 +588,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
                 <Textarea
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}
-                  placeholder={transcribeAudio.isPending ? "Transcribing your voice note…" : "Edit your transcript..."}
+                   placeholder={isPreparing ? "Preparing your voice note…" : "Edit your transcript..."}
                   className="flex-1 resize-none text-lg md:text-xl p-4 md:p-5 pb-12 bg-background/70 border-border/50 focus-visible:ring-primary/50 focus-visible:bg-background rounded-xl md:rounded-2xl shadow-inner transition-colors"
                   data-testid="textarea-transcript"
                 />
@@ -475,21 +598,14 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
               </div>
             ) : (
               <div className="rounded-xl bg-background/60 px-4 py-3 text-center">
-                <h3 className="text-lg font-bold md:text-xl">{transcribeAudio.isPending ? "Preparing your transcript…" : transcript ? "Ready, Set…" : "Transcript not ready"}</h3>
+                 <h3 className="text-lg font-bold md:text-xl">{isSavingDraft ? "Saving your recording…" : isPreparing ? "Preparing your transcript…" : transcript ? "Ready, Set…" : "Transcript not ready"}</h3>
               </div>
             )}
-            {!transcript.trim() && audioObjectPath && !transcribeAudio.isPending && (
-              <Button variant="outline" onClick={() => transcribeAudio.mutate(
-                { data: { audioObjectPath } },
-                {
-                  onSuccess: (result) => {
-                    if (result.cleanupStatus === "raw") setPendingRawTranscript(result.transcript)
-                    else setTranscript(result.transcript)
-                  },
-                  onError: () => toast({ title: "Transcription failed", description: "Your recording is safe. Please try again.", variant: "destructive" }),
-                },
-              )}>
-                Try transcription again
+             {!transcript.trim() && pendingRawTranscript === null && !isPreparing && !isSavingDraft && (
+               <Button variant="outline" onClick={() => {
+                 if (audioBlobRef.current) void prepareRecording(audioBlobRef.current, audioObjectPath)
+               }}>
+                 {audioObjectPath ? "Try transcription again" : "Continue preparing recording"}
               </Button>
             )}
           </div>
@@ -503,7 +619,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createPost.isPending || !audioObjectPath || transcribeAudio.isPending || !transcript.trim() || pendingRawTranscript !== null}
+               disabled={createPost.isPending || isPreparing || isSavingDraft || !audioObjectPath || !transcript.trim() || pendingRawTranscript !== null}
               className="h-11 rounded-full px-7 text-base font-bold gap-2 shadow-md shadow-primary/20 transition-all active:scale-95 md:px-10"
               data-testid="button-submit-recording"
             >
