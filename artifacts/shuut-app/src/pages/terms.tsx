@@ -4,7 +4,7 @@ export default function Terms() {
   return (
     <PublicLayout>
       <h1 className="text-3xl font-extrabold tracking-tight mb-2">Terms of Service</h1>
-      <p className="text-sm font-medium text-gray-400 mb-10 uppercase tracking-wider">Effective: 20 September 2026</p>
+      <p className="text-sm font-medium text-gray-400 mb-10 uppercase tracking-wider">Effective: 23 September 2026</p>
       
       <div className="space-y-8 text-[15px] text-gray-700 leading-relaxed">
         <section>
@@ -51,7 +51,7 @@ export default function Terms() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">7. Service Changes & Third Parties</h2>
-          <p>We are constantly evolving and may modify or discontinue parts of the service at any time. We also rely on third-party providers (such as hosting, authentication, storage, email delivery, and transcription services) to operate SHÜÜT. Those providers and their subprocessors may process information in multiple countries under their applicable terms.</p>
+          <p>We are constantly evolving and may modify or discontinue parts of the service at any time. We also rely on third-party providers (such as hosting, authentication, storage, email delivery, transcription, and analytics services) to operate and improve SHÜÜT. We currently use PostHog for limited product analytics and may use other analytics providers in the future, with updates to our Privacy Policy identifying their use. Those providers and their subprocessors may process information in multiple countries under their applicable terms. Our Privacy Policy describes the analytics information we collect and how to contact us about your data.</p>
         </section>
 
         <section>

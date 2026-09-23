@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { useAnalytics } from "@/lib/analytics";
 import { Link } from "wouter";
 
 export default function SettingsPage() {
@@ -40,7 +39,6 @@ export default function SettingsPage() {
   const logout = useLogout();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const analytics = useAnalytics();
   const { data: blockedAccounts, isLoading: blockedLoading } = useListBlockedAccounts();
   const unblockAccount = useUnblockAccount();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -151,28 +149,6 @@ export default function SettingsPage() {
             onCheckedChange={setPreviewTranscript}
             disabled={!profile || updateProfile.isPending}
             aria-label="Preview transcript before publishing"
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card p-5">
-          <div>
-            <h2 className="font-semibold">Optional analytics</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Help improve SHÜÜT by sharing basic screen visits and successful post counts with PostHog.
-              No audio, transcripts, profile details, automatic clicks, or session recordings are shared.
-              You can change this choice at any time. <Link href="/privacy" className="underline">Privacy Policy</Link>.
-            </p>
-            {!analytics.configured && <p className="mt-2 text-sm text-muted-foreground">Analytics is not available right now.</p>}
-          </div>
-          <Switch
-            checked={analytics.allowed}
-            onCheckedChange={(next) => {
-              void analytics.setAllowed(next).then((saved) => {
-                if (!saved) toast({ title: "Could not save analytics choice", variant: "destructive" });
-              });
-            }}
-            disabled={!analytics.ready || !analytics.configured}
-            aria-label="Share optional analytics"
           />
         </div>
 

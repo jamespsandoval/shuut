@@ -14,12 +14,12 @@ export default function Cookies() {
 
         <section>
           <h2 className="text-lg font-bold text-gray-900 mb-2">2. How We Use Cookies</h2>
-          <p>SHÜÜT uses strictly necessary cookies and local storage primarily for authentication and session management. These ensure that you remain securely logged in as you navigate the platform. We also use them to store small functional preferences (like your theme choice and your optional analytics choice per account on this device).</p>
+          <p>SHÜÜT uses strictly necessary cookies and local storage primarily for authentication and session management. These ensure that you remain securely logged in as you navigate the platform. We also use them to store small functional preferences (like your theme choice).</p>
         </section>
 
         <section>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">3. Optional Analytics</h2>
-          <p>We do not use advertising cookies. PostHog analytics is disabled until you opt in through Settings. Its identity is held in memory, not in an analytics cookie, and it does not automatically record clicks or sessions. You can turn it off in Settings at any time.</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">3. Product Analytics</h2>
+          <p>We do not use advertising cookies. PostHog product analytics runs automatically, but its identity is held in memory instead of an analytics cookie or persistent analytics storage. It does not automatically record clicks or sessions. If we add another analytics service or change this storage practice, we will update this policy before describing it as part of our current setup.</p>
         </section>
 
         <section>

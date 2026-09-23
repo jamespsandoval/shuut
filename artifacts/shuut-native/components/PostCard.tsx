@@ -476,9 +476,21 @@ export function PostCard({
           </View>
         </View>
       ) : (
-        <Text style={[styles.transcript, { color: colors.foreground }]} numberOfLines={isDetail ? undefined : 3}>
-          {post.transcript}
-        </Text>
+        <>
+          <Text selectable style={[styles.transcript, { color: colors.foreground }]} numberOfLines={isDetail ? undefined : 3}>
+            {post.transcript}
+          </Text>
+          {!isDetail && (
+            <TouchableOpacity
+              onPress={() => router.push(`/post/${post.id}`)}
+              accessibilityRole="link"
+              accessibilityLabel="View full SHÜÜT"
+              style={{ alignSelf: 'flex-start', marginTop: 4, marginBottom: 12 }}
+            >
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>View full SHÜÜT</Text>
+            </TouchableOpacity>
+          )}
+        </>
       )}
 
       {post.imageUrl && (
@@ -495,7 +507,7 @@ export function PostCard({
         <View style={[styles.reshuutContent, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutContentLabel, { color: colors.mutedForeground }]}>reSHÜÜT by @{post.reshuut.author.handle}</Text>
           {post.reshuut.mode === 'text' && post.reshuut.text && (
-            <Text style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
+            <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
           )}
           {post.reshuut.mode === 'audio' && (
             <AuthenticatedAudioPlayer url={post.reshuut.audioUrl} durationSeconds={post.reshuut.durationSeconds ?? 1} />
@@ -666,17 +678,7 @@ export function PostCard({
     </View>
   );
 
-  if (isDetail) {
-    return InnerCard;
-  }
-
-  return (
-    <TouchableOpacity activeOpacity={0.9} onPress={() => router.push(`/post/${post.id}`)}>
-      <View pointerEvents="box-none">
-        {InnerCard}
-      </View>
-    </TouchableOpacity>
-  );
+  return InnerCard;
 }
 
 const styles = StyleSheet.create({

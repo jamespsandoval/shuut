@@ -47,13 +47,15 @@ function RootLayoutNav() {
   const route = segments.join('/');
 
   useEffect(() => {
-    if (!analyticsActive || authState !== 'ready') return;
+    if (!analyticsActive) return;
     const screen = route.includes('record') || route === 'compose' ? 'record'
       : route.includes('settings') ? 'settings'
       : route.includes('notifications') ? 'notifications'
       : route.includes('profile') ? 'profile'
       : route.includes('feed') ? 'feed'
       : route.startsWith('post/') ? 'post'
+      : route.includes('onboarding') ? 'onboarding'
+      : route.includes('login') ? 'login'
       : 'other';
     capture('screen_viewed', { screen });
   }, [analyticsActive, authState, route, capture]);

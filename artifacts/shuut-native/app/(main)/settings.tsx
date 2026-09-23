@@ -7,13 +7,11 @@ import { Trash2, LogOut, ChevronRight } from 'lucide-react-native';
 import { useMobileLogout, useDeleteAccount, useGetProfile, useUpdateProfile, useListBlockedAccounts, useUnblockAccount, useGetVoiceAiConsent, getGetVoiceAiConsentQueryKey, useRevokeVoiceAiConsent } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
-import { useAnalytics } from '../../hooks/useAnalytics';
 
 export default function SettingsScreen() {
   const colors = useColors();
   const router = useRouter();
   const { signOut } = useAuth();
-  const analytics = useAnalytics();
   const queryClient = useQueryClient();
 
   const logout = useMobileLogout();
@@ -159,34 +157,6 @@ export default function SettingsScreen() {
             value={previewTranscript}
             onValueChange={handlePreviewTranscriptChange}
             disabled={!profileData?.founder || updateProfile.isPending}
-            trackColor={{ false: colors.border, true: colors.primary }}
-          />
-        </View>
-
-        <View style={[styles.preferenceCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
-          <View style={styles.preferenceCopy}>
-            <Text style={[styles.preferenceTitle, { color: colors.foreground }]}>Optional analytics</Text>
-            <Text style={[styles.preferenceDesc, { color: colors.mutedForeground }]}>
-              Share basic screen visits and successful post counts with PostHog to help improve SHÜÜT.
-              No audio, transcripts, profile details, automatic taps, or session recordings are shared.
-              Change this choice at any time.
-            </Text>
-            {!analytics.configured && (
-              <Text style={[styles.preferenceDesc, { color: colors.mutedForeground, marginTop: 8 }]}>Analytics is not available right now.</Text>
-            )}
-            <TouchableOpacity onPress={() => openPublicPage('privacy')} accessibilityRole="link" style={{ marginTop: 8 }}>
-              <Text style={{ color: colors.primary, fontFamily: 'Inter_500Medium', fontSize: 14 }}>Read Privacy Policy</Text>
-            </TouchableOpacity>
-          </View>
-          <Switch
-            value={analytics.allowed}
-            onValueChange={(next) => {
-              void analytics.setAllowed(next).then((saved) => {
-                if (!saved) Alert.alert('Setting not saved', 'Please try changing your analytics choice again.');
-              });
-            }}
-            disabled={!analytics.ready || !analytics.configured}
-            accessibilityLabel="Share optional analytics"
             trackColor={{ false: colors.border, true: colors.primary }}
           />
         </View>

@@ -397,19 +397,19 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 </div>
               </div>
             ) : (
-              <p
-                onClick={() => {
-                  if (!isDetail && !isFocused) {
-                    setLocation(`/u/${post.author.handle}?shuut=${post.id}`)
-                  }
-                }}
-                className={cn(
-                  "text-foreground leading-relaxed whitespace-pre-wrap break-words",
-                  (isDetail || isFocused) ? "text-[17px] font-medium" : "text-[15px] line-clamp-3 cursor-pointer hover:opacity-80 transition-opacity"
+              <>
+                <p className={cn(
+                  "select-text text-foreground leading-relaxed whitespace-pre-wrap break-words",
+                  (isDetail || isFocused) ? "text-[17px] font-medium" : "text-[15px] line-clamp-3"
+                )}>
+                  {post.transcript}
+                </p>
+                {!isDetail && !isFocused && (
+                  <Link href={`/u/${post.author.handle}?shuut=${post.id}`} className="mt-1 inline-block text-sm font-medium text-primary hover:underline">
+                    View full SHÜÜT
+                  </Link>
                 )}
-              >
-                {post.transcript}
-              </p>
+              </>
             )}
           </div>
 
