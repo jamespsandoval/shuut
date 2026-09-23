@@ -44,6 +44,7 @@ export default function RecordScreen() {
   const [reviewRecording, setReviewRecording] = useState<{ uri: string; duration: number } | null>(null);
   const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null);
   const [transcript, setTranscript] = useState('');
+  const [rawAccepted, setRawAccepted] = useState(false);
   const [isPreparingTranscript, setIsPreparingTranscript] = useState(false);
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -344,7 +345,7 @@ export default function RecordScreen() {
         console.error('Could not persist recording recovery', error);
         Alert.alert('Review ready', 'Your recording is ready to review, but recovery could not be saved if the app closes.');
       }
-      if (!message && previewTranscript) {
+      if (!message) {
         void prepareTranscript(uri);
       }
     } catch (err) {
@@ -396,6 +397,7 @@ export default function RecordScreen() {
     setReviewRecording(null);
     setAudioObjectPath(null);
     setTranscript('');
+    setRawAccepted(false);
     setIsPreparingTranscript(false);
     setMentionedFounders([]);
     setSelectedPhoto(null);
@@ -451,8 +453,8 @@ export default function RecordScreen() {
 
   const publishReview = async () => {
     if (!reviewRecording || isProcessing || isPreparingTranscript) return;
-    if (previewTranscript && !transcript.trim()) {
-      Alert.alert('Transcript not ready', 'Wait for the transcript or edit it before publishing.');
+    if (!transcript.trim()) {
+      Alert.alert('Transcript not ready', 'Wait for the transcript or try transcription again before publishing.');
       return;
     }
     previewPlayer.pause();
@@ -542,7 +544,22 @@ export default function RecordScreen() {
     try {
       const objectPath = await uploadRecording(recordingUri);
       const result = await transcribeAudio.mutateAsync({ data: { audioObjectPath: objectPath } });
-      setTranscript(result.transcript);
+      if (result.cleanupStatus === 'raw') {
+        setTranscript('');
+        setRawAccepted(false);
+        Alert.alert(
+          'Transcription clean-up unavailable',
+          'We’re experiencing a problem with transcription clean-up. Would you like to proceed with the raw transcription?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Yes, use raw transcription', onPress: () => { setTranscript(result.transcript); setRawAccepted(true); } },
+          ],
+          { cancelable: false },
+        );
+      } else {
+        setTranscript(result.transcript);
+        setRawAccepted(false);
+      }
     } catch (err) {
       console.error('Failed to prepare transcript', err);
       Alert.alert('Transcription failed', 'Your recording is safe. Tap “Try transcription again” to retry.');
@@ -560,7 +577,7 @@ export default function RecordScreen() {
           audioObjectPath: objectPath,
           durationSeconds: recordingDuration,
           ...(photoPath ? { imageObjectPath: photoPath } : {}),
-          ...(previewTranscript ? { transcript: transcript.trim() } : {}),
+          transcript: transcript.trim(),
           mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
       });
@@ -674,7 +691,7 @@ export default function RecordScreen() {
                   {reviewRecording.duration} sec
                 </Text>
               </View>
-              {previewTranscript && (
+              {(previewTranscript || rawAccepted || !transcript.trim()) && (
                 <View style={styles.transcriptSection}>
                   <Text style={[styles.transcriptLabel, { color: colors.foreground }]}>Transcript</Text>
                   {isPreparingTranscript ? (
@@ -742,9 +759,9 @@ export default function RecordScreen() {
                 <TouchableOpacity
                   style={[styles.shuutButton, { backgroundColor: colors.primary }]}
                   onPress={() => void publishReview()}
-                  disabled={isPreparingTranscript || (previewTranscript && !transcript.trim())}
+                  disabled={isPreparingTranscript || !transcript.trim()}
                   accessibilityLabel="Publish SHÜÜT"
-                  accessibilityState={{ disabled: isPreparingTranscript || (previewTranscript && !transcript.trim()) }}
+                  accessibilityState={{ disabled: isPreparingTranscript || !transcript.trim() }}
                 >
                   <Send color={colors.primaryForeground} size={18} />
                   <Text style={[styles.shuutText, { color: colors.primaryForeground }]}>SHÜÜT</Text>

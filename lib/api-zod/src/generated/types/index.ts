@@ -13,6 +13,7 @@ export * from './appealInput';
 export * from './askAnswer';
 export * from './askInput';
 export * from './audioTranscript';
+export * from './audioTranscriptCleanupStatus';
 export * from './audioTranscriptionInput';
 export * from './authMessage';
 export * from './authSession';

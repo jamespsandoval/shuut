@@ -5,7 +5,9 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+import type { AudioTranscriptCleanupStatus } from './audioTranscriptCleanupStatus';
 
 export interface AudioTranscript {
   transcript: string;
+  cleanupStatus: AudioTranscriptCleanupStatus;
 }

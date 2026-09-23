@@ -1549,9 +1549,10 @@ components:
         audioObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
     AudioTranscript:
       type: object
-      required: [transcript]
+      required: [transcript, cleanupStatus]
       properties:
         transcript: { type: string }
+        cleanupStatus: { type: string, enum: [cleaned, raw] }
     ReactionInput:
       type: object
       required: [emojiType]

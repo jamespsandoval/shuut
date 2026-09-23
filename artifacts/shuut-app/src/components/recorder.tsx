@@ -2,6 +2,7 @@ import { forwardRef, useState, useRef, useEffect, useCallback, useImperativeHand
 import { Mic, Square, Loader2, Send, ImagePlus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn, formatTime } from "@/lib/utils"
 import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio, useGetVoiceAiConsent } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -44,6 +45,8 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const [audioData, setAudioData] = useState<string | null>(null)
   const [audioObjectPath, setAudioObjectPath] = useState<string | null>(null)
   const [transcript, setTranscript] = useState("")
+  const [pendingRawTranscript, setPendingRawTranscript] = useState<string | null>(null)
+  const [rawAccepted, setRawAccepted] = useState(false)
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -158,19 +161,24 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           })
           if (!putResponse.ok) throw new Error("Recording upload failed")
           setAudioObjectPath(upload.objectPath)
-          if (previewTranscript) {
-            transcribeAudio.mutate(
-              { data: { audioObjectPath: upload.objectPath } },
-              {
-                onSuccess: (result) => setTranscript(result.transcript),
-                onError: () => toast({
-                  title: "Transcription failed",
-                  description: "Please try recording again.",
-                  variant: "destructive",
-                }),
+          transcribeAudio.mutate(
+            { data: { audioObjectPath: upload.objectPath } },
+            {
+              onSuccess: (result) => {
+                if (result.cleanupStatus === "raw") {
+                  setTranscript("")
+                  setPendingRawTranscript(result.transcript)
+                } else {
+                  setTranscript(result.transcript)
+                }
               },
-            )
-          }
+              onError: () => toast({
+                title: "Transcription failed",
+                description: "Your recording is safe. Try transcription again.",
+                variant: "destructive",
+              }),
+            },
+          )
         } catch (error) {
           toast({
             title: "Recording upload failed",
@@ -186,6 +194,8 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       setAudioData(null)
       setAudioObjectPath(null)
       setTranscript("")
+      setRawAccepted(false)
+      setPendingRawTranscript(null)
 
       timerRef.current = window.setInterval(() => {
         setTime(prev => prev + 1)
@@ -198,7 +208,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         variant: "destructive"
       })
     }
-  }, [audioData, isRecording, previewTranscript, toast, transcribeAudio, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent])
+  }, [audioData, isRecording, toast, transcribeAudio, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent])
 
   useImperativeHandle(ref, () => ({
     startRecording: () => {
@@ -220,6 +230,8 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     setAudioObjectPath(null)
     setTime(0)
     setTranscript("")
+    setRawAccepted(false)
+    setPendingRawTranscript(null)
     setMentionedFounders([])
     setImageFile(null)
     setImagePreview(null)
@@ -268,7 +280,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   }
 
   const handleSubmit = () => {
-    if (!audioObjectPath || (previewTranscript && !transcript.trim())) {
+    if (!audioObjectPath || !transcript.trim() || transcribeAudio.isPending || pendingRawTranscript !== null) {
       toast({
         title: !audioObjectPath ? "Missing recording" : "Missing transcript",
         description: !audioObjectPath
@@ -298,7 +310,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       createPost.mutate(
         {
           data: {
-            ...(previewTranscript ? { transcript } : {}),
+            transcript: transcript.trim(),
             audioObjectPath,
             durationSeconds: time || 1,
             mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
@@ -308,11 +320,6 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
-          if (!previewTranscript) {
-            for (const delay of [2500, 6000, 12000, 24000]) {
-              window.setTimeout(() => queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() }), delay)
-            }
-          }
           handleCancel()
         },
         onError: () => {
@@ -349,7 +356,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           isRecording
             ? "h-[calc(100dvh-3.375rem)] md:h-[60vh]"
             : audioData
-              ? previewTranscript
+              ? previewTranscript || rawAccepted
                 ? "h-[min(680px,calc(100dvh-8rem))] md:h-[60vh]"
                 : "h-[320px] md:h-[300px]"
               : "h-[140px]"
@@ -424,11 +431,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       >
         <div className={cn(
           "flex w-full max-w-2xl mx-auto flex-col rounded-2xl border border-border/60 bg-secondary/10 p-3 shadow-sm md:p-4",
-          previewTranscript ? "h-full min-h-0" : "gap-3",
+            previewTranscript || rawAccepted ? "h-full min-h-0" : "gap-3",
         )}>
           <div className={cn(
             "flex flex-col min-h-0",
-            previewTranscript ? "flex-1 gap-3 md:gap-4" : "gap-3",
+            previewTranscript || rawAccepted ? "flex-1 gap-3 md:gap-4" : "gap-3",
           )}>
             <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
@@ -450,7 +457,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
              </div>
              {imageUploadError && <p className="text-sm text-destructive" role="alert">{imageUploadError}</p>}
 
-            {previewTranscript ? (
+            {previewTranscript || rawAccepted ? (
               <div className="relative flex-1 flex flex-col min-h-0 group">
                 <Textarea
                   value={transcript}
@@ -465,21 +472,35 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
               </div>
             ) : (
               <div className="rounded-xl bg-background/60 px-4 py-3 text-center">
-                <h3 className="text-lg font-bold md:text-xl">Ready, Set…</h3>
+                <h3 className="text-lg font-bold md:text-xl">{transcribeAudio.isPending ? "Preparing your transcript…" : transcript ? "Ready, Set…" : "Transcript not ready"}</h3>
               </div>
+            )}
+            {!transcript.trim() && audioObjectPath && !transcribeAudio.isPending && (
+              <Button variant="outline" onClick={() => transcribeAudio.mutate(
+                { data: { audioObjectPath } },
+                {
+                  onSuccess: (result) => {
+                    if (result.cleanupStatus === "raw") setPendingRawTranscript(result.transcript)
+                    else setTranscript(result.transcript)
+                  },
+                  onError: () => toast({ title: "Transcription failed", description: "Your recording is safe. Please try again.", variant: "destructive" }),
+                },
+              )}>
+                Try transcription again
+              </Button>
             )}
           </div>
 
           <div className={cn(
             "flex flex-row justify-between items-center gap-3 shrink-0 border-t border-border/40",
-            previewTranscript ? "mt-4 pt-3" : "pt-3",
+            previewTranscript || rawAccepted ? "mt-4 pt-3" : "pt-3",
           )}>
             <Button variant="ghost" onClick={handleCancel} className="text-muted-foreground h-11 rounded-full px-4 text-sm hover:bg-secondary/80 md:px-6 md:text-base" data-testid="button-cancel-recording">
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createPost.isPending || !audioObjectPath || (previewTranscript && (transcribeAudio.isPending || !transcript.trim()))}
+              disabled={createPost.isPending || !audioObjectPath || transcribeAudio.isPending || !transcript.trim() || pendingRawTranscript !== null}
               className="h-11 rounded-full px-7 text-base font-bold gap-2 shadow-md shadow-primary/20 transition-all active:scale-95 md:px-10"
               data-testid="button-submit-recording"
             >
@@ -490,6 +511,26 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         </div>
       </div>
     </div>
+      <AlertDialog open={pendingRawTranscript !== null} onOpenChange={(open) => { if (!open) setPendingRawTranscript(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Transcription clean-up unavailable</AlertDialogTitle>
+            <AlertDialogDescription>
+              We’re experiencing a problem with transcription clean-up. Would you like to proceed with the raw transcription?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingRawTranscript(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingRawTranscript !== null) {
+                setTranscript(pendingRawTranscript)
+                setRawAccepted(true)
+                setPendingRawTranscript(null)
+              }
+            }}>Yes, use raw transcription</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <VoiceAiConsentModal
         open={showConsentModal}
         status={voiceAiConsent}

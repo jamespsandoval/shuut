@@ -929,7 +929,8 @@ export const TranscribeAudioBody = zod.object({
 })
 
 export const TranscribeAudioResponse = zod.object({
-  "transcript": zod.string()
+  "transcript": zod.string(),
+  "cleanupStatus": zod.enum(['cleaned', 'raw'])
 })
 
 

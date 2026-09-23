@@ -1355,15 +1355,15 @@ router.post("/transcriptions", async (req, res): Promise<void> => {
   }
 
   try {
-    const transcript = await transcribeRecording(body.data.audioObjectPath, userId);
-    res.json(TranscribeAudioResponse.parse({ transcript }));
+    const result = await transcribeRecording(body.data.audioObjectPath, userId);
+    res.json(TranscribeAudioResponse.parse({ transcript: result.transcript, cleanupStatus: result.status }));
   } catch (error) {
     req.log.error({ err: error }, "Failed to transcribe voice recording");
     res.status(502).json({ error: "We could not transcribe this recording. Please try again." });
   }
 });
 
-async function transcribeRecording(audioObjectPath: string, userId: string): Promise<string> {
+async function transcribeRecording(audioObjectPath: string, userId: string): Promise<Awaited<ReturnType<typeof polishTranscript>>> {
     const audio = await objectStorage.readAudio(audioObjectPath);
     const form = new FormData();
     form.append("model_id", "scribe_v1");
@@ -1566,9 +1566,10 @@ router.post("/posts", async (req, res): Promise<void> => {
   res.status(201).json(CreatePostResponse.parse(postJson(created, author, author.id)));
   if (!body.data.transcript && audioObjectPath) {
     void transcribeRecording(audioObjectPath, userId)
-      .then(async (transcript) => {
+      .then(async (result) => {
+        if (result.status === "raw") throw new Error("transcript_cleanup_requires_author_approval");
         await db.update(postsTable)
-          .set({ transcript, transcriptionStatus: "ready", moderationStatus: "unreviewed", moderationRevision: 1 })
+          .set({ transcript: result.transcript, transcriptionStatus: "ready", moderationStatus: "unreviewed", moderationRevision: 1 })
           .where(eq(postsTable.id, created.id));
         await emitApprovalNotifications(created.id);
       })
@@ -1798,9 +1799,10 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
   });
   res.status(202).json(CreatePostCommentResponse.parse({ id: created.id, status: "processing" }));
   void transcribeRecording(created.audioUrl, userId)
-    .then(async (transcript) => {
+    .then(async (result) => {
+      if (result.status === "raw") throw new Error("transcript_cleanup_requires_author_approval");
       await db.update(commentsTable)
-        .set({ transcript, transcriptionStatus: "ready", moderationStatus: "unreviewed", moderationRevision: 1 })
+        .set({ transcript: result.transcript, transcriptionStatus: "ready", moderationStatus: "unreviewed", moderationRevision: 1 })
         .where(eq(commentsTable.id, created.id));
       await emitApprovalNotifications(post.id);
     })
@@ -2288,9 +2290,10 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
   )));
   if (reshuutContent?.audioUrl) {
     void transcribeRecording(reshuutContent.audioUrl, userId!)
-      .then(async (transcript) => {
+      .then(async (result) => {
+        if (result.status === "raw") throw new Error("transcript_cleanup_requires_author_approval");
         await db.update(postReshuutsTable).set({
-          transcript,
+          transcript: result.transcript,
           transcriptionStatus: "ready",
           moderationStatus: "unreviewed",
         }).where(eq(postReshuutsTable.id, reshuutContent.id));

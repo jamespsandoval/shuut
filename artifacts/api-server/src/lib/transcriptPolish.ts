@@ -1,4 +1,20 @@
+import { logger } from "./logger";
+
 const MODEL = "gpt-5-mini";
+
+export type TranscriptPolishResult = {
+  transcript: string;
+  status: "cleaned" | "raw";
+};
+
+class TranscriptPolishFailure extends Error {
+  constructor(
+    readonly reason: "not_configured" | "http" | "empty" | "invalid",
+    readonly httpStatus?: number,
+  ) {
+    super(`transcript_polish_${reason}`);
+  }
+}
 
 export interface TranscriptPolishProvider {
   polish(transcript: string): Promise<string>;
@@ -8,7 +24,7 @@ class OpenAITranscriptPolishProvider implements TranscriptPolishProvider {
   async polish(transcript: string): Promise<string> {
     const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!baseUrl || !apiKey) throw new Error("transcript_polish_not_configured");
+    if (!baseUrl || !apiKey) throw new TranscriptPolishFailure("not_configured");
 
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
@@ -38,14 +54,19 @@ class OpenAITranscriptPolishProvider implements TranscriptPolishProvider {
       }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!response.ok) throw new Error(`transcript_polish_http_${response.status}`);
+    if (!response.ok) throw new TranscriptPolishFailure("http", response.status);
 
     const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = body.choices?.[0]?.message?.content;
-    if (!content) throw new Error("transcript_polish_empty");
-    const parsed = JSON.parse(content) as { text?: unknown };
+    if (!content) throw new TranscriptPolishFailure("empty");
+    let parsed: { text?: unknown };
+    try {
+      parsed = JSON.parse(content) as { text?: unknown };
+    } catch {
+      throw new TranscriptPolishFailure("invalid");
+    }
     if (typeof parsed.text !== "string" || !parsed.text.trim()) {
-      throw new Error("transcript_polish_invalid");
+      throw new TranscriptPolishFailure("invalid");
     }
     return parsed.text.trim();
   }
@@ -59,19 +80,33 @@ export function setTranscriptPolishProviderForTests(next: TranscriptPolishProvid
   return previous;
 }
 
-export async function polishTranscript(rawTranscript: string): Promise<string> {
+function useRawTranscript(raw: string, reason: string, httpStatus?: number): TranscriptPolishResult {
+  // Log only a bounded failure category, never the transcript or provider response.
+  logger.warn({ reason, ...(httpStatus ? { httpStatus } : {}) }, "Transcript cleanup failed; raw text requires author approval");
+  return { transcript: raw, status: "raw" };
+}
+
+export async function polishTranscript(rawTranscript: string): Promise<TranscriptPolishResult> {
   const raw = rawTranscript.trim();
   if (!raw) throw new Error("Transcription was empty");
 
   try {
     const polished = await provider.polish(raw);
-    // Reject unexpectedly destructive or expansive rewrites. A raw transcript
-    // remains usable and is safer than blocking publication on a second AI call.
+    if (!polished.trim()) return useRawTranscript(raw, "empty");
+    // Avoid publishing a destructive rewrite; the author must explicitly choose raw text.
     if (polished.length < raw.length * 0.35 || polished.length > raw.length * 1.5) {
-      return raw;
+      return useRawTranscript(raw, "length_guard");
     }
-    return polished;
-  } catch {
-    return raw;
+    if (polished.trim() === raw && /\b(?:uh|um|erm|er)\b/i.test(raw)) {
+      return useRawTranscript(raw, "unchanged_with_fillers");
+    }
+    return { transcript: polished.trim(), status: "cleaned" };
+  } catch (error) {
+    const reason = error instanceof TranscriptPolishFailure
+      ? error.reason
+      : error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+        ? "timeout"
+        : "provider_error";
+    return useRawTranscript(raw, reason, error instanceof TranscriptPolishFailure ? error.httpStatus : undefined);
   }
 }

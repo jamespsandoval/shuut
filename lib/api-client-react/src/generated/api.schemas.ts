@@ -966,8 +966,17 @@ export interface AudioTranscriptionInput {
   audioObjectPath: string;
 }
 
+export type AudioTranscriptCleanupStatus = typeof AudioTranscriptCleanupStatus[keyof typeof AudioTranscriptCleanupStatus];
+
+
+export const AudioTranscriptCleanupStatus = {
+  cleaned: 'cleaned',
+  raw: 'raw',
+} as const;
+
 export interface AudioTranscript {
   transcript: string;
+  cleanupStatus: AudioTranscriptCleanupStatus;
 }
 
 export type ReactionInputEmojiType = typeof ReactionInputEmojiType[keyof typeof ReactionInputEmojiType];
