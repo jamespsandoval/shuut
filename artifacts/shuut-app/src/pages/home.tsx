@@ -52,8 +52,13 @@ export default function Home() {
     })
   }, [])
 
+  const handleFeedClick = useCallback(() => {
+    setView("everyone")
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }, [])
+
   return (
-    <Layout>
+    <Layout onFeedClick={handleFeedClick}>
       <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border/50">
         <div className="flex border-b border-border/30">
           <button 

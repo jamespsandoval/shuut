@@ -11,7 +11,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useLogout } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children, onFeedClick }: { children: ReactNode; onFeedClick?: () => void }) {
   const [location, setLocation] = useLocation()
   const { theme } = useTheme()
   const { isSignedIn } = useAuth()
@@ -65,6 +65,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <Link 
                 key={item.href} 
                 href={item.href}
+                onClick={item.href === "/" ? onFeedClick : undefined}
                 className={`flex items-center gap-4 px-4 py-3 rounded-xl text-lg font-semibold transition-all hover-elevate ${isActive ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'}`}
               >
                 <item.icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 2} />
@@ -152,7 +153,13 @@ export function Layout({ children }: { children: ReactNode }) {
         {navItems.map((item) => {
           const isActive = normalizedLocation === item.href || (item.href !== "/" && normalizedLocation.startsWith(`${item.href}/`))
           return (
-            <Link key={item.href} href={item.href} className="p-3 rounded-full hover:bg-secondary/50 transition-colors">
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={item.href === "/" ? onFeedClick : undefined}
+              aria-label={item.label}
+              className="p-3 rounded-full hover:bg-secondary/50 transition-colors"
+            >
               <item.icon 
                 className={`w-6 h-6 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} 
                 strokeWidth={isActive ? 2.5 : 2} 
