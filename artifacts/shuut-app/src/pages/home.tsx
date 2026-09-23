@@ -1,10 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useGetFeed, type GetFeedView } from "@workspace/api-client-react"
+import { useGetFeed, type GetFeedView, type Post } from "@workspace/api-client-react"
 import { Layout } from "@/components/layout"
 import { Recorder, type RecorderHandle } from "@/components/recorder"
 import { PostCard } from "@/components/post-card"
+import { ErrorBoundary } from "@/components/error-boundary"
 import { Loader2, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+function FeedPostError() {
+  return (
+    <div role="alert" className="mx-3 my-3 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+      This SHÜÜT couldn’t load. The rest of your feed is still available.
+    </div>
+  )
+}
+
+function canRenderPost(post: Post): boolean {
+  return Boolean(
+    post?.author
+    && typeof post.author.name === "string"
+    && post.author.name.length > 0
+    && typeof post.author.handle === "string"
+    && post.author.handle.length > 0
+    && post.createdAt
+    && !Number.isNaN(new Date(post.createdAt).getTime())
+  )
+}
 
 export default function Home() {
   const [view, setView] = useState<GetFeedView>("everyone")
@@ -125,8 +146,12 @@ export default function Home() {
           </div>
         )}
 
-        {posts?.map(post => (
-          <PostCard key={post.id} post={post} />
+        {posts?.map((post, index) => canRenderPost(post) ? (
+          <ErrorBoundary key={post.id} FallbackComponent={FeedPostError}>
+            <PostCard post={post} />
+          </ErrorBoundary>
+        ) : (
+          <FeedPostError key={post?.id ?? `invalid-post-${index}`} />
         ))}
       </div>
     </Layout>

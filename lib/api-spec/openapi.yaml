@@ -1360,6 +1360,7 @@ components:
         message: { type: string, minLength: 1, maxLength: 1000 }
         consent: { type: boolean, const: true }
         website: { type: string, maxLength: 0 }
+        reportType: { type: string, enum: [issue], description: Mark a crash report so it reaches the issue-report inbox. }
     ContactMessageResult:
       type: object
       required: [sent]

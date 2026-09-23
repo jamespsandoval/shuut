@@ -438,7 +438,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               {post.reshuut.mode === "audio" && post.reshuut.text && post.reshuut.transcriptionStatus === "ready" && (
                 <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{post.reshuut.text}</p>
               )}
-              {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-cover" loading="lazy" />}
+              {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author?.name ?? post.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-cover" loading="lazy" />}
             </div>
           )}
 

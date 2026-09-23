@@ -52,15 +52,21 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
     event.preventDefault();
     setIsReporting(true);
     setReportError('');
+    const csrfToken = document.cookie
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('shu_csrf='))
+      ?.slice('shu_csrf='.length);
 
     const technicalContext = [
       'An app error was reported from the SHÜÜT recovery screen.',
       '',
       `Page: ${window.location.href}`,
       `Time: ${new Date().toISOString()}`,
-      `Browser: ${window.navigator.userAgent}`,
       `Error: ${error.message || 'Unknown application error'}`,
-    ].join('\n');
+      `Browser: ${window.navigator.userAgent}`,
+      `Stack: ${error.stack || 'Unavailable'}`,
+    ].join('\n').slice(0, 1000);
 
     try {
       const response = await fetch('/api/contact', {
@@ -68,6 +74,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRF-Token': decodeURIComponent(csrfToken) } : {}),
         },
         body: JSON.stringify({
           firstName: 'Issue',
@@ -76,6 +83,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
           message: technicalContext,
           consent: true,
           website: '',
+          reportType: 'issue',
         }),
       });
 
@@ -86,7 +94,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
       setReportSent(true);
     } catch {
       setReportError(
-        'We could not send your report. Please email admin@shuut.me instead.',
+        'We could not send your report. Please email james@shuut.me instead.',
       );
     } finally {
       setIsReporting(false);

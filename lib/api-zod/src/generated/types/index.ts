@@ -27,6 +27,7 @@ export * from './blockedAccount';
 export * from './blockResult';
 export * from './confirmPasskeyRecovery200';
 export * from './contactMessageInput';
+export * from './contactMessageInputReportType';
 export * from './contactMessageResult';
 export * from './createModerationAppeal201';
 export * from './createModerationSanction201';

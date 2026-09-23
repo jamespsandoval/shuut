@@ -3,7 +3,7 @@ import posthog from 'posthog-js';
 import { PostHogProvider } from '@posthog/react';
 import { useAuth } from '@/hooks/use-auth';
 
-type EventName = 'screen_viewed' | 'post_published' | 'onboarding_completed';
+type EventName = '$pageview' | 'screen_viewed' | 'post_published' | 'onboarding_completed';
 type EventProperties = { screen?: string };
 type AnalyticsContextValue = {
   active: boolean;
@@ -14,6 +14,11 @@ const AnalyticsContext = createContext<AnalyticsContextValue | null>(null);
 const token = import.meta.env.VITE_POSTHOG_PROJECT_TOKEN;
 const host = import.meta.env.VITE_POSTHOG_HOST;
 const configured = Boolean(token && host);
+const safeScreens = new Set([
+  'home', 'feed', 'post', 'profile', 'onboarding', 'moderation',
+  'settings', 'notifications', 'explore', 'about', 'community',
+  'terms', 'privacy', 'cookies', 'contact', 'appeals', 'other',
+]);
 
 export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const { user, isSignedIn } = useAuth();
@@ -23,7 +28,11 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const started = useRef(false);
 
   useEffect(() => {
-    if (!configured || started.current) return;
+    if (started.current) return;
+    if (!configured) {
+      console.warn('PostHog analytics is unavailable: missing build-time configuration.');
+      return;
+    }
     try {
       posthog.init(token, {
         api_host: host,
@@ -35,10 +44,17 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
         person_profiles: 'identified_only',
         before_send: (event) => {
           if (!event?.properties) return event;
+          const screen = event.properties.screen;
           for (const key of Object.keys(event.properties)) {
             if (/(url|path|referr|utm|query|search|host)/i.test(key)) {
               delete event.properties[key];
             }
+          }
+          if (event.event === '$pageview') {
+            // Web Analytics needs a URL, but actual post/profile paths can identify content.
+            // Group visits by the same broad, non-identifying screens we already track.
+            const safeScreen = typeof screen === 'string' && safeScreens.has(screen) ? screen : 'other';
+            event.properties.$current_url = `${window.location.origin}/${safeScreen}`;
           }
           return event;
         },
@@ -46,6 +62,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
       started.current = true;
       setActive(true);
     } catch {
+      console.warn('PostHog analytics could not initialize.');
       setActive(false);
     }
   }, []);

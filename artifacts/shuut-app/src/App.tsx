@@ -192,6 +192,7 @@ function AnalyticsRouteTracker() {
       : location === '/' ? (isSignedIn && user?.onboardingComplete ? 'feed' : 'home')
       : knownScreens.includes(firstSegment) ? firstSegment : 'other';
     capture('screen_viewed', { screen });
+    capture('$pageview', { screen });
   }, [location, isSignedIn, user?.onboardingComplete, active, capture]);
   return null;
 }

@@ -27,4 +27,4 @@
 - [Launch content review](launch-content-review.md) — do not add automated pre-publication content review without an explicit product decision.
 - [Transcript cleanup consent](transcript-cleanup-consent.md) — prepare before publishing, ask before raw fallback, and fail background voice content closed.
 - [Selectable post text](selectable-post-text.md) — keep transcript selection separate from post navigation so web and native users can copy text.
-- [Automatic limited analytics](automatic-analytics.md) — creator chose automatic cookieless PostHog instead of an opt-in control; disclose current use and review expansions.
+- [Automatic limited analytics](automatic-analytics.md) — cookieless PostHog baseline; review expansions and beware bot-filtered browser checks.

@@ -5,6 +5,7 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+import type { ContactMessageInputReportType } from './contactMessageInputReportType';
 
 export interface ContactMessageInput {
   /**
@@ -27,4 +28,6 @@ export interface ContactMessageInput {
   consent: true;
   /** @maxLength 0 */
   website?: string;
+  /** Mark a crash report so it reaches the issue-report inbox. */
+  reportType?: ContactMessageInputReportType;
 }

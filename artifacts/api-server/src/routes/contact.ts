@@ -35,7 +35,10 @@ router.post("/", async (req, res): Promise<void> => {
   attempts.set(key, [...recentAttempts, now]);
 
   try {
-    const subject = `SHÜÜT contact from ${body.data.firstName} ${body.data.lastName}`;
+    const isIssueReport = body.data.reportType === "issue";
+    const subject = isIssueReport
+      ? "SHÜÜT web issue report"
+      : `SHÜÜT contact from ${body.data.firstName} ${body.data.lastName}`;
     const textBody = [
       `Name: ${body.data.firstName} ${body.data.lastName}`,
       `Email: ${body.data.email}`,
@@ -52,14 +55,14 @@ router.post("/", async (req, res): Promise<void> => {
     const htmlBody = renderEmailHtml({
       title: subject,
       previewText: body.data.message.slice(0, 100),
-      eyebrow: "CONTACT MESSAGE",
-      heading: "New Contact Message",
+      eyebrow: isIssueReport ? "ISSUE REPORT" : "CONTACT MESSAGE",
+      heading: isIssueReport ? "New SHÜÜT Issue Report" : "New Contact Message",
       bodyHtml,
-      urgent: false,
+      urgent: isIssueReport,
     });
 
     await sendPostmarkEmail({
-      to: "admin@shuut.me",
+      to: isIssueReport ? "james@shuut.me" : "admin@shuut.me",
       replyTo: body.data.email,
       subject,
       textBody,

@@ -20,7 +20,13 @@ export function VoiceAiConsentModal({ open, status, onAccepted, onDecline }: Voi
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  if (!status) return null;
+  if (!open || !status) return null;
+  const disclosureAvailable = typeof status.summary === "string"
+    && status.summary.trim().length > 0
+    && typeof status.currentVersion === "string"
+    && status.currentVersion.length > 0
+    && Array.isArray(status.details)
+    && status.details.length > 0;
 
   const handleAccept = () => {
     acceptConsent.mutate({
@@ -59,10 +65,12 @@ export function VoiceAiConsentModal({ open, status, onAccepted, onDecline }: Voi
         >
           <Dialog.Title className="text-xl font-bold text-foreground">Voice and AI Features</Dialog.Title>
           <Dialog.Description className="mt-3 text-sm leading-6 text-muted-foreground">
-            {status.summary}
+            {disclosureAvailable
+              ? status.summary
+              : "The voice and AI disclosure is unavailable right now. Please try again later."}
           </Dialog.Description>
 
-          {status.details.length > 0 && (
+          {disclosureAvailable && (
             <ul className="mt-4 space-y-2 text-sm text-muted-foreground list-disc pl-5">
               {status.details.map((detail, i) => (
                 <li key={i} className="pl-1">{detail}</li>
@@ -70,7 +78,7 @@ export function VoiceAiConsentModal({ open, status, onAccepted, onDecline }: Voi
             </ul>
           )}
 
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
+          {disclosureAvailable && <div className="mt-6 flex items-start gap-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
             <Checkbox
               id="consent-ack"
               checked={acknowledged}
@@ -81,7 +89,7 @@ export function VoiceAiConsentModal({ open, status, onAccepted, onDecline }: Voi
             <label htmlFor="consent-ack" className="text-sm font-medium leading-relaxed cursor-pointer select-none">
               I understand how my voice data is used and agree to proceed.
             </label>
-          </div>
+          </div>}
 
           <div className="mt-8 flex justify-end gap-3 pt-4 border-t border-border/60">
             <Button
@@ -96,7 +104,7 @@ export function VoiceAiConsentModal({ open, status, onAccepted, onDecline }: Voi
             >
               Not now
             </Button>
-            <Button
+            {disclosureAvailable && <Button
               onClick={handleAccept}
               disabled={!acknowledged || acceptConsent.isPending}
               data-testid="accept"
@@ -104,7 +112,7 @@ export function VoiceAiConsentModal({ open, status, onAccepted, onDecline }: Voi
             >
               {acceptConsent.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Accept and Continue
-            </Button>
+            </Button>}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

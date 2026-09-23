@@ -604,6 +604,16 @@ export interface UsernameAvailability {
   available: boolean;
 }
 
+/**
+ * Mark a crash report so it reaches the issue-report inbox.
+ */
+export type ContactMessageInputReportType = typeof ContactMessageInputReportType[keyof typeof ContactMessageInputReportType];
+
+
+export const ContactMessageInputReportType = {
+  issue: 'issue',
+} as const;
+
 export interface ContactMessageInput {
   /**
      * @minLength 1
@@ -625,6 +635,8 @@ export interface ContactMessageInput {
   consent: true;
   /** @maxLength 0 */
   website?: string;
+  /** Mark a crash report so it reaches the issue-report inbox. */
+  reportType?: ContactMessageInputReportType;
 }
 
 export const ContactMessageResultValue = {

@@ -605,7 +605,8 @@ export const SendContactMessageBody = zod.object({
   "email": zod.string().email().max(sendContactMessageBodyEmailMax),
   "message": zod.string().min(1).max(sendContactMessageBodyMessageMax),
   "consent": zod.literal(true),
-  "website": zod.string().max(sendContactMessageBodyWebsiteMax).optional()
+  "website": zod.string().max(sendContactMessageBodyWebsiteMax).optional(),
+  "reportType": zod.enum(['issue']).optional().describe('Mark a crash report so it reaches the issue-report inbox.')
 })
 
 export const SendContactMessageResponse = zod.object({
