@@ -104,7 +104,10 @@ export default function LoginScreen() {
             accessibilityLabel="SHÜÜT"
           />
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Say what's on your mind
+            Say what’s on your mind. Listen, too.
+          </Text>
+          <Text style={[styles.explanation, { color: colors.mutedForeground }]}>
+            Share your thoughts by voice and hear what others have to say.
           </Text>
         </View>
 
@@ -239,7 +242,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginTop: '25%',
-    marginBottom: 96,
+    marginBottom: 64,
   },
   logo: {
     width: 200,
@@ -249,6 +252,16 @@ const styles = StyleSheet.create({
   subtitle: {
     fontFamily: 'Inter_500Medium',
     fontSize: 18,
+    lineHeight: 25,
+    maxWidth: 320,
+    textAlign: 'center',
+  },
+  explanation: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 21,
+    maxWidth: 300,
+    marginTop: 12,
     textAlign: 'center',
   },
   form: {

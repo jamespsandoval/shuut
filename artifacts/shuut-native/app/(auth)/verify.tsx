@@ -84,7 +84,7 @@ export default function VerifyScreen() {
               accessibilityLabel="SHÜÜT"
             />
             <Text style={[styles.subtitleBranding, { color: colors.mutedForeground }]}>
-              Say what's on your mind
+              Say what’s on your mind. Listen, too.
             </Text>
           </View>
 
@@ -177,6 +177,8 @@ const styles = StyleSheet.create({
   subtitleBranding: {
     fontFamily: 'Inter_500Medium',
     fontSize: 18,
+    lineHeight: 25,
+    maxWidth: 320,
     textAlign: 'center',
   },
   backButton: {
