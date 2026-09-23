@@ -25,10 +25,10 @@ export function Layout({ children }: { children: ReactNode }) {
   })
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false)
   const normalizedLocation = location.split("?")[0].replace(/\/+$/, "") || "/"
-  const isFeedRoute = normalizedLocation === "/feed"
+  const isFeedRoute = normalizedLocation === "/"
 
   const navItems = [
-    { icon: Home, label: "Feed", href: "/feed" },
+    { icon: Home, label: "Feed", href: "/" },
     { icon: Bell, label: "Notifications", href: "/notifications" },
     { icon: User, label: "Profile", href: "/u/me" },
     { icon: Settings, label: "Settings", href: "/settings" },
@@ -49,7 +49,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-[280px] sticky top-0 h-[100dvh] border-r border-border/40 p-6 shrink-0 z-10">
         <div className="mb-4">
-          <Link href="/feed" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
+          <Link href="/" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
             <img 
               src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
               alt="SHÜÜT" 
@@ -60,7 +60,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
         <nav className="flex flex-col gap-4 flex-1">
           {navItems.map((item) => {
-            const isActive = location === item.href || (item.href !== "/feed" && location.startsWith(item.href))
+            const isActive = normalizedLocation === item.href || (item.href !== "/" && normalizedLocation.startsWith(`${item.href}/`))
             return (
               <Link 
                 key={item.href} 
@@ -138,7 +138,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {!isFeedRoute && (
         <button
           type="button"
-          onClick={() => setLocation("/feed?record=1")}
+          onClick={() => setLocation("/?record=1")}
           aria-label="Record a SHÜÜT"
           data-testid="button-global-floating-recording"
           className="shuut-floating-record fixed bottom-20 right-4 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:bottom-6 animate-in fade-in zoom-in-75 duration-200"
@@ -150,7 +150,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile Bottom Nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-lg border-t border-border flex items-center justify-around z-50 pb-safe">
         {navItems.map((item) => {
-          const isActive = location === item.href || (item.href !== "/feed" && location.startsWith(item.href))
+          const isActive = normalizedLocation === item.href || (item.href !== "/" && normalizedLocation.startsWith(`${item.href}/`))
           return (
             <Link key={item.href} href={item.href} className="p-3 rounded-full hover:bg-secondary/50 transition-colors">
               <item.icon 

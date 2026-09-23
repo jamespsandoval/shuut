@@ -49,7 +49,7 @@ const queryClient = new QueryClient({
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function HomeRedirect() {
+function RootRoute() {
   const { user, isSignedIn, isLoading } = useAuth();
   
   if (isLoading) {
@@ -64,10 +64,17 @@ function HomeRedirect() {
     if (!user?.onboardingComplete) {
       return <Redirect to="/onboarding/name" />;
     }
-    return <Redirect to="/feed" />;
+    if (user.legalPolicyConsent?.required) {
+      return <LegalConsentGate />;
+    }
+    return <Home />;
   }
 
   return <Landing />;
+}
+
+function LegacyFeedRedirect() {
+  return <Redirect to={`/${window.location.search}${window.location.hash}`} replace />;
 }
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -104,7 +111,7 @@ function OnboardingRoute({ params }: { params: { step: string } }) {
   const { user, isSignedIn, isLoading } = useAuth();
   if (isLoading) return <RouteLoadingFallback />;
   if (!isSignedIn) return <Redirect to="/" />;
-  if (user?.onboardingComplete) return <Redirect to="/feed" />;
+  if (user?.onboardingComplete) return <Redirect to="/" />;
   if (!["name", "username", "source"].includes(params.step)) return <Redirect to="/onboarding/name" />;
   return <Onboarding stepName={params.step as "name" | "username" | "source"} />;
 }
@@ -114,7 +121,7 @@ function Router() {
     <RoutedErrorBoundary>
       <Suspense fallback={<RouteLoadingFallback />}>
         <Switch>
-          <Route path="/" component={HomeRedirect} />
+          <Route path="/" component={RootRoute} />
           <Route path="/about" component={About} />
           <Route path="/community" component={Community} />
           <Route path="/terms" component={Terms} />
@@ -122,7 +129,7 @@ function Router() {
           <Route path="/cookies" component={Cookies} />
           <Route path="/contact" component={Contact} />
           <Route path="/onboarding/:step" component={OnboardingRoute} />
-          <ProtectedRoute path="/feed" component={Home} />
+          <Route path="/feed" component={LegacyFeedRedirect} />
           <ProtectedRoute path="/notifications" component={NotificationsPage} />
           <ProtectedRoute path="/explore" component={Explore} />
           <ProtectedRoute path="/p/:postId" component={PostDetail} />
@@ -172,6 +179,7 @@ function ScrollToTop() {
 
 function AnalyticsRouteTracker() {
   const [location] = useLocation();
+  const { isSignedIn, user } = useAuth();
   const { active, capture } = useAnalytics();
   useEffect(() => {
     if (!active) return;
@@ -181,10 +189,10 @@ function AnalyticsRouteTracker() {
       : location.startsWith('/u/') ? 'profile'
       : location.startsWith('/onboarding/') ? 'onboarding'
       : location.startsWith('/moderation') ? 'moderation'
-      : location === '/' ? 'home'
+      : location === '/' ? (isSignedIn && user?.onboardingComplete ? 'feed' : 'home')
       : knownScreens.includes(firstSegment) ? firstSegment : 'other';
     capture('screen_viewed', { screen });
-  }, [location, active, capture]);
+  }, [location, isSignedIn, user?.onboardingComplete, active, capture]);
   return null;
 }
 

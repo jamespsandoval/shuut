@@ -14,7 +14,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground">
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/50 bg-background/80 px-4 backdrop-blur-md">
         <div className="flex items-center gap-4">
-          <Link href="/feed" className="flex items-center gap-2 transition-transform hover:scale-105 active:scale-95">
+          <Link href="/" className="flex items-center gap-2 transition-transform hover:scale-105 active:scale-95">
             <img 
               src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
               alt="SHÜÜT" 

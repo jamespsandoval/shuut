@@ -56,7 +56,7 @@ export default function ModerationCaseView({ params }: { params: { id: string } 
                 You do not have the required operator clearance to view this case.
               </p>
             </div>
-            <Button onClick={() => setLocation("/feed")} variant="outline" className="mt-4">
+            <Button onClick={() => setLocation("/")} variant="outline" className="mt-4">
               Return to Feed
             </Button>
           </div>

@@ -32,7 +32,7 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get("record") !== "1") return
-    window.history.replaceState({}, "", `${import.meta.env.BASE_URL}feed`)
+    window.history.replaceState({}, "", import.meta.env.BASE_URL)
     recorderContainerRef.current?.scrollIntoView({ block: "start" })
     recorderRef.current?.startRecording()
   }, [])
