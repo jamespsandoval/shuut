@@ -14,7 +14,6 @@ import {
   useClaimModerationCase,
   useDecideModerationCase,
   useCreateModerationSanction,
-  useRetryModerationCase,
   getGetModerationCaseQueryKey,
   ModerationDecisionInputDecision,
   SanctionInputType
@@ -36,7 +35,6 @@ export default function ModerationCaseView({ params }: { params: { id: string } 
   const claimCase = useClaimModerationCase();
   const decideCase = useDecideModerationCase();
   const createSanction = useCreateModerationSanction();
-  const retryCase = useRetryModerationCase();
 
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [decision, setDecision] = useState<ModerationDecisionInputDecision | "">("");
@@ -144,18 +142,6 @@ export default function ModerationCaseView({ params }: { params: { id: string } 
     });
   };
 
-  const handleRetry = () => {
-    retryCase.mutate({ caseId }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetModerationCaseQueryKey(caseId) });
-        toast({ title: "Case queued for retry" });
-      },
-      onError: (err: any) => {
-        toast({ title: "Failed to retry", description: err.message, variant: "destructive" });
-      }
-    });
-  };
-
   return (
     <ModerationLayout>
       <div className="mb-6 flex items-center gap-4">
@@ -200,7 +186,7 @@ export default function ModerationCaseView({ params }: { params: { id: string } 
             <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <h2 className="text-lg font-semibold mb-4 border-b border-border pb-2">Reports & Signals</h2>
               {data.reports.length === 0 && data.signals.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No reports or automated signals.</p>
+                <p className="text-sm text-muted-foreground">No reports or signals.</p>
               ) : (
                 <div className="space-y-4">
                   {data.signals.map((sig, idx) => (
@@ -267,9 +253,6 @@ export default function ModerationCaseView({ params }: { params: { id: string } 
                       </Button>
                       <Button onClick={() => setSanctionOpen(true)} className="w-full" variant="destructive" data-testid="button-apply-sanction">
                         Apply Sanction
-                      </Button>
-                      <Button onClick={handleRetry} className="w-full" variant="outline" disabled={retryCase.isPending} data-testid="button-retry-case">
-                        Retry / Re-queue
                       </Button>
                     </div>
                   )}

@@ -91,10 +91,9 @@ import {
   assertCanParticipate,
   canDistributeComment,
   canDistributePost,
-  enqueueModeration,
+  emitApprovalNotifications,
   ensureModerationCase,
   isFounderDistributable,
-  startModerationWorker,
   sweepModerationRetention,
 } from "../lib/moderation";
 
@@ -314,7 +313,6 @@ if (!process.env.NODE_TEST_CONTEXT) {
   const moderationRetentionTimer = setInterval(() => void sweepModerationRetention().catch(() => undefined), 15 * 60_000);
   moderationRetentionTimer.unref();
   void sweepModerationRetention().catch(() => undefined);
-  startModerationWorker();
 }
 
 async function currentFounder(userId: string) {
@@ -616,7 +614,8 @@ router.get("/feed", async (req, res): Promise<void> => {
     const ownPendingPost =
       viewer?.id === post.authorId &&
       post.transcriptionStatus === "ready" &&
-      post.deletionStatus === "active";
+      post.deletionStatus === "active" &&
+      !["removed", "quarantined"].includes(post.moderationStatus);
     if (ownPendingPost || await canDistributePost(post.id)) {
       rowsVisibleToModeration.push(post);
     }
@@ -664,7 +663,6 @@ router.get("/notifications", async (req, res): Promise<void> => {
       eq(notificationsTable.recipientId, viewer.id),
       eq(postsTable.deletionStatus, "active"),
       eq(postsTable.transcriptionStatus, "ready"),
-      eq(postsTable.moderationStatus, "approved"),
     ))
     .orderBy(desc(notificationsTable.createdAt))
     .limit(50);
@@ -679,8 +677,13 @@ router.get("/notifications", async (req, res): Promise<void> => {
         (id): id is number => id !== null,
       )
     : []);
+  const distributablePostIds = new Set((await Promise.all(rows.map(async (row) =>
+    await canDistributePost(row.post.id) ? row.post.id : null,
+  ))).filter((id): id is number => id !== null));
   res.json(GetNotificationsResponse.parse(rows
-     .filter((row) => activeIds.has(row.actor.id) && distributableActorIds.has(row.actor.id) && !blockedActorIds.has(row.actor.id))
+     .filter((row) => activeIds.has(row.actor.id) && distributableActorIds.has(row.actor.id) &&
+       !blockedActorIds.has(row.actor.id) &&
+       distributablePostIds.has(row.post.id))
     .map((row) => ({
       id: row.notification.id,
       eventType: row.notification.eventType,
@@ -997,7 +1000,8 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
   const viewer = await currentFounder(userId ?? "");
   const ownProfile = viewer?.id === founder.id;
   const rows = ownProfile
-    ? allRows.filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active")
+    ? allRows.filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active" &&
+        !["removed", "quarantined"].includes(post.moderationStatus))
     : await distributablePosts(allRows);
   const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
@@ -1102,7 +1106,8 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
     .from(postsTable)
     .where(eq(postsTable.authorId, founder.id))
     .orderBy(desc(postsTable.createdAt)))
-    .filter((post) => post.transcriptionStatus === "ready" && post.moderationStatus === "approved");
+    .filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active" &&
+      !["removed", "quarantined"].includes(post.moderationStatus));
   const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
   const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
@@ -1271,6 +1276,18 @@ router.get("/posts/:postId/image", async (req, res): Promise<void> => {
   }
 });
 
+async function canViewReshuutMedia(reshuut: typeof postReshuutsTable.$inferSelect, viewerId: number) {
+  if (viewerId === reshuut.founderId) return true;
+  if (["removed", "quarantined"].includes(reshuut.moderationStatus) ||
+      (reshuut.audioUrl && reshuut.transcriptionStatus !== "ready")) return false;
+  const [parent] = await db.select({ authorId: postsTable.authorId }).from(postsTable)
+    .where(eq(postsTable.id, reshuut.postId)).limit(1);
+  return Boolean(parent && await canDistributePost(reshuut.postId) &&
+    await isFounderDistributable(reshuut.founderId) &&
+    await visibleToViewer(viewerId, parent.authorId) &&
+    await visibleToViewer(viewerId, reshuut.founderId));
+}
+
 router.get("/reshuuts/:reshuutId/audio", async (req, res): Promise<void> => {
   const id = Number(req.params.reshuutId);
   if (!Number.isInteger(id)) { res.status(400).json({ error: "Invalid reSHÜÜT" }); return; }
@@ -1279,7 +1296,7 @@ router.get("/reshuuts/:reshuutId/audio", async (req, res): Promise<void> => {
     eq(postReshuutsTable.deletionStatus, "active"),
   ));
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
-  if (!reshuut?.audioUrl || !viewer || (viewer.id !== reshuut.founderId && reshuut.moderationStatus !== "approved")) {
+  if (!reshuut?.audioUrl || !viewer || !(await canViewReshuutMedia(reshuut, viewer.id))) {
     res.status(404).json({ error: "Audio not found" });
     return;
   }
@@ -1299,7 +1316,7 @@ router.get("/reshuuts/:reshuutId/image", async (req, res): Promise<void> => {
     ? await db.select().from(postReshuutsTable).where(and(eq(postReshuutsTable.id, id), eq(postReshuutsTable.deletionStatus, "active")))
     : [];
   const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
-  if (!reshuut?.imageUrl || !viewer || (viewer.id !== reshuut.founderId && reshuut.moderationStatus !== "approved")) {
+  if (!reshuut?.imageUrl || !viewer || !(await canViewReshuutMedia(reshuut, viewer.id))) {
     res.status(404).json({ error: "Image not found" });
     return;
   }
@@ -1509,7 +1526,7 @@ router.post("/posts", async (req, res): Promise<void> => {
         authorId: author.id,
         transcript: body.data.transcript ?? "",
         transcriptionStatus: body.data.transcript ? "ready" : "processing",
-        moderationStatus: "pending",
+        moderationStatus: "unreviewed",
         moderationRevision: 1,
         durationSeconds: body.data.durationSeconds,
         audioUrl: claimedUpload.objectPath,
@@ -1544,17 +1561,16 @@ router.post("/posts", async (req, res): Promise<void> => {
   }
   const { created } = publication;
   const audioObjectPath = created.audioUrl;
-  if (body.data.transcript) await enqueueModeration("post", created.id, body.data.transcript, 1);
   await auditSecurityEvent(req, "publish", userId, { postId: created.id });
-  // Mentions are delivered by the moderation-approved distribution worker.
+  if (body.data.transcript) await emitApprovalNotifications(created.id);
   res.status(201).json(CreatePostResponse.parse(postJson(created, author, author.id)));
   if (!body.data.transcript && audioObjectPath) {
     void transcribeRecording(audioObjectPath, userId)
       .then(async (transcript) => {
         await db.update(postsTable)
-          .set({ transcript, transcriptionStatus: "ready", moderationStatus: "pending", moderationRevision: 1 })
+          .set({ transcript, transcriptionStatus: "ready", moderationStatus: "unreviewed", moderationRevision: 1 })
           .where(eq(postsTable.id, created.id));
-        await enqueueModeration("post", created.id, transcript, 1);
+        await emitApprovalNotifications(created.id);
       })
       .catch(async (error) => {
         req.log.error({ err: error, postId: created.id }, "Background transcription failed");
@@ -1641,10 +1657,8 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
     .where(and(
       eq(commentsTable.postId, params.data.postId),
       eq(commentsTable.transcriptionStatus, "ready"),
-       or(
-         eq(commentsTable.moderationStatus, "approved"),
-         viewer ? eq(commentsTable.authorId, viewer.id) : sql`false`,
-       ),
+      ne(commentsTable.moderationStatus, "removed"),
+      ne(commentsTable.moderationStatus, "quarantined"),
     ))
     .orderBy(asc(commentsTable.createdAt));
   const visibleRows = (await Promise.all(rows.map(async (row) =>
@@ -1752,7 +1766,7 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
         authorId: author.id,
         audioUrl: claimedUpload.objectPath,
         durationSeconds: body.data.durationSeconds,
-        moderationStatus: "pending",
+        moderationStatus: "unreviewed",
         moderationRevision: 1,
       }).returning();
       return { status: "created" as const, created };
@@ -1778,7 +1792,6 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
     return;
   }
   const { created } = publication;
-  // Comment notifications are intentionally deferred until moderation approves.
   await auditSecurityEvent(req, "voice_comment_created", userId, {
     postId: post.id,
     commentId: created.id,
@@ -1787,9 +1800,9 @@ router.post("/posts/:postId/comments", async (req, res): Promise<void> => {
   void transcribeRecording(created.audioUrl, userId)
     .then(async (transcript) => {
       await db.update(commentsTable)
-        .set({ transcript, transcriptionStatus: "ready", moderationStatus: "pending", moderationRevision: 1 })
+        .set({ transcript, transcriptionStatus: "ready", moderationStatus: "unreviewed", moderationRevision: 1 })
         .where(eq(commentsTable.id, created.id));
-      await enqueueModeration("comment", created.id, transcript, 1);
+      await emitApprovalNotifications(post.id);
     })
     .catch(async (error) => {
       req.log.error({ err: error, commentId: created.id }, "Background comment transcription failed");
@@ -1936,12 +1949,13 @@ router.patch("/posts/:postId", async (req, res): Promise<void> => {
   const [updated] = await db.update(postsTable)
     .set({
       transcript: body.data.transcript.trim(),
-      moderationStatus: "pending", moderationRevision: sql`${postsTable.moderationRevision} + 1`,
+      moderationStatus: "unreviewed", moderationRevision: sql`${postsTable.moderationRevision} + 1`,
       moderationRiskScore: null, moderationCategories: "[]", moderationErrorCode: null,
     })
-    .where(eq(postsTable.id, post.id))
+    .where(and(eq(postsTable.id, post.id), ne(postsTable.moderationStatus, "removed"), ne(postsTable.moderationStatus, "quarantined")))
     .returning();
-  await enqueueModeration("post", post.id, updated.transcript, updated.moderationRevision);
+  if (!updated) { res.status(409).json({ error: "This post is no longer editable" }); return; }
+  await emitApprovalNotifications(post.id);
   res.json(UpdatePostResponse.parse(postJson(
     updated,
     founder,
@@ -2217,7 +2231,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
         audioUrl: audioPath,
         imageUrl: imagePath,
         durationSeconds: body.durationSeconds ?? null,
-        moderationStatus: audioPath ? "pending" : "approved",
+        moderationStatus: "unreviewed",
         moderationRevision: (existing?.moderationRevision ?? 0) + 1,
         deletionStatus: "active",
       } as const;
@@ -2278,9 +2292,8 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
         await db.update(postReshuutsTable).set({
           transcript,
           transcriptionStatus: "ready",
-          moderationStatus: "pending",
+          moderationStatus: "unreviewed",
         }).where(eq(postReshuutsTable.id, reshuutContent.id));
-        await enqueueModeration("reshuut", reshuutContent.id, transcript, reshuutContent.moderationRevision);
       })
       .catch(async () => {
         try {
@@ -2402,7 +2415,8 @@ router.post("/profiles/:handle/ask", async (req, res): Promise<void> => {
         eq(postsTable.authorId, founder.id),
         eq(postsTable.transcriptionStatus, "ready"),
         eq(postsTable.deletionStatus, "active"),
-        eq(postsTable.moderationStatus, "approved"),
+        ne(postsTable.moderationStatus, "removed"),
+        ne(postsTable.moderationStatus, "quarantined"),
       ))
       .orderBy(desc(postsTable.createdAt))
       .limit(ASK_MINIMUM_POSTS);

@@ -6,7 +6,6 @@ import {
   moderationAppealsTable,
   moderationCasesTable,
   moderationCaseSignalsTable,
-  moderationJobsTable,
   moderationSubjectsTable,
   operatorGrantsTable,
   accountReportsTable,
@@ -31,9 +30,7 @@ import {
   ListModerationCasesQueryParams,
   ListCaseAppealsParams,
   RevokeModerationSanctionParams,
-  RetryModerationCaseParams,
   ClaimModerationCaseResponse,
-  RetryModerationCaseResponse,
   ListModerationCasesResponse,
   GetModerationCaseResponse,
   DecideModerationCaseResponse,
@@ -259,31 +256,6 @@ router.post("/moderation/cases/:caseId/claim", async (req, res): Promise<void> =
   if (updated.kind === "missing") { res.status(404).json({ error: "Case not found" }); return; }
   if (updated.kind === "conflict") { res.status(409).json({ error: "Case is already claimed or changed" }); return; }
   res.json(ClaimModerationCaseResponse.parse({ case: caseJson(updated.row) }));
-});
-
-router.post("/moderation/cases/:caseId/retry", async (req, res): Promise<void> => {
-  const access = await requireOperator(req);
-  if ("error" in access) { await sendAuthError(res, access.error!); return; }
-  const parsed = RetryModerationCaseParams.safeParse(req.params);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const row = await findCase(parsed.data.caseId);
-  if (!row) { res.status(404).json({ error: "Case not found" }); return; }
-  const [currentTarget] = row.targetType === "post"
-    ? await db.select({ revision: postsTable.moderationRevision }).from(postsTable).where(eq(postsTable.id, row.targetId)).limit(1)
-    : await db.select({ revision: commentsTable.moderationRevision }).from(commentsTable).where(eq(commentsTable.id, row.targetId)).limit(1);
-  if (!currentTarget) { res.status(409).json({ error: "Moderation target no longer exists" }); return; }
-  const [job] = await db.update(moderationJobsTable).set(({
-    status: "pending", attempts: 0, nextAttemptAt: new Date(), leaseUntil: null, leaseToken: null,
-    lastErrorCode: null, updatedAt: new Date(),
-  }) as any).where(and(
-    eq(moderationJobsTable.targetType, row.targetType),
-    eq(moderationJobsTable.targetId, row.targetId),
-    eq(moderationJobsTable.revision, currentTarget.revision),
-    eq(moderationJobsTable.status, "failed"),
-  )).returning({ id: moderationJobsTable.id });
-  if (!job) { res.status(409).json({ error: "No moderation job exists for this case" }); return; }
-  await db.insert(moderationActionsTable).values({ caseId: row.id, actorUserId: access.userId, action: "retry" });
-  res.status(202).json(RetryModerationCaseResponse.parse({ status: "queued" }));
 });
 
 router.post("/moderation/cases/:caseId/decision", async (req, res): Promise<void> => {

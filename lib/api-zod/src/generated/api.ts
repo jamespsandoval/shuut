@@ -635,7 +635,7 @@ export const GetFeedResponseItem = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -671,7 +671,7 @@ export const GetFeedResponseItem = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })
@@ -741,7 +741,7 @@ export const GetProfileResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -777,7 +777,7 @@ export const GetProfileResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })),
@@ -847,7 +847,7 @@ export const UpdateProfileResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -883,7 +883,7 @@ export const UpdateProfileResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })),
@@ -974,7 +974,7 @@ export const CreatePostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -1010,7 +1010,7 @@ export const CreatePostResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })
@@ -1059,7 +1059,7 @@ export const GetPostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -1095,7 +1095,7 @@ export const GetPostResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })
@@ -1138,7 +1138,7 @@ export const UpdatePostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -1174,7 +1174,7 @@ export const UpdatePostResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })
@@ -1204,7 +1204,7 @@ export const SetReactionResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -1240,7 +1240,7 @@ export const SetReactionResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })
@@ -1331,7 +1331,7 @@ export const ReshuutPostResponse = zod.object({
 }),
   "transcript": zod.string(),
   "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']).optional(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
   "audioUrl": zod.string().nullish(),
   "imageUrl": zod.string().nullish(),
   "durationSeconds": zod.number().int(),
@@ -1367,7 +1367,7 @@ export const ReshuutPostResponse = zod.object({
   "audioUrl": zod.string().nullable(),
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
-  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'quarantined', 'failed', 'removed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date()
 }),zod.null()]).optional()
 })
@@ -1594,15 +1594,6 @@ export const ClaimModerationCaseResponse = zod.object({
   "slaHours": zod.number().default(claimModerationCaseResponseCaseSlaHoursDefault),
   "overdue": zod.boolean()
 })
-})
-
-
-export const RetryModerationCaseParams = zod.object({
-  "caseId": zod.coerce.number().int()
-})
-
-export const RetryModerationCaseResponse = zod.object({
-  "status": zod.enum(['queued'])
 })
 
 

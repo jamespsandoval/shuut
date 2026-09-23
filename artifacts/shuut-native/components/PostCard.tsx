@@ -238,6 +238,17 @@ export function PostCard({
     }
   };
 
+  const canShowReshuut = Boolean(
+    post.reshuut
+      && post.reshuut.moderationStatus !== 'quarantined'
+      && post.reshuut.moderationStatus !== 'removed'
+      && (
+        post.reshuut.moderationStatus === 'approved'
+        || post.reshuut.mode === 'text'
+        || post.reshuut.transcriptionStatus === 'ready'
+      )
+  );
+
   const startRecording = async () => {
     const generation = ++generationRef.current;
     pendingStartRef.current = true;
@@ -480,7 +491,7 @@ export function PostCard({
       )}
       <AuthenticatedAudioPlayer url={post.audioUrl} durationSeconds={post.durationSeconds} />
 
-      {post.reshuut && post.reshuut.moderationStatus === 'approved' && (
+      {canShowReshuut && post.reshuut && (
         <View style={[styles.reshuutContent, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutContentLabel, { color: colors.mutedForeground }]}>reSHÜÜT by @{post.reshuut.author.handle}</Text>
           {post.reshuut.mode === 'text' && post.reshuut.text && (

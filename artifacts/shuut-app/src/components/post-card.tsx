@@ -301,6 +301,13 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   }
 
   const shareText = `Listen to ${post.author.name} on SHÜÜT`
+  const reshuutStatus = post.reshuut?.moderationStatus
+  const canShowReshuut = Boolean(
+    post.reshuut
+      && reshuutStatus !== "quarantined"
+      && reshuutStatus !== "removed"
+      && (reshuutStatus === "approved" || post.reshuut.mode === "text" || post.reshuut.transcriptionStatus === "ready")
+  )
 
   const handleShare = async () => {
     try {
@@ -416,7 +423,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
             <img src={post.imageUrl} alt={`Photo attached to ${post.author.name}'s SHÜÜT`} className="mb-3 max-h-[28rem] w-full rounded-xl object-cover border border-border/50" loading="lazy" />
           )}
 
-          {post.reshuut && (
+          {canShowReshuut && post.reshuut && (
             <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <Repeat2 className="h-3.5 w-3.5" /> ReSHÜÜT commentary
@@ -432,7 +439,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{post.reshuut.text}</p>
               )}
               {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-cover" loading="lazy" />}
-              {post.reshuut.moderationStatus !== "approved" && <p className="mt-2 text-xs text-muted-foreground">Commentary is being reviewed.</p>}
             </div>
           )}
 

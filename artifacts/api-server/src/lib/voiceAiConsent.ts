@@ -3,15 +3,14 @@ import type { Request, Response } from "express";
 import { db, voiceAiConsentsTable } from "@workspace/db";
 import { getAuthenticatedUserId } from "../middlewares/sessionAuth";
 
-export const CURRENT_VOICE_AI_CONSENT_VERSION = "2026-09-21.1" as const;
+export const CURRENT_VOICE_AI_CONSENT_VERSION = "2026-09-23.1" as const;
 export const VOICE_AI_CONSENT_CONTENT_HASH =
-  "sha256:83aefaa8cea59ea185510d07662723e05cf766184e8155eb84f668f712be7f6d";
+  "sha256:e80464704446453231ff7166a5412d14324641a4da483e35bef73c4db6214f3c";
 export const VOICE_AI_CONSENT_SUMMARY =
-  "Voice AI is used to transcribe, clean up, and safety-check your voice content.";
+  "Voice AI is used to transcribe and clean up your voice content.";
 export const VOICE_AI_CONSENT_DETAILS = [
   "ElevenLabs processes audio for speech-to-text transcription.",
   "Transcripts are lightly edited using Replit-managed OpenAI model access to remove filler words and false starts and improve punctuation and grammar without changing your meaning.",
-  "Transcripts are automatically safety-moderated using Replit-managed OpenAI model access.",
   "Audio and transcripts are stored privately in App Storage.",
   "Depending on applicable provider terms and account settings, submitted data may be used to improve provider models or services.",
   "Providers and their subprocessors may process data in the United States and other countries.",

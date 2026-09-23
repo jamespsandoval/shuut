@@ -64,7 +64,6 @@ import type {
   ModerationCaseDetail,
   ModerationCaseList,
   ModerationDecisionInput,
-  ModerationRetryResponse,
   ModerationSanctionRevokeResponse,
   Notification,
   OnboardingInput,
@@ -5079,74 +5078,6 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getClaimModerationCaseMutationOptions(options));
-    }
-
-export const getRetryModerationCaseUrl = (caseId: number,) => {
-
-
-
-
-  return `/api/moderation/cases/${caseId}/retry`
-}
-
-export const retryModerationCase = async (caseId: number, options?: Parameters<typeof customFetch>[1]): Promise<ModerationRetryResponse> => {
-
-  return customFetch<ModerationRetryResponse>(getRetryModerationCaseUrl(caseId),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getRetryModerationCaseMutationKey = () => ['retryModerationCase'] as const;
-
-export const getRetryModerationCaseMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryModerationCase>>, TError,RetryModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof retryModerationCase>>, TError,RetryModerationCaseMutationVariables, TContext> => {
-
-const mutationKey = getRetryModerationCaseMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryModerationCase>>, RetryModerationCaseMutationVariables> = (props) => {
-          const {caseId} = props ?? {};
-
-          return  retryModerationCase(caseId,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type RetryModerationCaseMutationResult = NonNullable<Awaited<ReturnType<typeof retryModerationCase>>>
-
-    export type RetryModerationCaseMutationError = ErrorType<void>
-    export type RetryModerationCaseMutationVariables = {caseId: number}
-
-    export const useRetryModerationCase = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryModerationCase>>, TError,RetryModerationCaseMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof retryModerationCase>>,
-        TError,
-        RetryModerationCaseMutationVariables,
-        TContext
-      > => {
-      return useMutation(getRetryModerationCaseMutationOptions(options));
     }
 
 export const getCreateModerationSanctionUrl = (caseId: number,) => {

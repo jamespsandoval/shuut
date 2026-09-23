@@ -875,17 +875,6 @@ paths:
         '401': { description: Authentication required }
         '403': { description: Operator access required }
         '404': { description: Open case not found }
-  /moderation/cases/{caseId}/retry:
-    post:
-      operationId: retryModerationCase
-      tags: [moderation]
-      security: [{ SessionCookie: [] }, { BearerAuth: [] }]
-      parameters: [{ name: caseId, in: path, required: true, schema: { type: integer } }]
-      responses:
-        '202': { description: Job queued, content: { application/json: { schema: { $ref: '#/components/schemas/ModerationRetryResponse' } } } }
-        '401': { description: Authentication required }
-        '403': { description: Operator access required }
-        '404': { description: Case not found }
   /moderation/cases/{caseId}/sanctions:
     post:
       operationId: createModerationSanction
@@ -1414,7 +1403,7 @@ components:
         author: { $ref: '#/components/schemas/Founder' }
         transcript: { type: string }
         transcriptionStatus: { type: string, enum: [processing, ready, failed] }
-        moderationStatus: { type: string, enum: [pending, processing, approved, quarantined, failed, removed] }
+        moderationStatus: { type: string, enum: [pending, processing, approved, unreviewed, quarantined, failed, removed] }
         audioUrl: { type: [string, 'null'] }
         imageUrl: { type: [string, 'null'] }
         durationSeconds: { type: integer }
@@ -1507,7 +1496,7 @@ components:
         audioUrl: { type: [string, 'null'] }
         durationSeconds: { type: [integer, 'null'] }
         imageUrl: { type: [string, 'null'] }
-        moderationStatus: { type: string, enum: [pending, processing, approved, quarantined, failed, removed] }
+        moderationStatus: { type: string, enum: [pending, processing, approved, unreviewed, quarantined, failed, removed] }
         createdAt: { type: string, format: date-time }
     VoiceCommentInput:
       type: object

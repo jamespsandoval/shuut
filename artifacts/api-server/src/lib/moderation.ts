@@ -62,7 +62,8 @@ export async function canDistributePost(postId: number) {
     transcription: postsTable.transcriptionStatus,
     authorId: postsTable.authorId,
   }).from(postsTable).where(eq(postsTable.id, postId));
-  if (!post || post.status !== "approved" || post.deletion !== "active" || post.transcription !== "ready") return false;
+  if (!post || !["approved", "unreviewed", "pending", "processing", "failed"].includes(post.status) ||
+      post.deletion !== "active" || post.transcription !== "ready") return false;
   const [author] = await db.select({ userId: foundersTable.userId }).from(foundersTable)
     .where(eq(foundersTable.id, post.authorId)).limit(1);
   if (!author) return false;
@@ -81,7 +82,8 @@ export async function canDistributeComment(commentId: number) {
     authorId: commentsTable.authorId,
     postId: commentsTable.postId,
   }).from(commentsTable).where(eq(commentsTable.id, commentId));
-  if (!comment || comment.status !== "approved" || comment.transcription !== "ready") return false;
+  if (!comment || !["approved", "unreviewed", "pending", "processing", "failed"].includes(comment.status) ||
+      comment.transcription !== "ready") return false;
   if (!(await canDistributePost(comment.postId))) return false;
   return !(await activeSanctionForFounder(comment.authorId));
 }
@@ -126,12 +128,11 @@ export async function emitApprovalNotifications(postId: number) {
   }
   const comments = await db.select({ id: commentsTable.id, authorId: commentsTable.authorId }).from(commentsTable).where(and(
     eq(commentsTable.postId, postId),
-    eq(commentsTable.moderationStatus, "approved"),
     eq(commentsTable.transcriptionStatus, "ready"),
   ));
   for (const comment of comments) {
     if (comment.authorId === post.actorId) continue;
-    if (!(await isFounderDistributable(comment.authorId))) continue;
+    if (!(await canDistributeComment(comment.id))) continue;
     const blocked = await db.select({ id: accountBlocksTable.id }).from(accountBlocksTable).where(or(
       and(eq(accountBlocksTable.blockerFounderId, comment.authorId), eq(accountBlocksTable.blockedFounderId, post.actorId)),
       and(eq(accountBlocksTable.blockerFounderId, post.actorId), eq(accountBlocksTable.blockedFounderId, comment.authorId)),

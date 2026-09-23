@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import app from "../src/app";
 import {
   accountSanctionsTable,
@@ -10,17 +10,13 @@ import {
   moderationActionsTable,
   moderationCasesTable,
   moderationJobsTable,
-  moderationSubjectsTable,
   operatorGrantsTable,
   postsTable,
   pool,
-  sessionsTable,
   usersTable,
-  voiceAiConsentsTable,
 } from "@workspace/db";
-import { enqueueModeration, enqueueUnreviewedPosts, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
+import { canDistributePost } from "../src/lib/moderation";
 import { CURRENT_LEGAL_POLICY_VERSIONS } from "../src/lib/legalPolicy";
-import { CURRENT_VOICE_AI_CONSENT_VERSION, VOICE_AI_CONSENT_CONTENT_HASH } from "../src/lib/voiceAiConsent";
 
 const prefix = `moderation-${Date.now()}`;
 const testIp = `10.${Math.floor(Date.now() / 86400000) % 254 + 1}.${Math.floor(Date.now() / 1000) % 254 + 1}.5`;
@@ -120,7 +116,7 @@ after(async () => {
   await pool.end();
 });
 
-test("moderation is fail-closed, revision-safe, report-private, and operator controlled", async () => {
+test("publication is immediate, historical review states distribute safely, and manual reports remain private", async () => {
   const ownerEmail = `${prefix}-owner@example.test`;
   const reporterEmail = `${prefix}-reporter@example.test`;
   const operatorEmail = `${prefix}-operator@example.test`;
@@ -134,13 +130,6 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   const [operatorUser] = await db.select().from(usersTable).where(eq(usersTable.email, operatorEmail));
   const [adminUser] = await db.select().from(usersTable).where(eq(usersTable.email, adminEmail));
   assert.ok(ownerUser && reporterUser && operatorUser && adminUser);
-  await db.insert(voiceAiConsentsTable).values({
-    userId: ownerUser.id,
-    consentVersion: CURRENT_VOICE_AI_CONSENT_VERSION,
-    consentContentHash: VOICE_AI_CONSENT_CONTENT_HASH,
-  });
-  await db.update(sessionsTable).set({ passkeyVerifiedAt: new Date() })
-    .where(eq(sessionsTable.userId, ownerUser.id));
   const [owner] = await db.insert(foundersTable).values({
     userId: ownerUser.id, name: "Moderation Owner", handle: `${prefix}owner`.slice(-30), bio: "", avatarColor: "#000000",
   }).returning();
@@ -167,66 +156,40 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   ));
   assert.ok(profileCase);
 
-  const [safePost] = await db.insert(postsTable).values({
-    authorId: owner.id, transcript: "A safe transcript", durationSeconds: 2, moderationStatus: "pending",
-  }).returning();
-  const previous = setModerationProviderForTests({ classify: async (text) => (
-    text.includes("danger") ? { categories: ["violence"], riskScore: 90 } : { categories: [], riskScore: 0 }
-  ) });
-  await enqueueModeration("post", safePost.id, safePost.transcript);
-  assert.equal((await request(`/api/posts/${safePost.id}`)).status, 401);
-  assert.equal((await request(`/api/posts/${safePost.id}`, { session: ownerSession })).status, 200);
-  await runModerationSweep();
-  const [safeAfter] = await db.select().from(postsTable).where(eq(postsTable.id, safePost.id));
-  assert.equal(safeAfter.moderationStatus, "approved");
+  const [unreviewed, pending, failed, quarantined, removed] = await db.insert(postsTable).values([
+    { authorId: owner.id, transcript: "new publication", durationSeconds: 2, transcriptionStatus: "ready", moderationStatus: "unreviewed", createdAt: new Date("2026-09-10T10:00:00Z") },
+    { authorId: owner.id, transcript: "legacy pending", durationSeconds: 2, transcriptionStatus: "ready", moderationStatus: "pending", createdAt: new Date("2026-09-11T10:00:00Z") },
+    { authorId: owner.id, transcript: "legacy failed", durationSeconds: 2, transcriptionStatus: "ready", moderationStatus: "failed", createdAt: new Date("2026-09-12T10:00:00Z") },
+    { authorId: owner.id, transcript: "quarantined", durationSeconds: 2, transcriptionStatus: "ready", moderationStatus: "quarantined", createdAt: new Date("2026-09-13T10:00:00Z") },
+    { authorId: owner.id, transcript: "removed", durationSeconds: 2, transcriptionStatus: "ready", moderationStatus: "removed", createdAt: new Date("2026-09-14T10:00:00Z") },
+  ]).returning();
+  assert.equal(await canDistributePost(unreviewed.id), true);
+  assert.equal(await canDistributePost(pending.id), true);
+  assert.equal(await canDistributePost(failed.id), true);
+  assert.equal(await canDistributePost(quarantined.id), false);
+  assert.equal(await canDistributePost(removed.id), false);
+  assert.equal((await db.select().from(moderationJobsTable).where(
+    and(eq(moderationJobsTable.targetType, "post"), eq(moderationJobsTable.targetId, unreviewed.id)),
+  )).length, 0);
+  const feed = await request("/api/feed?view=everyone", { session: reporterSession });
+  assert.equal(feed.status, 200);
+  const feedIds = (await feed.json() as Array<{ id: number }>).map((post) => post.id);
+  assert.deepEqual(feedIds.filter((id) => [unreviewed.id, pending.id, failed.id, quarantined.id, removed.id].includes(id)),
+    [failed.id, pending.id, unreviewed.id]);
 
-  const [revokedPost] = await db.insert(postsTable).values({
-    authorId: owner.id, transcript: "must not be sent after revocation", durationSeconds: 2, moderationStatus: "pending",
-  }).returning();
-  await enqueueModeration("post", revokedPost.id, revokedPost.transcript);
-  await db.update(voiceAiConsentsTable).set({ revokedAt: new Date() })
-    .where(and(
-      eq(voiceAiConsentsTable.userId, ownerUser.id),
-      eq(voiceAiConsentsTable.consentVersion, CURRENT_VOICE_AI_CONSENT_VERSION),
-    ));
-  let providerCalls = 0;
-  const consentProvider = setModerationProviderForTests({
-    classify: async () => {
-      providerCalls++;
-      return { categories: [], riskScore: 0 };
-    },
-  });
-  await runModerationSweep();
-  assert.equal(providerCalls, 0);
-  const [revokedJob] = await db.select().from(moderationJobsTable)
-    .where(and(eq(moderationJobsTable.targetType, "post"), eq(moderationJobsTable.targetId, revokedPost.id)));
-  assert.equal(revokedJob.lastErrorCode, "VOICE_AI_CONSENT_REQUIRED");
-  setModerationProviderForTests(consentProvider);
-  await db.update(voiceAiConsentsTable).set({ revokedAt: null })
-    .where(and(
-      eq(voiceAiConsentsTable.userId, ownerUser.id),
-      eq(voiceAiConsentsTable.consentVersion, CURRENT_VOICE_AI_CONSENT_VERSION),
-    ));
-
-  const [dangerPost] = await db.insert(postsTable).values({
-    authorId: owner.id, transcript: "danger transcript", durationSeconds: 2, moderationStatus: "pending",
-  }).returning();
-  await enqueueModeration("post", dangerPost.id, dangerPost.transcript);
-  await runModerationSweep();
-  const [dangerAfter] = await db.select().from(postsTable).where(eq(postsTable.id, dangerPost.id));
-  assert.equal(dangerAfter.moderationStatus, "quarantined");
-  const [caseRow] = await db.select().from(moderationCasesTable)
-    .where(and(eq(moderationCasesTable.targetType, "post"), eq(moderationCasesTable.targetId, dangerPost.id)));
-  assert.ok(caseRow);
   const profileDetail = await request(`/api/moderation/cases/${profileCase.id}`, { session: operatorSession });
   assert.equal(profileDetail.status, 200);
   assert.equal((await request("/api/moderation/cases")).status, 401);
   assert.equal((await request("/api/moderation/cases", { session: ownerSession })).status, 403);
   const report = await request("/api/reports", {
     method: "POST", session: reporterSession,
-    json: { targetType: "post", targetId: dangerPost.id, reason: "violence", details: "Please review this" },
+    json: { targetType: "post", targetId: quarantined.id, reason: "violence", details: "Please review this" },
   });
   assert.equal(report.status, 201);
+  const [caseRow] = await db.select().from(moderationCasesTable).where(and(
+    eq(moderationCasesTable.targetType, "post"), eq(moderationCasesTable.targetId, quarantined.id),
+  ));
+  assert.ok(caseRow);
   const detail = await request(`/api/moderation/cases/${caseRow.id}`, { session: operatorSession });
   assert.equal(detail.status, 200);
   const detailBody = await detail.json() as { reports: Array<Record<string, unknown>> };
@@ -243,62 +206,6 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   });
   assert.equal(decision.status, 200);
 
-  const [failurePost] = await db.insert(postsTable).values({
-    authorId: owner.id, transcript: "provider failure", durationSeconds: 1, moderationStatus: "pending",
-  }).returning();
-  await enqueueModeration("post", failurePost.id, failurePost.transcript);
-  setModerationProviderForTests({ classify: async () => { throw new Error("provider_down"); } });
-  for (let i = 0; i < 6; i += 1) {
-    await db.update(moderationJobsTable).set({ nextAttemptAt: new Date(0) })
-      .where(and(eq(moderationJobsTable.targetType, "post"), eq(moderationJobsTable.targetId, failurePost.id)));
-    await runModerationSweep();
-  }
-  const [failed] = await db.select().from(postsTable).where(eq(postsTable.id, failurePost.id));
-  assert.equal(failed.moderationStatus, "failed");
-  const [failedJob] = await db.select().from(moderationJobsTable).where(and(
-    eq(moderationJobsTable.targetType, "post"), eq(moderationJobsTable.targetId, failurePost.id),
-  ));
-  assert.equal(failedJob.status, "failed");
-  assert.equal((await runModerationSweep()), 0);
-  assert.equal((await db.select().from(moderationCasesTable).where(and(
-    eq(moderationCasesTable.targetType, "post"), eq(moderationCasesTable.targetId, failurePost.id),
-  ))).length, 1);
-
-  // Older posts without a job are reviewed, not distributed directly or
-  // silently retried after a failed review.
-  const [older, newer] = await db.insert(postsTable).values([
-    { authorId: owner.id, transcript: "Older safe voice", durationSeconds: 2, createdAt: new Date("2026-09-10T10:00:00Z") },
-    { authorId: owner.id, transcript: "Newer safe voice", durationSeconds: 2, createdAt: new Date("2026-09-11T10:00:00Z") },
-  ]).returning();
-  const before = await request("/api/feed?view=everyone", { session: reporterSession });
-  assert.equal(before.status, 200);
-  assert.ok(!(await before.json() as Array<{ id: number }>).some((post) => post.id === older.id || post.id === newer.id));
-  await enqueueUnreviewedPosts();
-  const queued = await db.select().from(moderationJobsTable).where(and(
-    eq(moderationJobsTable.targetType, "post"), inArray(moderationJobsTable.targetId, [older.id, newer.id]),
-  ));
-  assert.equal(queued.length, 2);
-  await enqueueUnreviewedPosts();
-  assert.equal((await db.select().from(moderationJobsTable).where(and(
-    eq(moderationJobsTable.targetType, "post"), inArray(moderationJobsTable.targetId, [older.id, newer.id]),
-  ))).length, 2);
-  assert.equal(failedJob.status, "failed");
-  await db.update(moderationJobsTable).set({ nextAttemptAt: new Date(0) }).where(and(
-    eq(moderationJobsTable.targetType, "post"), inArray(moderationJobsTable.targetId, [older.id, newer.id]),
-  ));
-  setModerationProviderForTests({ classify: async () => ({ categories: [], riskScore: 0 }) });
-  await runModerationSweep(2);
-  const everyone = await request("/api/feed?view=everyone", { session: reporterSession });
-  assert.equal(everyone.status, 200);
-  const visible = (await everyone.json() as Array<{ id: number }>).filter((post) =>
-    [older.id, newer.id, failurePost.id].includes(post.id));
-  assert.deepEqual(visible.map((post) => post.id), [newer.id, older.id]);
-  const following = await request("/api/feed?view=following", { session: reporterSession });
-  assert.equal(following.status, 200);
-  assert.ok(!(await following.json() as Array<{ id: number }>).some((post) =>
-    post.id === older.id || post.id === newer.id));
-
-  setModerationProviderForTests(previous);
   const sanction = await request(`/api/moderation/cases/${caseRow.id}/sanctions`, {
     method: "POST", session: adminSession, json: { type: "suspend", reason: "repeat abuse" },
   });
@@ -322,7 +229,4 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   })).status, 200);
   assert.equal((await db.select().from(accountSanctionsTable).where(eq(accountSanctionsTable.id, sanctionId)))[0]?.status, "revoked");
   assert.ok((await db.select().from(moderationActionsTable).where(eq(moderationActionsTable.caseId, caseRow.id))).length >= 4);
-  const [subject] = await db.select().from(moderationSubjectsTable).where(eq(moderationSubjectsTable.targetId, safePost.id));
-  assert.equal(subject.status, "approved");
-  setModerationProviderForTests(previous);
 });

@@ -13,6 +13,7 @@ export const PostModerationStatus = {
   pending: 'pending',
   processing: 'processing',
   approved: 'approved',
+  unreviewed: 'unreviewed',
   quarantined: 'quarantined',
   failed: 'failed',
   removed: 'removed',
