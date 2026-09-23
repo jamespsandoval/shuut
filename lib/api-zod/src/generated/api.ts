@@ -523,16 +523,18 @@ export const completeOnboardingBodyHandleMax = 30;
 
 
 export const completeOnboardingBodyHandleRegExp = new RegExp('^[a-z0-9_]+$');
+export const completeOnboardingBodyReferralSourceMax = 600;
+
 
 
 export const CompleteOnboardingBody = zod.object({
   "firstName": zod.string().min(1).max(completeOnboardingBodyFirstNameMax),
   "lastName": zod.string().min(1).max(completeOnboardingBodyLastNameMax),
   "handle": zod.string().min(completeOnboardingBodyHandleMin).max(completeOnboardingBodyHandleMax).regex(completeOnboardingBodyHandleRegExp),
-  "eligible": zod.boolean(),
-  "acceptedLegalPolicies": zod.literal(true).describe('Explicit acceptance of the current Terms of Service and linked Community Guidelines.'),
-  "termsVersion": zod.string().describe('Exact Terms of Service version presented when the checkbox was selected.'),
-  "communityGuidelinesVersion": zod.string().describe('Exact Community Guidelines version presented when the checkbox was selected.')
+  "referralSource": zod.string().min(1).max(completeOnboardingBodyReferralSourceMax).describe('Plain-text answer to where the member learned about SHÜÜT; the server enforces a maximum of 300 Unicode code points (up to 600 UTF-16 units for supplementary characters).'),
+  "acceptedLegalPolicies": zod.literal(true).describe('Acceptance disclosed at registration of the current Terms of Service and linked Community Guidelines.'),
+  "termsVersion": zod.string().describe('Current Terms of Service version accepted at registration.'),
+  "communityGuidelinesVersion": zod.string().describe('Current Community Guidelines version accepted at registration.')
 })
 
 export const CompleteOnboardingResponse = zod.object({

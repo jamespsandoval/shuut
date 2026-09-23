@@ -173,8 +173,7 @@ export class OpenAITextModerationProvider implements TextModerationProvider {
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 0,
-        max_tokens: 160,
+        max_completion_tokens: 1200,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: `Classify user voice transcript safety. Return JSON only: {"categories":[],"riskScore":0}. Categories must be from harassment,hate,sexual,violence,self_harm,illegal,spam,other. riskScore integer 0-100. Never include explanations.` },
@@ -242,6 +241,31 @@ export async function enqueueModeration(targetType: "post" | "comment" | "reshuu
     targetType, targetId, revision, contentHash: hash, status: "pending",
   }).onConflictDoNothing({ target: [moderationJobsTable.targetType, moderationJobsTable.targetId, moderationJobsTable.revision] });
   return subject.id;
+}
+
+// Posts created before moderation jobs existed must go through the same
+// consent-checked, fail-closed review path as newly published posts.
+export async function enqueueUnreviewedPosts(limit = 25) {
+  const result = await db.execute(sql`
+    select p.id, p.transcript, p.moderation_revision as revision
+    from shuut_posts p
+    where p.moderation_status = 'pending'
+      and p.transcription_status = 'ready'
+      and p.deletion_status = 'active'
+      and p.transcript <> ''
+      and not exists (
+        select 1 from shuut_moderation_jobs j
+        where j.target_type = 'post'
+          and j.target_id = p.id
+          and j.revision = p.moderation_revision
+      )
+    order by p.created_at asc
+    limit ${limit}
+  `) as unknown as { rows: Array<{ id: number; transcript: string; revision: number }> };
+  for (const post of result.rows) {
+    await enqueueModeration("post", post.id, post.transcript, post.revision);
+  }
+  return result.rows.length;
 }
 
 export async function ensureModerationCase(
@@ -445,8 +469,12 @@ export async function sweepModerationRetention(now = new Date()) {
 }
 
 export function startModerationWorker() {
-  const timer = setInterval(() => void runModerationSweep().catch(() => undefined), 5_000);
+  const sweep = async () => {
+    await enqueueUnreviewedPosts();
+    await runModerationSweep();
+  };
+  const timer = setInterval(() => void sweep().catch(() => undefined), 5_000);
   timer.unref();
-  void runModerationSweep().catch(() => undefined);
+  void sweep().catch(() => undefined);
   return timer;
 }

@@ -169,6 +169,12 @@ export default function Landing() {
                   )}
                 </Button>
               </form>
+              <p className="mt-5 text-sm leading-6 text-muted-foreground">
+                By registering for SHÜÜT, you accept our{" "}
+                <a className="font-semibold underline underline-offset-2" href={`${basePath}/terms`} target="_blank" rel="noreferrer">Terms of Service</a>,{" "}
+                <a className="font-semibold underline underline-offset-2" href={`${basePath}/privacy`} target="_blank" rel="noreferrer">Privacy Policy</a>, and{" "}
+                <a className="font-semibold underline underline-offset-2" href={`${basePath}/community`} target="_blank" rel="noreferrer">Community Guidelines</a>.
+              </p>
 
             </div>
           ) : (
@@ -242,7 +248,7 @@ export default function Landing() {
         </div>
       </main>
 
-      <Footer />
+      <Footer omitRegistrationLinks />
     </div>
   );
 }

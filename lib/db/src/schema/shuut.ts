@@ -207,6 +207,7 @@ export const usersTable = pgTable("shuut_users", {
   eligibilityStatus: text("eligibility_status").notNull().default("undecided"),
   onboardingFirstName: text("onboarding_first_name"),
   onboardingLastName: text("onboarding_last_name"),
+  referralSource: text("referral_source"),
   proposedHandle: text("proposed_handle"),
   eligibilityDecidedAt: timestamp("eligibility_decided_at", { withTimezone: true }),
 });

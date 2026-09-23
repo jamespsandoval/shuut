@@ -30,7 +30,7 @@ test('checks onboarding independently of legacy passkey fields', () => {
   }), 'onboardingPending');
 });
 
-test('restores a waitlisted account to the terminal waitlist state', () => {
+test('lets a previously waitlisted account finish onboarding', () => {
   assert.equal(resolveAuthSessionState({
     user: {
       id: 'member',
@@ -41,5 +41,5 @@ test('restores a waitlisted account to the terminal waitlist state', () => {
       passkeyEnrolled: false,
       passkeyVerified: false,
     },
-  }), 'waitlisted');
+  }), 'onboardingPending');
 });

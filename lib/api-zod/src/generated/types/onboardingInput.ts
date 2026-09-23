@@ -23,11 +23,16 @@ export interface OnboardingInput {
      * @pattern ^[a-z0-9_]+$
      */
   handle: string;
-  eligible: boolean;
-  /** Explicit acceptance of the current Terms of Service and linked Community Guidelines. */
+  /**
+     * Plain-text answer to where the member learned about SHÜÜT; the server enforces a maximum of 300 Unicode code points (up to 600 UTF-16 units for supplementary characters).
+     * @minLength 1
+     * @maxLength 600
+     */
+  referralSource: string;
+  /** Acceptance disclosed at registration of the current Terms of Service and linked Community Guidelines. */
   acceptedLegalPolicies: true;
-  /** Exact Terms of Service version presented when the checkbox was selected. */
+  /** Current Terms of Service version accepted at registration. */
   termsVersion: string;
-  /** Exact Community Guidelines version presented when the checkbox was selected. */
+  /** Current Community Guidelines version accepted at registration. */
   communityGuidelinesVersion: string;
 }

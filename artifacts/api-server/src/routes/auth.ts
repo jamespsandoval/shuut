@@ -1,6 +1,6 @@
 import { randomBytes, randomInt, randomUUID, createHmac } from "crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, desc, eq, gt, isNull, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, isNotNull, ne } from "drizzle-orm";
 import {
   LoginBody,
   CheckUsernameAvailabilityParams,
@@ -809,8 +809,17 @@ router.post("/onboarding", async (req, res): Promise<void> => {
   const body = CompleteOnboardingBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({
-      error: "Enter your name, choose a valid lowercase username, and accept the Terms of Service and Community Guidelines.",
+      error: "Enter your name, choose a valid lowercase username, and tell us where you learned about SHÜÜT.",
     });
+    return;
+  }
+  const referralSource = body.data.referralSource.trim();
+  // This answer is stored as text, never interpreted as markup or executable input.
+  // Permit names, emoji, line breaks and URLs, but reject executable payloads.
+  if (!referralSource || [...referralSource].length > 300 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(referralSource) ||
+    /<\s*\/?\s*(?:script|iframe|object|embed|svg|img|style|form|meta|link)\b[^>]*>|(?:javascript|data|vbscript)\s*:|^\s*(?:#!|<\?php|(?:sudo|bash|sh|python|node)\s+(?:-|\/)|(?:curl|wget)\s+(?:-|https?:\/\/))/iu.test(referralSource)) {
+    res.status(400).json({ error: "Enter a plain-text answer (up to 300 characters); code and executable content are not allowed." });
     return;
   }
   if (
@@ -834,20 +843,7 @@ router.post("/onboarding", async (req, res): Promise<void> => {
     .from(foundersTable)
     .where(eq(foundersTable.userId, userId))
     .limit(1);
-  const requestedStatus = body.data.eligible ? "eligible" : "waitlisted";
   if (existingProfile) {
-    if (!body.data.eligible) {
-      res.status(409).json({ error: "Your onboarding decision has already been recorded." });
-      return;
-    }
-    res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
-    return;
-  }
-  if (user.eligibilityStatus !== "undecided") {
-    if (user.eligibilityStatus !== requestedStatus) {
-      res.status(409).json({ error: "Your onboarding decision has already been recorded." });
-      return;
-    }
     res.json(CompleteOnboardingResponse.parse(await sessionJson(user, req)));
     return;
   }
@@ -855,28 +851,27 @@ router.post("/onboarding", async (req, res): Promise<void> => {
   try {
     await db.transaction(async (tx) => {
       const updated = await tx.update(usersTable).set({
-        eligibilityStatus: requestedStatus,
+        eligibilityStatus: "eligible",
         onboardingFirstName: body.data.firstName.trim(),
         onboardingLastName: body.data.lastName.trim(),
+        referralSource,
         proposedHandle: handle,
         eligibilityDecidedAt: new Date(),
       }).where(and(
         eq(usersTable.id, userId),
-        eq(usersTable.eligibilityStatus, "undecided"),
+        inArray(usersTable.eligibilityStatus, ["undecided", "waitlisted"]),
       )).returning({ id: usersTable.id });
       if (!updated.length) throw new Error("ONBOARDING_DECISION_CONFLICT");
-      if (body.data.eligible) {
-        await tx.insert(foundersTable).values({
-          userId,
-          name: `${body.data.firstName.trim()} ${body.data.lastName.trim()}`,
-          handle,
-          bio: "",
-          avatarColor: "#3B82F6",
-          isFollowing: false,
-          followerCount: 0,
-          followingCount: 0,
-        });
-      }
+      await tx.insert(foundersTable).values({
+        userId,
+        name: `${body.data.firstName.trim()} ${body.data.lastName.trim()}`,
+        handle,
+        bio: "",
+        avatarColor: "#3B82F6",
+        isFollowing: false,
+        followerCount: 0,
+        followingCount: 0,
+      });
       await tx.insert(legalPolicyAcceptancesTable).values([
         {
           userId,
@@ -899,7 +894,7 @@ router.post("/onboarding", async (req, res): Promise<void> => {
       res.status(409).json({ error: "Your onboarding decision has already been recorded." });
       return;
     }
-    if (body.data.eligible && typeof error === "object" && error && "code" in error && error.code === "23505") {
+    if (typeof error === "object" && error && "code" in error && error.code === "23505") {
       res.status(409).json({ error: "That username is already taken." });
       return;
     }

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity } from 'react-native';
 import { getCheckUsernameAvailabilityQueryKey, useCheckUsernameAvailability, useCompleteOnboarding } from '@workspace/api-client-react';
-import { Check } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
 
@@ -12,12 +11,13 @@ function usernameFromName(first: string, last: string) {
 }
 
 export default function OnboardingScreen() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const { step: routeStep } = useLocalSearchParams<{ step?: string }>();
+  const step = routeStep === 'username' ? 2 : routeStep === 'source' ? 3 : 1;
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [handle, setHandle] = useState('');
-  const [decision, setDecision] = useState<boolean | null>(null);
-  const [acceptedLegalPolicies, setAcceptedLegalPolicies] = useState(false);
+  const [referralSource, setReferralSource] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const colors = useColors();
   const mutation = useCompleteOnboarding();
@@ -29,28 +29,28 @@ export default function OnboardingScreen() {
   const nextFromName = () => {
     if (!firstName.trim() || !lastName.trim()) return;
     setHandle(usernameFromName(firstName.trim(), lastName.trim()));
-    setStep(2);
+    router.setParams({ step: 'username' });
   };
-  const decide = (eligible: boolean) => {
-    if (!acceptedLegalPolicies) return;
-    setDecision(eligible);
+  const finish = () => {
+    if (!referralSource.trim() || [...referralSource.trim()].length > 300) return;
+    setError(null);
     mutation.mutate({ data: {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       handle,
-      eligible,
+      referralSource: referralSource.trim(),
       acceptedLegalPolicies: true,
       termsVersion: user?.legalPolicyConsent.terms.currentVersion ?? '',
       communityGuidelinesVersion: user?.legalPolicyConsent.communityGuidelines.currentVersion ?? '',
     } }, {
       onSuccess: (session) => completeOnboarding(session.user),
       onError: async (requestError) => {
-        setDecision(null);
+        setError(requestError.message);
         const errorValue = requestError as {
           data?: { code?: string };
         };
         if (errorValue.data?.code === 'LEGAL_POLICY_VERSION_MISMATCH') {
-          setAcceptedLegalPolicies(false);
+          setError('The policies changed. Please review the linked policies on the registration screen and try again.');
           await refreshSession();
         }
       },
@@ -74,34 +74,14 @@ export default function OnboardingScreen() {
           <Text style={[styles.status, { color: handleReady ? '#059669' : colors.mutedForeground }]}>
             {availability.isFetching ? 'Checking username…' : handleReady ? 'Username available' : validHandle && availability.data?.available === false ? 'Username already taken' : 'Use 2–30 lowercase letters, numbers or underscores.'}
           </Text>
-          <Action label="Continue" disabled={!handleReady} onPress={() => setStep(3)} colors={colors} />
+           <Action label="Continue" disabled={!handleReady} onPress={() => router.setParams({ step: 'source' })} colors={colors} />
         </> : <>
-          <Text style={[styles.title, { color: colors.foreground }]}>Are you the founder of a technology startup based in Europe (including the UK)?</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>SHÜÜT is currently available to founders of European and UK technology startups. Your answer is final.</Text>
-           <Pressable
-             accessibilityRole="checkbox"
-             accessibilityState={{ checked: acceptedLegalPolicies }}
-             testID="checkbox-legal-policies"
-             onPress={() => setAcceptedLegalPolicies((accepted) => !accepted)}
-             style={styles.consentRow}
-           >
-             <View style={[styles.checkbox, { borderColor: acceptedLegalPolicies ? colors.primary : colors.border, backgroundColor: acceptedLegalPolicies ? colors.primary : colors.background }]}>
-               {acceptedLegalPolicies ? <Check size={16} color={colors.primaryForeground} strokeWidth={3} /> : null}
-             </View>
-             <Text style={[styles.consentText, { color: colors.foreground }]}>
-               I agree to the{' '}
-              <Text style={{ color: colors.primary }} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/public/terms' as never, params: { returnTo: '/(auth)/onboarding' } }); }}>Terms of Service</Text>
-               {' '}and linked{' '}
-              <Text style={{ color: colors.primary }} onPress={(event) => { event.stopPropagation(); router.push({ pathname: '/public/community' as never, params: { returnTo: '/(auth)/onboarding' } }); }}>Community Guidelines</Text>.
-             </Text>
-           </Pressable>
-          {mutation.error && <Text style={[styles.error, { color: colors.destructive }]}>{mutation.error.message}</Text>}
-          {[{ label: 'Yes, I am', value: true }, { label: 'No, I’m not', value: false }].map((option) => (
-             <TouchableOpacity key={option.label} accessibilityRole="radio" accessibilityState={{ checked: decision === option.value, disabled: mutation.isPending || !acceptedLegalPolicies }} disabled={mutation.isPending || !acceptedLegalPolicies} onPress={() => decide(option.value)} style={[styles.choice, { borderColor: colors.border, opacity: acceptedLegalPolicies ? 1 : 0.5 }]}>
-              <Text style={[styles.choiceText, { color: colors.foreground }]}>{option.label}</Text>
-              {decision === option.value && mutation.isPending ? <ActivityIndicator color={colors.primary} /> : <View style={[styles.radio, { borderColor: colors.mutedForeground }]} />}
-            </TouchableOpacity>
-          ))}
+           <Text style={[styles.title, { color: colors.foreground }]}>Where did you learn about this app?</Text>
+           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Names, event links, and URLs are welcome.</Text>
+           <TextInput style={[styles.input, styles.longInput, { color: colors.foreground, borderColor: colors.border }]} placeholder="A friend, a Luma event URL, or anywhere else…" placeholderTextColor={colors.mutedForeground} multiline textAlignVertical="top" maxLength={600} value={referralSource} onChangeText={(text) => setReferralSource([...text].slice(0, 300).join(''))} accessibilityLabel="Where did you learn about this app?" />
+           <Text style={[styles.status, { color: colors.mutedForeground }]}>{[...referralSource].length}/300 characters</Text>
+           {error && <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text>}
+           <Action label={mutation.isPending ? 'Saving…' : 'Finish registration'} disabled={mutation.isPending || !referralSource.trim()} onPress={finish} colors={colors} />
         </>}
       </ScrollView>
     </SafeAreaView>
@@ -119,14 +99,9 @@ const styles = StyleSheet.create({
   title: { fontFamily: 'Inter_700Bold', fontSize: 30, lineHeight: 38, marginBottom: 10 },
   subtitle: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 24, marginBottom: 24 },
   input: { height: 56, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, fontSize: 16, marginBottom: 12 },
+  longInput: { height: 148, paddingTop: 14 },
   status: { minHeight: 24, fontFamily: 'Inter_500Medium', marginBottom: 12 },
   button: { height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   buttonText: { fontFamily: 'Inter_700Bold', fontSize: 16 },
-  choice: { height: 64, borderWidth: 1, borderRadius: 12, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  choiceText: { fontFamily: 'Inter_700Bold', fontSize: 16 },
-  radio: { width: 20, height: 20, borderWidth: 2, borderRadius: 10 },
   error: { marginBottom: 14, fontFamily: 'Inter_500Medium' },
-  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 20 },
-  checkbox: { width: 24, height: 24, borderWidth: 2, borderRadius: 6, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  consentText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 21 },
 });

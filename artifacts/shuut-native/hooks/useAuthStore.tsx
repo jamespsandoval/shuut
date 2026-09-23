@@ -98,11 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (session: MobileAuthSession) => {
-    const nextState: PersistedAuthState = session.user.eligibilityStatus === 'waitlisted'
-      ? 'waitlisted'
-      : session.user.onboardingComplete
-        ? 'ready'
-        : 'onboardingPending';
+    const nextState: PersistedAuthState = session.user.onboardingComplete ? 'ready' : 'onboardingPending';
     await Promise.all([
       authStorage.setItem(TOKEN_KEY, session.accessToken),
       authStorage.setItem(AUTH_STATE_KEY, nextState),

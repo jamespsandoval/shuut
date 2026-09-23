@@ -132,85 +132,56 @@ test("111333 verifies active codes only in development", async () => {
   }
 });
 
-test("onboarding eligibility atomically admits founders or permanently waitlists applicants", async () => {
-  const waitlistEmail = `${prefix}-waitlisted@example.test`;
-  const waitlistSession = await register(waitlistEmail, false);
-  const waitlistPayload = {
-    firstName: "Jamie",
-    lastName: "Outside",
+test("onboarding saves a plain-text referral, records policy versions, and no longer gates founders", async () => {
+  const email = `${prefix}-referral@example.test`;
+  const session = await register(email, false);
+  const [applicant] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  await db.update(usersTable).set({ eligibilityStatus: "waitlisted" }).where(eq(usersTable.id, applicant.id));
+  const payload = {
+    firstName: "Jamie", lastName: "Outside",
     handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}wo`,
-    eligible: false,
+    referralSource: "Luma event: https://lu.ma/event?ref=partner&tag=🎉",
     acceptedLegalPolicies: true,
     termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
     communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
   };
-  const stalePolicies = await request("/api/auth/onboarding", {
-    method: "POST",
-    session: waitlistSession,
-    json: { ...waitlistPayload, termsVersion: "2020-01-01" },
-  });
-  assert.equal(stalePolicies.status, 409);
-  assert.equal((await stalePolicies.json() as { code: string }).code, "LEGAL_POLICY_VERSION_MISMATCH");
-  const unchecked = await request("/api/auth/onboarding", {
-    method: "POST",
-    session: waitlistSession,
-    json: { ...waitlistPayload, acceptedLegalPolicies: false },
-  });
-  assert.equal(unchecked.status, 400);
-  const waitlisted = await request("/api/auth/onboarding", {
-    method: "POST",
-    session: waitlistSession,
-    json: waitlistPayload,
-  });
-  assert.equal(waitlisted.status, 200);
-  assert.equal((await waitlisted.json() as { user: { eligibilityStatus: string } }).user.eligibilityStatus, "waitlisted");
-  const repeated = await request("/api/auth/onboarding", {
-    method: "POST",
-    session: waitlistSession,
-    json: waitlistPayload,
-  });
-  assert.equal(repeated.status, 200);
-  const conflicting = await request("/api/auth/onboarding", {
-    method: "POST",
-    session: waitlistSession,
-    json: { ...waitlistPayload, eligible: true },
-  });
-  assert.equal(conflicting.status, 409);
-  const [waitlistUser] = await db.select().from(usersTable).where(eq(usersTable.email, waitlistEmail));
-  assert.equal(waitlistUser.eligibilityStatus, "waitlisted");
-  assert.equal(waitlistUser.onboardingFirstName, "Jamie");
-  assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.userId, waitlistUser.id))).length, 0);
-  const waitlistAcceptances = await db.select().from(legalPolicyAcceptancesTable)
-    .where(eq(legalPolicyAcceptancesTable.userId, waitlistUser.id));
-  assert.equal(waitlistAcceptances.length, 2);
-  assert.deepEqual(
-    new Set(waitlistAcceptances.map((acceptance) => acceptance.policyContentHash)),
-    new Set(Object.values(CURRENT_LEGAL_POLICY_CONTENT_HASHES)),
-  );
-  assert.deepEqual(new Set(waitlistAcceptances.map((acceptance) => acceptance.source)), new Set(["web"]));
+  const onboarding = (json: Record<string, unknown>) =>
+    request("/api/auth/onboarding", { method: "POST", session, json });
+  const stale = await onboarding({ ...payload, termsVersion: "2020-01-01" });
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json() as { code: string }).code, "LEGAL_POLICY_VERSION_MISMATCH");
+  assert.equal((await onboarding({ ...payload, acceptedLegalPolicies: false })).status, 400);
+  assert.equal((await onboarding({ ...payload, referralSource: "<script>alert(1)</script>" })).status, 400);
+  assert.equal((await onboarding({ ...payload, referralSource: "#!/bin/bash" })).status, 400);
+  assert.equal((await onboarding({ ...payload, referralSource: "x".repeat(301) })).status, 400);
+  assert.equal((await onboarding({ ...payload, referralSource: "javascript:alert(1)" })).status, 400);
+  assert.equal((await onboarding({ ...payload, referralSource: "🎉".repeat(301) })).status, 400);
+  const completed = await onboarding(payload);
+  assert.equal(completed.status, 200);
+  const result = await completed.json() as { user: { onboardingComplete: boolean; eligibilityStatus: string } };
+  assert.equal(result.user.onboardingComplete, true);
+  assert.equal(result.user.eligibilityStatus, "eligible");
+  const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, applicant.id));
+  assert.equal(updated.referralSource, payload.referralSource);
+  assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.userId, applicant.id))).length, 1);
+  const acceptances = await db.select().from(legalPolicyAcceptancesTable)
+    .where(eq(legalPolicyAcceptancesTable.userId, applicant.id));
+  assert.deepEqual(new Set(acceptances.map((a) => a.policyContentHash)),
+    new Set(Object.values(CURRENT_LEGAL_POLICY_CONTENT_HASHES)));
+  assert.deepEqual(new Set(acceptances.map((a) => a.source)), new Set(["web"]));
+  assert.equal((await onboarding(payload)).status, 200);
 
-  const founderEmail = `${prefix}-eligible@example.test`;
-  const founderSession = await register(founderEmail, false);
-  const founderHandle = `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}eu`;
-  const eligible = await request("/api/auth/onboarding", {
+  const emojiEmail = `${prefix}-emoji-referral@example.test`;
+  const emojiSession = await register(emojiEmail, false);
+  const emojiAnswer = "🎉".repeat(300);
+  const emojiResult = await request("/api/auth/onboarding", {
     method: "POST",
-    session: founderSession,
-    json: {
-      firstName: "Alex",
-      lastName: "Europe",
-      handle: founderHandle,
-      eligible: true,
-      acceptedLegalPolicies: true,
-      termsVersion: CURRENT_LEGAL_POLICY_VERSIONS.terms,
-      communityGuidelinesVersion: CURRENT_LEGAL_POLICY_VERSIONS.communityGuidelines,
-    },
+    session: emojiSession,
+    json: { ...payload, handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-18)}em`, referralSource: emojiAnswer },
   });
-  assert.equal(eligible.status, 200);
-  const eligibleBody = await eligible.json() as { user: { onboardingComplete: boolean; eligibilityStatus: string } };
-  assert.equal(eligibleBody.user.onboardingComplete, true);
-  assert.equal(eligibleBody.user.eligibilityStatus, "eligible");
-  const [founderUser] = await db.select().from(usersTable).where(eq(usersTable.email, founderEmail));
-  assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.userId, founderUser.id))).length, 1);
+  assert.equal(emojiResult.status, 200);
+  const [emojiUser] = await db.select().from(usersTable).where(eq(usersTable.email, emojiEmail));
+  assert.equal(emojiUser.referralSource, emojiAnswer);
 });
 
 test("post delete controls follow the explicit server permission", () => {

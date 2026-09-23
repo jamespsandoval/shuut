@@ -211,6 +211,12 @@ export default function LoginScreen() {
               </View>
             )}
           </TouchableOpacity>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 21, marginTop: 14 }}>
+            By registering for SHÜÜT, you accept our{' '}
+            <Text style={{ color: colors.primary }} onPress={() => router.push({ pathname: '/public/terms' as never, params: { returnTo: '/(auth)/login' } })}>Terms of Service</Text>,{' '}
+            <Text style={{ color: colors.primary }} onPress={() => router.push({ pathname: '/public/privacy' as never, params: { returnTo: '/(auth)/login' } })}>Privacy Policy</Text>, and{' '}
+            <Text style={{ color: colors.primary }} onPress={() => router.push({ pathname: '/public/community' as never, params: { returnTo: '/(auth)/login' } })}>Community Guidelines</Text>.
+          </Text>
         </View>
         <View style={{ flex: 1 }} />
         <LegalFooter />

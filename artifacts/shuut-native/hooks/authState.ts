@@ -8,6 +8,5 @@ export function isPersistedAuthState(value: string | null): value is PersistedAu
 }
 
 export function resolveAuthSessionState(session: AuthSession): PersistedAuthState {
-  if (session.user.eligibilityStatus === 'waitlisted') return 'waitlisted';
   return session.user.onboardingComplete ? 'ready' : 'onboardingPending';
 }

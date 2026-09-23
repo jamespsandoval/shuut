@@ -18,8 +18,7 @@ class OpenAITranscriptPolishProvider implements TranscriptPolishProvider {
       },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 0,
-        max_tokens: 4096,
+        max_completion_tokens: 4096,
         response_format: { type: "json_object" },
         messages: [
           {

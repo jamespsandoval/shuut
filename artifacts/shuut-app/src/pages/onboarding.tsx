@@ -10,9 +10,10 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Footer } from "@/components/footer";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocation, Redirect } from "wouter";
 
 function usernameFromName(firstName: string, lastName: string) {
   return `${firstName}_${lastName}`
@@ -39,15 +40,29 @@ function errorMessage(error: unknown) {
   );
 }
 
-export default function Onboarding() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [handle, setHandle] = useState("");
+type StepName = "name" | "username" | "source";
+const DRAFT_KEY = "shuut-onboarding-draft";
+function readDraft(): { firstName: string; lastName: string; handle: string; referralSource: string } {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "{}");
+    return {
+      firstName: typeof saved.firstName === "string" ? saved.firstName : "",
+      lastName: typeof saved.lastName === "string" ? saved.lastName : "",
+      handle: typeof saved.handle === "string" ? saved.handle : "",
+      referralSource: typeof saved.referralSource === "string" ? saved.referralSource : "",
+    };
+  } catch {
+    return { firstName: "", lastName: "", handle: "", referralSource: "" };
+  }
+}
+
+export default function Onboarding({ stepName }: { stepName: StepName }) {
+  const [draft, setDraft] = useState(readDraft);
+  const { firstName, lastName, handle, referralSource } = draft;
+  const [, navigate] = useLocation();
+  const step = stepName === "name" ? 1 : stepName === "username" ? 2 : 3;
   const [debouncedHandle, setDebouncedHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [decision, setDecision] = useState<boolean | null>(null);
-  const [acceptedLegalPolicies, setAcceptedLegalPolicies] = useState(false);
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const completeOnboarding = useCompleteOnboarding();
@@ -64,6 +79,11 @@ export default function Onboarding() {
     debouncedHandle === handle &&
     usernameAvailability.data?.available === true;
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const updateDraft = (patch: Partial<typeof draft>) => {
+    const next = { ...draft, ...patch };
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+    setDraft(next);
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedHandle(handle), 350);
@@ -74,41 +94,40 @@ export default function Onboarding() {
     event.preventDefault();
     const suggested = usernameFromName(firstName.trim(), lastName.trim());
     if (!firstName.trim() || !lastName.trim() || suggested.length < 2) return;
-    setHandle(suggested);
+    updateDraft({ handle: suggested });
     setError(null);
-    setStep(2);
+    navigate("/onboarding/username");
   };
 
-  const decide = (eligible: boolean) => {
-    if (!acceptedLegalPolicies) return;
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
     const normalizedHandle = handle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30);
-    setHandle(normalizedHandle);
+    if (!referralSource.trim() || [...referralSource.trim()].length > 300) return;
     setError(null);
-    setDecision(eligible);
     completeOnboarding.mutate(
       {
         data: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           handle: normalizedHandle,
-          eligible,
+          referralSource: referralSource.trim(),
           acceptedLegalPolicies: true,
           termsVersion: user?.legalPolicyConsent.terms.currentVersion ?? "",
           communityGuidelinesVersion: user?.legalPolicyConsent.communityGuidelines.currentVersion ?? "",
         },
       },
       {
-        onSuccess: () =>
-          queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() }),
+        onSuccess: () => {
+          sessionStorage.removeItem(DRAFT_KEY);
+          queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
+        },
         onError: (requestError) => {
-          setDecision(null);
           const errorValue = requestError as {
             data?: { code?: string };
           };
           if (errorValue.data?.code === "LEGAL_POLICY_VERSION_MISMATCH") {
-            setAcceptedLegalPolicies(false);
             queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
-            setError("The policies changed while you were reviewing them. Please review the current versions and check the box again.");
+            setError("The policies changed during registration. Please review the latest Terms of Service and Community Guidelines below, then try again.");
             return;
           }
           setError(errorMessage(requestError));
@@ -117,9 +136,12 @@ export default function Onboarding() {
     );
   };
 
+  if (step > 1 && (!firstName.trim() || !lastName.trim())) return <Redirect to="/onboarding/name" />;
+  if (step === 3 && !validHandle) return <Redirect to="/onboarding/username" />;
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white text-foreground">
-      <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[420px] mx-auto">
+      <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[840px] mx-auto">
         <div className="w-full flex flex-col items-center mb-10">
           <img src={`${basePath}/shuut-logo.png`} alt="SHÜÜT" className="h-[100px] w-auto" />
           <p className="-mt-2 text-[17px] font-semibold text-muted-foreground text-center tracking-tight">
@@ -127,7 +149,7 @@ export default function Onboarding() {
           </p>
         </div>
 
-        <section className="w-full">
+        <section className={`w-full ${step === 3 ? "max-w-[800px]" : "max-w-[560px]"}`}>
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-primary">
             Step {step} of 3
           </p>
@@ -146,7 +168,7 @@ export default function Onboarding() {
                   <UserRound className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={firstName}
-                    onChange={(event) => setFirstName(event.target.value)}
+                     onChange={(event) => updateDraft({ firstName: event.target.value })}
                     placeholder="First name"
                     autoComplete="given-name"
                     maxLength={40}
@@ -159,7 +181,7 @@ export default function Onboarding() {
                   <UserRound className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={lastName}
-                    onChange={(event) => setLastName(event.target.value)}
+                     onChange={(event) => updateDraft({ lastName: event.target.value })}
                     placeholder="Last name"
                     autoComplete="family-name"
                     maxLength={40}
@@ -179,12 +201,12 @@ export default function Onboarding() {
               </Button>
             </form>
           ) : step === 2 ? (
-            <form onSubmit={(event) => { event.preventDefault(); setError(null); setStep(3); }} className="space-y-5">
+             <form onSubmit={(event) => { event.preventDefault(); setError(null); navigate("/onboarding/source"); }} className="space-y-5">
               <button
                 type="button"
                 onClick={() => {
                   setError(null);
-                  setStep(1);
+                   navigate("/onboarding/name");
                 }}
                 className="flex items-center text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
@@ -211,12 +233,12 @@ export default function Onboarding() {
                 <Input
                   value={handle}
                   onChange={(event) =>
-                    setHandle(
+                     updateDraft({ handle:
                       event.target.value
                         .toLowerCase()
                         .replace(/[^a-z0-9_]/g, "")
                         .slice(0, 30),
-                    )
+                     })
                   }
                   placeholder="your_username"
                   autoComplete="username"
@@ -264,50 +286,37 @@ export default function Onboarding() {
               </Button>
             </form>
           ) : (
-            <div className="space-y-5">
+             <form onSubmit={submit} className="space-y-5">
+               <button type="button" onClick={() => navigate("/onboarding/username")} className="flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground">
+                 <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
+               </button>
               <div>
                 <h1 className="text-3xl font-extrabold tracking-tight">
-                  Are you the founder of a technology startup based in Europe (including the UK)?
+                   Where did you learn about this app?
                 </h1>
                 <p className="mt-2 text-[15px] font-medium text-muted-foreground">
-                  SHÜÜT is currently available to founders of European and UK technology startups. Your answer is final.
+                   Tell us in your own words. Names, event links, and URLs are welcome.
                 </p>
               </div>
               {error && (
-                <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+                 <Alert variant="destructive"><AlertDescription>
+                   {error}
+                   {error.startsWith("The policies changed") && (
+                     <span className="mt-2 block">
+                       <a href={`${basePath}/terms`} target="_blank" rel="noreferrer" className="underline">Terms of Service</a>
+                       {" · "}
+                       <a href={`${basePath}/community`} target="_blank" rel="noreferrer" className="underline">Community Guidelines</a>
+                     </span>
+                   )}
+                 </AlertDescription></Alert>
               )}
-              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium leading-6">
-                <Checkbox
-                  checked={acceptedLegalPolicies}
-                  onCheckedChange={(checked) => setAcceptedLegalPolicies(checked === true)}
-                  data-testid="checkbox-legal-policies"
-                  aria-label="Accept the Terms of Service and Community Guidelines"
-                  className="mt-0.5"
-                />
-                <span>
-                  I agree to the <a href={`${basePath}/terms`} target="_blank" rel="noreferrer" className="font-bold underline underline-offset-2">Terms of Service</a> and linked{" "}
-                  <a href={`${basePath}/community`} target="_blank" rel="noreferrer" className="font-bold underline underline-offset-2">Community Guidelines</a>.
-                </span>
-              </div>
-              <div className="space-y-3" role="radiogroup" aria-label="Founder eligibility">
-                {[{ label: "Yes, I am", value: true }, { label: "No, I’m not", value: false }].map((option) => (
-                  <button
-                    key={option.label}
-                    type="button"
-                    role="radio"
-                    aria-checked={decision === option.value}
-                    disabled={completeOnboarding.isPending || !acceptedLegalPolicies}
-                    onClick={() => decide(option.value)}
-                    className="flex h-16 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-5 text-left text-[16px] font-bold shadow-sm transition hover:border-primary disabled:opacity-60"
-                  >
-                    {option.label}
-                    {decision === option.value && completeOnboarding.isPending
-                      ? <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      : <span className="h-5 w-5 rounded-full border-2 border-slate-400" />}
-                  </button>
-                ))}
-              </div>
-            </div>
+               <label htmlFor="referral-source" className="sr-only">Where did you learn about this app?</label>
+               <Textarea id="referral-source" value={referralSource} onChange={(event) => updateDraft({ referralSource: [...event.target.value].slice(0, 300).join("") })} required autoFocus placeholder="For example: a friend, a Luma event URL, or anywhere else…" className="min-h-32 w-full rounded-xl border-slate-300 p-4 text-[16px]" />
+               <p className="text-right text-sm text-muted-foreground">{[...referralSource].length}/300 characters</p>
+               <Button type="submit" disabled={completeOnboarding.isPending || !referralSource.trim()} className="h-14 w-full rounded-xl text-[16px] font-bold">
+                 {completeOnboarding.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Finish registration"}
+               </Button>
+             </form>
           )}
         </section>
       </main>

@@ -60,11 +60,8 @@ function HomeRedirect() {
   }
 
   if (isSignedIn) {
-    if (user?.eligibilityStatus === 'waitlisted') {
-      return <Waitlist />;
-    }
     if (!user?.onboardingComplete) {
-      return <Onboarding />;
+      return <Redirect to="/onboarding/name" />;
     }
     return <Redirect to="/feed" />;
   }
@@ -87,11 +84,8 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
         }
 
         if (isSignedIn) {
-          if (user?.eligibilityStatus === 'waitlisted') {
-            return <Redirect to="/" />;
-          }
           if (!user?.onboardingComplete) {
-            return <Redirect to="/" />;
+            return <Redirect to="/onboarding/name" />;
           }
           if (user?.legalPolicyConsent?.required) {
             return <LegalConsentGate />;
@@ -103,6 +97,15 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
       }}
     </Route>
   );
+}
+
+function OnboardingRoute({ params }: { params: { step: string } }) {
+  const { user, isSignedIn, isLoading } = useAuth();
+  if (isLoading) return <RouteLoadingFallback />;
+  if (!isSignedIn) return <Redirect to="/" />;
+  if (user?.onboardingComplete) return <Redirect to="/feed" />;
+  if (!["name", "username", "source"].includes(params.step)) return <Redirect to="/onboarding/name" />;
+  return <Onboarding stepName={params.step as "name" | "username" | "source"} />;
 }
 
 function Router() {
@@ -117,6 +120,7 @@ function Router() {
           <Route path="/privacy" component={Privacy} />
           <Route path="/cookies" component={Cookies} />
           <Route path="/contact" component={Contact} />
+          <Route path="/onboarding/:step" component={OnboardingRoute} />
           <ProtectedRoute path="/feed" component={Home} />
           <ProtectedRoute path="/notifications" component={NotificationsPage} />
           <ProtectedRoute path="/explore" component={Explore} />

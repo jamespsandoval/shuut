@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import app from "../src/app";
 import {
   accountSanctionsTable,
@@ -18,11 +18,12 @@ import {
   usersTable,
   voiceAiConsentsTable,
 } from "@workspace/db";
-import { enqueueModeration, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
+import { enqueueModeration, enqueueUnreviewedPosts, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
 import { CURRENT_LEGAL_POLICY_VERSIONS } from "../src/lib/legalPolicy";
 import { CURRENT_VOICE_AI_CONSENT_VERSION, VOICE_AI_CONSENT_CONTENT_HASH } from "../src/lib/voiceAiConsent";
 
 const prefix = `moderation-${Date.now()}`;
+const testIp = `10.${Math.floor(Date.now() / 86400000) % 254 + 1}.${Math.floor(Date.now() / 1000) % 254 + 1}.5`;
 const emails: Array<{ To: string; Subject: string; TextBody: string }> = [];
 let baseUrl = "";
 let origin = "";
@@ -57,6 +58,8 @@ function parseSession(response: Response): Session {
 async function request(path: string, init: RequestInit & { json?: unknown; session?: Session } = {}) {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json");
+  // Keep the persistent development rate limiter isolated across test runs.
+  headers.set("x-forwarded-for", testIp);
   if (init.session) {
     headers.set("cookie", init.session.cookie);
     headers.set("origin", origin);
@@ -260,6 +263,40 @@ test("moderation is fail-closed, revision-safe, report-private, and operator con
   assert.equal((await db.select().from(moderationCasesTable).where(and(
     eq(moderationCasesTable.targetType, "post"), eq(moderationCasesTable.targetId, failurePost.id),
   ))).length, 1);
+
+  // Older posts without a job are reviewed, not distributed directly or
+  // silently retried after a failed review.
+  const [older, newer] = await db.insert(postsTable).values([
+    { authorId: owner.id, transcript: "Older safe voice", durationSeconds: 2, createdAt: new Date("2026-09-10T10:00:00Z") },
+    { authorId: owner.id, transcript: "Newer safe voice", durationSeconds: 2, createdAt: new Date("2026-09-11T10:00:00Z") },
+  ]).returning();
+  const before = await request("/api/feed?view=everyone", { session: reporterSession });
+  assert.equal(before.status, 200);
+  assert.ok(!(await before.json() as Array<{ id: number }>).some((post) => post.id === older.id || post.id === newer.id));
+  await enqueueUnreviewedPosts();
+  const queued = await db.select().from(moderationJobsTable).where(and(
+    eq(moderationJobsTable.targetType, "post"), inArray(moderationJobsTable.targetId, [older.id, newer.id]),
+  ));
+  assert.equal(queued.length, 2);
+  await enqueueUnreviewedPosts();
+  assert.equal((await db.select().from(moderationJobsTable).where(and(
+    eq(moderationJobsTable.targetType, "post"), inArray(moderationJobsTable.targetId, [older.id, newer.id]),
+  ))).length, 2);
+  assert.equal(failedJob.status, "failed");
+  await db.update(moderationJobsTable).set({ nextAttemptAt: new Date(0) }).where(and(
+    eq(moderationJobsTable.targetType, "post"), inArray(moderationJobsTable.targetId, [older.id, newer.id]),
+  ));
+  setModerationProviderForTests({ classify: async () => ({ categories: [], riskScore: 0 }) });
+  await runModerationSweep(2);
+  const everyone = await request("/api/feed?view=everyone", { session: reporterSession });
+  assert.equal(everyone.status, 200);
+  const visible = (await everyone.json() as Array<{ id: number }>).filter((post) =>
+    [older.id, newer.id, failurePost.id].includes(post.id));
+  assert.deepEqual(visible.map((post) => post.id), [newer.id, older.id]);
+  const following = await request("/api/feed?view=following", { session: reporterSession });
+  assert.equal(following.status, 200);
+  assert.ok(!(await following.json() as Array<{ id: number }>).some((post) =>
+    post.id === older.id || post.id === newer.id));
 
   setModerationProviderForTests(previous);
   const sanction = await request(`/api/moderation/cases/${caseRow.id}/sanctions`, {

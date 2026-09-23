@@ -1,6 +1,6 @@
 import { Link } from 'wouter';
 
-export function Footer() {
+export function Footer({ omitRegistrationLinks = false }: { omitRegistrationLinks?: boolean }) {
   const currentParams = typeof window === 'undefined'
     ? null
     : new URLSearchParams(window.location.search);
@@ -12,10 +12,12 @@ export function Footer() {
 
   const footerLinks = [
     { label: "About", href: "/about" },
-    { label: "Community Guidelines", href: "/community" },
+    ...(!omitRegistrationLinks ? [{ label: "Community Guidelines", href: "/community" }] : []),
     { label: "Contact", href: "/contact" },
-    { label: "Terms of Service", href: "/terms" },
-    { label: "Privacy Policy", href: "/privacy" },
+    ...(!omitRegistrationLinks ? [
+      { label: "Terms of Service", href: "/terms" },
+      { label: "Privacy Policy", href: "/privacy" },
+    ] : []),
     { label: "Cookie Policy", href: "/cookies" },
   ];
 
