@@ -33,6 +33,15 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
         disable_session_recording: true,
         persistence: 'memory',
         person_profiles: 'identified_only',
+        before_send: (event) => {
+          if (!event?.properties) return event;
+          for (const key of Object.keys(event.properties)) {
+            if (/(url|path|referr|utm|query|search|host)/i.test(key)) {
+              delete event.properties[key];
+            }
+          }
+          return event;
+        },
       });
       started.current = true;
       setActive(true);

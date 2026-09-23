@@ -27,6 +27,15 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
         persistence: 'memory',
         captureAppLifecycleEvents: false,
         enableSessionReplay: false,
+        before_send: (event) => {
+          if (!event?.properties) return event;
+          for (const key of Object.keys(event.properties)) {
+            if (/(url|path|referr|utm|query|search|host)/i.test(key)) {
+              delete event.properties[key];
+            }
+          }
+          return event;
+        },
       });
       setClient(instance);
       return () => {
