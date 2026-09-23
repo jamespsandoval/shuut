@@ -84,7 +84,7 @@ export default function VerifyScreen() {
               accessibilityLabel="SHÜÜT"
             />
             <Text style={[styles.subtitleBranding, { color: colors.mutedForeground }]}>
-              Say what’s on your mind. Listen, too.
+              {'Say what’s on your mind.\nListen, too.'}
             </Text>
           </View>
 

@@ -145,7 +145,8 @@ export default function Onboarding({ stepName }: { stepName: StepName }) {
         <div className="w-full flex flex-col items-center mb-10">
           <img src={`${basePath}/shuut-logo.png`} alt="SHÜÜT" className="h-[100px] w-auto" />
           <p className="-mt-2 text-[17px] font-semibold text-muted-foreground text-center tracking-tight">
-            Say what’s on your mind. Listen, too.
+            <span className="block">Say what’s on your mind.</span>
+            <span className="block">Listen, too.</span>
           </p>
         </div>
 

@@ -110,10 +110,8 @@ export default function Landing() {
         <div className="relative w-full flex flex-col items-center justify-center mb-10">
           <img src={`${basePath}/shuut-logo.png`} alt="SHÜÜT" className="h-[100px] w-auto" />
           <p className="-mt-2 text-[17px] font-semibold text-muted-foreground text-center tracking-tight leading-snug">
-            Say what’s on your mind. Listen, too.
-          </p>
-          <p className="mt-3 max-w-[310px] text-center text-sm leading-5 text-muted-foreground">
-            Share your thoughts by voice and hear what others have to say.
+            <span className="block">Say what’s on your mind.</span>
+            <span className="block">Listen, too.</span>
           </p>
         </div>
 
