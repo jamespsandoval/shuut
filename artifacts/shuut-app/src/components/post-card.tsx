@@ -25,6 +25,7 @@ import { canShowPostDeleteAction } from "@/lib/post-permissions"
 import { ModerationActions } from "./moderation-actions"
 import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
 import { ToastAction } from "@/components/ui/toast"
+import { refreshFeedPages } from "@/lib/feed-refresh"
 
 interface PostCardProps {
   post: Post
@@ -93,6 +94,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          void refreshFeedPages(queryClient)
           queryClient.invalidateQueries({ queryKey: getGetPostQueryKey(post.id) })
           queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey(post.author.handle) })
           queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey("me") })
@@ -247,6 +249,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          void refreshFeedPages(queryClient)
           queryClient.invalidateQueries({ queryKey: getGetPostQueryKey(post.id) })
           queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey(post.author.handle) })
           queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey("me") })
@@ -261,7 +264,8 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       { postId: post.id },
       {
         onSuccess: (result) => {
-          queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+           void refreshFeedPages(queryClient)
           toast({
             title: result.status === "completed" ? "Post deleted" : "Post deletion queued",
             description: result.status === "failed"
@@ -287,6 +291,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
         onSuccess: () => {
           setIsEditing(false)
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          void refreshFeedPages(queryClient)
           toast({ title: "SHÜÜT updated" })
         },
         onError: (error) => {

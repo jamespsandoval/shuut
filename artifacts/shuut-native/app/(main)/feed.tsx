@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ActivityIndicator } from 'react-native';
 import { useColors } from '../../hooks/useColors';
-import { useGetFeed, Post } from '@workspace/api-client-react';
+import { getFeedPage, getGetFeedPageQueryKey, Post } from '@workspace/api-client-react';
+import { InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic, Square } from 'lucide-react-native';
 import { PostCard } from '../../components/PostCard';
@@ -14,19 +15,69 @@ export default function FeedScreen() {
   const [view, setView] = useState<'everyone' | 'following'>('everyone');
   const colors = useColors();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ newPostId?: string }>();
   const [showFloatingMic, setShowFloatingMic] = useState(false);
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const floatingMicScrollThreshold = useRef(DEFAULT_FLOATING_MIC_SCROLL_THRESHOLD);
 
-  const { data: posts, isLoading, refetch } = useGetFeed(
-    { view },
-    { query: { queryKey: ['feed', view] } }
-  );
+  const feedQueryKey = useMemo(() => getGetFeedPageQueryKey({ view }), [view]);
+  const {
+    data: feedData,
+    isLoading,
+    isError,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteQuery({
+    queryKey: feedQueryKey,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) => getFeedPage({
+      view,
+      cursor: pageParam ?? undefined,
+      limit: 20,
+    }, { signal }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+
+  const posts = useMemo(() => feedData?.pages.reduce<Post[]>((all, page) => {
+    const seen = new Set(all.map((post) => post.id));
+    return all.concat(page.posts.filter((post) => !seen.has(post.id)));
+  }, []) ?? [], [feedData]);
+
+  // Refresh only the first page. This is used by post cards and publish polling,
+  // so a newly published item never causes the entire history to be downloaded.
+  const refetchFeed = useCallback(async () => {
+    const firstPage = await queryClient.fetchQuery({
+      queryKey: [...feedQueryKey, 'first-page'],
+      queryFn: () => getFeedPage({ view, limit: 20 }),
+      staleTime: 0,
+    });
+    await queryClient.cancelQueries({ queryKey: feedQueryKey, exact: true });
+    queryClient.setQueryData<InfiniteData<typeof firstPage, string | null>>(feedQueryKey, (current) => {
+      if (!current) return { pages: [firstPage], pageParams: [null] };
+      // Old later pages are based on a different first-page cursor. Keeping
+      // them after new posts arrive can leave a gap between the two pages.
+      return { pages: [firstPage], pageParams: [null] };
+    });
+    return firstPage;
+  }, [feedQueryKey, queryClient, view]);
+
+  const refreshFirstPage = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refetchFeed();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetchFeed]);
 
   const renderPost = ({ item }: { item: Post }) => (
-    <PostCard post={item} refetchFeed={refetch} />
+    <PostCard post={item} refetchFeed={() => { void refetchFeed(); }} />
   );
 
   useEffect(() => {
@@ -42,14 +93,16 @@ export default function FeedScreen() {
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
     const pollForPublishedPost = async () => {
-      const result = await refetch();
-      if (isCancelled) return;
-
-      if (result.data?.some((post) => post.id === newPostId)) {
-        router.setParams({ newPostId: undefined });
-        return;
+      try {
+        const result = await refetchFeed();
+        if (isCancelled) return;
+        if (result.posts.some((post) => post.id === newPostId)) {
+          router.setParams({ newPostId: undefined });
+          return;
+        }
+      } catch {
+        if (isCancelled) return;
       }
-
       pollTimer = setTimeout(() => void pollForPublishedPost(), 2_000);
     };
 
@@ -58,7 +111,7 @@ export default function FeedScreen() {
       isCancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [params.newPostId, posts, refetch, router]);
+  }, [params.newPostId, posts, refetchFeed, router]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -133,6 +186,17 @@ export default function FeedScreen() {
         data={posts || []}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderPost}
+        onEndReached={() => {
+          if (hasNextPage && !isFetching && !isRefreshing) void fetchNextPage();
+        }}
+        onEndReachedThreshold={0.65}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => void refreshFirstPage()}
+            tintColor={colors.primary}
+          />
+        }
         onScroll={handleScroll}
         scrollEventThrottle={16}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
@@ -175,12 +239,28 @@ export default function FeedScreen() {
           </View>
         }
         ListEmptyComponent={
-          !isLoading ? (
+          isLoading ? (
+            <View style={styles.empty}><ActivityIndicator color={colors.primary} /></View>
+          ) : isError ? (
+            <View style={styles.empty}>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Could not load posts.</Text>
+              <TouchableOpacity onPress={() => void refreshFirstPage()}>
+                <Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <View style={styles.empty}>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No posts found</Text>
             </View>
-          ) : null
+          )
         }
+        ListFooterComponent={isFetchingNextPage
+          ? <View style={styles.footer}><ActivityIndicator color={colors.primary} /></View>
+          : isFetchNextPageError
+            ? <TouchableOpacity style={styles.footer} onPress={() => void fetchNextPage()}>
+                <Text style={[styles.retryText, { color: colors.primary }]}>Could not load more. Tap to retry.</Text>
+              </TouchableOpacity>
+            : null}
       />
       {showFloatingMic && (
         <TouchableOpacity
@@ -345,5 +425,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
-  }
+  },
+  retryText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    marginTop: 12,
+  },
+  footer: {
+    paddingVertical: 20,
+  },
 });

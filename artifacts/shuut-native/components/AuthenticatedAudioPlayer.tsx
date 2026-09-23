@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Play, Pause } from 'lucide-react-native';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
@@ -11,85 +11,154 @@ interface AuthenticatedAudioPlayerProps {
   durationSeconds: number;
 }
 
+function sessionCacheSuffix(token: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < token.length; i += 1) {
+    hash = Math.imul(hash ^ token.charCodeAt(i), 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 export function AuthenticatedAudioPlayer({ url, durationSeconds }: AuthenticatedAudioPlayerProps) {
   const { token } = useAuth();
   const colors = useColors();
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState(false);
+  const pendingPlayRef = useRef(false);
+  const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!url) return;
-    if (url.startsWith('file:') || url.startsWith('blob:')) {
+    mountedRef.current = true;
+    requestIdRef.current += 1;
+    pendingPlayRef.current = false;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsDownloading(false);
+
+    if (!url) {
+      setLocalUri(null);
+      setError(false);
+    } else if (url.startsWith('file:') || url.startsWith('blob:')) {
       setLocalUri(url);
       setError(false);
-      return;
+    } else {
+      setLocalUri(null);
+      setError(false);
     }
-    if (!token) return;
-
-    let isMounted = true;
-    let objectUrl: string | null = null;
-    
-    const downloadAudio = async () => {
-      try {
-        setIsDownloading(true);
-        setError(false);
-
-        const fullUrl = resolveApiUrl(url);
-        if (!fullUrl) throw new Error('Audio URL was empty.');
-
-        if (Platform.OS === 'web') {
-          const response = await fetch(fullUrl, {
-            credentials: 'omit',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`Audio request failed with status ${response.status}`);
-          }
-
-          objectUrl = URL.createObjectURL(await response.blob());
-          if (isMounted) setLocalUri(objectUrl);
-          return;
-        }
-
-        const { File, Paths } = await import('expo-file-system');
-        const filename = encodeURIComponent(url) + '.m4a';
-        const fileObj = new File(Paths.cache, filename);
-
-        const exists = fileObj.exists;
-        if (exists) {
-          if (isMounted) setLocalUri(fileObj.uri);
-          return;
-        }
-
-        const downloadedFile = await File.downloadFileAsync(fullUrl, fileObj, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-
-        if (isMounted) setLocalUri(downloadedFile.uri);
-      } catch (err) {
-        if (isMounted) setError(true);
-      } finally {
-        if (isMounted) setIsDownloading(false);
-      }
-    };
-
-    downloadAudio();
 
     return () => {
-      isMounted = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      mountedRef.current = false;
+      requestIdRef.current += 1;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
     };
   }, [url, token]);
 
   const player = useAudioPlayer(localUri ? { uri: localUri } : null);
   const status = useAudioPlayerStatus(player);
 
+  const downloadAudio = useCallback(async () => {
+    if (!url || url.startsWith('file:') || url.startsWith('blob:')) return;
+    if (!token) {
+      setError(true);
+      return;
+    }
+
+    const requestId = requestIdRef.current;
+    const isCurrent = () => mountedRef.current && requestId === requestIdRef.current;
+
+    try {
+      setIsDownloading(true);
+      setError(false);
+
+      const fullUrl = resolveApiUrl(url);
+      if (!fullUrl) throw new Error('Audio URL was empty.');
+
+      if (Platform.OS === 'web') {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        const response = await fetch(fullUrl, {
+          credentials: 'omit',
+          signal: controller.signal,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) {
+          throw new Error(`Audio request failed with status ${response.status}`);
+        }
+
+        const nextObjectUrl = URL.createObjectURL(await response.blob());
+        if (!isCurrent()) {
+          URL.revokeObjectURL(nextObjectUrl);
+          return;
+        }
+        objectUrlRef.current = nextObjectUrl;
+        setLocalUri(nextObjectUrl);
+        return;
+      }
+
+      const { File, Paths } = await import('expo-file-system');
+      // Do not reuse a private recording downloaded by a different session.
+      const filename = encodeURIComponent(url) + '-' + sessionCacheSuffix(token) + '.m4a';
+      const fileObj = new File(Paths.cache, filename);
+
+      if (fileObj.exists) {
+        if (isCurrent()) setLocalUri(fileObj.uri);
+        return;
+      }
+
+      const downloadedFile = await File.downloadFileAsync(fullUrl, fileObj, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (isCurrent()) setLocalUri(downloadedFile.uri);
+    } catch (err) {
+      if (isCurrent() && !(err instanceof Error && err.name === 'AbortError')) {
+        setError(true);
+      }
+    } finally {
+      if (isCurrent()) setIsDownloading(false);
+    }
+  }, [token, url]);
+
+  useEffect(() => {
+    if (!localUri || !pendingPlayRef.current || !player) return;
+
+    pendingPlayRef.current = false;
+    void (async () => {
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+      if (status.didJustFinish) {
+        await player.seekTo(0);
+      }
+      player.play();
+    })();
+  }, [localUri, player, status.didJustFinish]);
+
   const togglePlayback = async () => {
+    if (error) {
+      pendingPlayRef.current = true;
+      await downloadAudio();
+      return;
+    }
+    if (!localUri) {
+      pendingPlayRef.current = true;
+      await downloadAudio();
+      return;
+    }
     if (status.playing) {
       player.pause();
     } else {
@@ -112,12 +181,15 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
   const progress = status.currentTime ? (status.currentTime / (status.duration || durationSeconds || 1)) * 100 : 0;
   const isPlaying = status.playing;
 
-  if (error || !url) {
+  if (!url) {
     return (
       <View style={[styles.container, { backgroundColor: 'transparent', borderColor: colors.border }]}>
-        <View style={[styles.playButton, { backgroundColor: colors.muted, opacity: 0.5 }]}>
+        <TouchableOpacity
+          style={[styles.playButton, { backgroundColor: colors.muted, opacity: 0.5 }]}
+          disabled
+        >
           <Play color={colors.mutedForeground} size={16} style={{ marginLeft: 2 }} />
-        </View>
+        </TouchableOpacity>
         <View style={styles.waveform}>
           {barHeights.map((height, i) => (
             <View key={i} style={[styles.bar, { height: `${Math.max(10, height)}%`, backgroundColor: colors.mutedForeground, opacity: 0.3 }]} />
@@ -133,9 +205,9 @@ export function AuthenticatedAudioPlayer({ url, durationSeconds }: Authenticated
   return (
     <View style={[styles.container, { backgroundColor: 'rgba(0,0,0,0.03)', borderColor: colors.border }]}>
       <TouchableOpacity
-        style={[styles.playButton, { backgroundColor: colors.primary }]}
+        style={[styles.playButton, { backgroundColor: error ? colors.muted : colors.primary }]}
         onPress={() => void togglePlayback()}
-        disabled={isDownloading || !player}
+        disabled={isDownloading}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         {isDownloading ? (

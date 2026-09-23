@@ -88,7 +88,7 @@ export function AudioPlayer({ audioUrl, durationSeconds, className, compact = fa
             setMediaDuration(loadedDuration)
           }
         }}
-        preload="metadata"
+        preload="none"
       />
       
       <button

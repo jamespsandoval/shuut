@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useGetFeed, type GetFeedView, type Post } from "@workspace/api-client-react"
+import { getFeedPage, getGetFeedPageQueryKey, type GetFeedView, type Post } from "@workspace/api-client-react"
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
+import { refreshFeedPages } from "@/lib/feed-refresh"
 import { Layout } from "@/components/layout"
 import { Recorder, type RecorderHandle } from "@/components/recorder"
 import { PostCard } from "@/components/post-card"
@@ -29,11 +31,57 @@ function canRenderPost(post: Post): boolean {
 
 export default function Home() {
   const [view, setView] = useState<GetFeedView>("everyone")
+  const queryClient = useQueryClient()
   const [isRecorderTriggerVisible, setIsRecorderTriggerVisible] = useState(true)
   const [isRecorderExpanded, setIsRecorderExpanded] = useState(false)
   const recorderRef = useRef<RecorderHandle>(null)
   const recorderContainerRef = useRef<HTMLDivElement>(null)
-  const { data: posts, isLoading, error } = useGetFeed({ view })
+  const feedSentinelRef = useRef<HTMLDivElement>(null)
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    error,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: getGetFeedPageQueryKey({ view }),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) => getFeedPage({
+      view,
+      cursor: pageParam ?? undefined,
+      limit: 20,
+    }, { signal }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  })
+
+  const posts = data?.pages.flatMap((page) => page.posts) ?? []
+  const dedupedPosts = Array.from(new Map(posts.map((post) => [post.id, post])).values())
+
+  useEffect(() => {
+    const sentinel = feedSentinelRef.current
+    if (!sentinel || !hasNextPage) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !isFetching) void fetchNextPage()
+    }, { rootMargin: "480px 0px" })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [fetchNextPage, hasNextPage, isFetching])
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return
+      void refreshFeedPages(queryClient)
+    }
+    window.addEventListener("pageshow", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.removeEventListener("pageshow", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [queryClient])
 
   useEffect(() => {
     const trigger = recorderContainerRef.current?.querySelector('[data-testid="button-start-recording"]')
@@ -140,19 +188,42 @@ export default function Home() {
           </div>
         )}
 
-        {!isLoading && !error && posts?.length === 0 && (
+        {!isLoading && !error && dedupedPosts.length === 0 && (
           <div className="p-12 text-center">
             <p className="text-muted-foreground mb-4">No voices heard here yet.</p>
           </div>
         )}
 
-        {posts?.map((post, index) => canRenderPost(post) ? (
+        {dedupedPosts.map((post, index) => canRenderPost(post) ? (
           <ErrorBoundary key={post.id} FallbackComponent={FeedPostError}>
             <PostCard post={post} />
           </ErrorBoundary>
         ) : (
           <FeedPostError key={post?.id ?? `invalid-post-${index}`} />
         ))}
+
+        {isFetchNextPageError && (
+          <div role="alert" className="p-4 text-center text-sm text-destructive">
+            Failed to load more of the feed.
+          </div>
+        )}
+        <div ref={feedSentinelRef} aria-hidden="true" className="h-1" />
+        {isFetchingNextPage && (
+          <div className="flex items-center justify-center p-6">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        )}
+        {!isLoading && hasNextPage && !isFetching && (
+          <div className="flex justify-center p-6">
+            <button
+              type="button"
+              onClick={() => void fetchNextPage()}
+              className="rounded-full border border-border px-5 py-2 text-sm font-semibold hover:bg-secondary"
+            >
+              Load more
+            </button>
+          </div>
+        )}
       </div>
     </Layout>
   )

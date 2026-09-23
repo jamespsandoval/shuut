@@ -679,6 +679,81 @@ export const GetFeedResponseItem = zod.object({
 export const GetFeedResponse = zod.array(GetFeedResponseItem)
 
 
+export const getFeedPageQueryViewDefault = `everyone`;
+export const getFeedPageQueryCursorMax = 120;
+
+export const getFeedPageQueryLimitDefault = 20;
+export const getFeedPageQueryLimitMax = 50;
+
+
+
+export const GetFeedPageQueryParams = zod.object({
+  "view": zod.enum(['everyone', 'following']).default(getFeedPageQueryViewDefault),
+  "cursor": zod.coerce.string().max(getFeedPageQueryCursorMax).optional(),
+  "limit": zod.coerce.number().int().min(1).max(getFeedPageQueryLimitMax).default(getFeedPageQueryLimitDefault)
+})
+
+export const GetFeedPageResponse = zod.object({
+  "posts": zod.array(zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable(),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]).optional()
+})),
+  "nextCursor": zod.string().nullable()
+})
+
+
 export const GetNotificationsResponseItem = zod.object({
   "id": zod.number().int(),
   "eventType": zod.enum(['reaction', 'reshuut', 'comment', 'mention']),

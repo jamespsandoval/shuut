@@ -790,6 +790,12 @@ export interface Post {
   reshuut?: Reshuut | null;
 }
 
+export interface FeedPage {
+  posts: Post[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
 export interface ProfileDetail {
   founder: Founder;
   followerCount: number;
@@ -1053,6 +1059,27 @@ export type GetFeedView = typeof GetFeedView[keyof typeof GetFeedView];
 
 
 export const GetFeedView = {
+  everyone: 'everyone',
+  following: 'following',
+} as const;
+
+export type GetFeedPageParams = {
+view?: GetFeedPageView;
+/**
+ * @maxLength 120
+ */
+cursor?: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+};
+
+export type GetFeedPageView = typeof GetFeedPageView[keyof typeof GetFeedPageView];
+
+
+export const GetFeedPageView = {
   everyone: 'everyone',
   following: 'following',
 } as const;

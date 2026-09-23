@@ -50,7 +50,9 @@ export const postsTable = pgTable("shuut_posts", {
   moderationRiskScore: integer("moderation_risk_score"),
   moderationCategories: text("moderation_categories").notNull().default("[]"),
   moderationErrorCode: text("moderation_error_code"),
-});
+}, (table) => [
+  index("shuut_posts_feed_created_id_idx").on(table.createdAt, table.id),
+]);
 
 export const postReactionsTable = pgTable(
   "shuut_post_reactions",

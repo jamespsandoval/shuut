@@ -654,6 +654,10 @@ test("blocks are mutual, idempotent, remove follows, hide content and writes, an
     assert.equal(followedProfileBody.followingCount, 0);
     const followingBeforeBlock = await request("/api/feed?view=following", { session: fixture.viewerSession });
     assert.ok(JSON.stringify(await followingBeforeBlock.json()).includes(String(fixture.post.id)));
+    const pagedBeforeBlock = await request("/api/feed/page?view=following&limit=20", { session: fixture.viewerSession });
+    assert.equal(pagedBeforeBlock.status, 200);
+    assert.ok(((await pagedBeforeBlock.json()) as { posts: Array<{ id: number }> }).posts
+      .some((post) => post.id === fixture.post.id));
     const search = await request(`/api/profiles/search?q=${encodeURIComponent(fixture.owner.handle)}`, {
       session: fixture.viewerSession,
     });
@@ -685,6 +689,12 @@ test("blocks are mutual, idempotent, remove follows, hide content and writes, an
     const followingFeed = await request("/api/feed?view=following", { session: fixture.viewerSession });
     assert.equal(followingFeed.status, 200);
     assert.ok(!(JSON.stringify(await followingFeed.json())).includes(String(fixture.post.id)));
+    for (const view of ["everyone", "following"]) {
+      const page = await request(`/api/feed/page?view=${view}&limit=50`, { session: fixture.viewerSession });
+      assert.equal(page.status, 200);
+      assert.ok(!((await page.json()) as { posts: Array<{ id: number }> }).posts
+        .some((post) => post.id === fixture.post.id));
+    }
     for (const [path, method, json] of [
       [`/api/posts/${fixture.post.id}/reaction`, "PUT", { emojiType: "rocket" }],
       [`/api/posts/${fixture.post.id}/reshuut`, "POST", undefined],
@@ -731,6 +741,11 @@ test("blocks are mutual, idempotent, remove follows, hide content and writes, an
     ))).length, 0);
     assert.equal((await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession })).status, 404);
     await request(`/api/profiles/${fixture.viewer.handle}/block`, { method: "DELETE", session: fixture.ownerSession });
+    await db.update(postsTable).set({ moderationStatus: "removed" }).where(eq(postsTable.id, fixture.post.id));
+    const removedPage = await request("/api/feed/page?view=everyone&limit=50", { session: fixture.ownerSession });
+    assert.equal(removedPage.status, 200);
+    assert.ok(!((await removedPage.json()) as { posts: Array<{ id: number }> }).posts
+      .some((post) => post.id === fixture.post.id));
   } finally {
     await fixture.cleanup();
   }
@@ -1032,6 +1047,37 @@ test("mobile sessions do not require an enrolled passkey", async () => {
     headers: { authorization: `Bearer ${body.accessToken}` },
   })).status, 200);
   assert.equal((await request("/api/auth/me", { session: browser })).status, 401);
+});
+
+test("feed pages stay bounded, ordered, and reject invalid cursors", async () => {
+  const browser = await register(`${prefix}-feed-pages@example.test`);
+  const legacyStart = performance.now();
+  const legacyResponse = await request("/api/feed?view=everyone", { session: browser });
+  assert.equal(legacyResponse.status, 200);
+  const legacyBody = await legacyResponse.text();
+  const legacyMs = Math.round(performance.now() - legacyStart);
+  const pageStart = performance.now();
+  const first = await request("/api/feed/page?view=everyone&limit=20", { session: browser });
+  assert.equal(first.status, 200);
+  const pageBody = await first.text();
+  const pageMs = Math.round(performance.now() - pageStart);
+  console.log(`feed delivery sample (${JSON.parse(legacyBody).length} visible posts): legacy ${legacyMs}ms / ${Buffer.byteLength(legacyBody)} bytes, first page ${pageMs}ms / ${Buffer.byteLength(pageBody)} bytes`);
+  const page = JSON.parse(pageBody) as {
+    posts: Array<{ id: number; createdAt: string }>;
+    nextCursor: string | null;
+  };
+  assert.ok(page.posts.length <= 20);
+  if (page.nextCursor) {
+    const second = await request(`/api/feed/page?view=everyone&limit=20&cursor=${encodeURIComponent(page.nextCursor)}`, { session: browser });
+    assert.equal(second.status, 200);
+    const older = await second.json() as typeof page;
+    assert.ok(older.posts.length <= 20);
+    assert.ok(!older.posts.some((post) => page.posts.some((newer) => newer.id === post.id)));
+    assert.ok(older.posts.every((post) => new Date(post.createdAt).getTime() <=
+      new Date(page.posts.at(-1)!.createdAt).getTime()));
+    assert.equal((await request(`/api/feed/page?view=following&cursor=${encodeURIComponent(page.nextCursor)}`, { session: browser })).status, 400);
+  }
+  assert.equal((await request("/api/feed/page?cursor=not-a-cursor", { session: browser })).status, 400);
 });
 
 test("browser sessions do not require an enrolled passkey", async () => {

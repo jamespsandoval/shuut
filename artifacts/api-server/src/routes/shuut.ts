@@ -1,6 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
-import { and, asc, desc, eq, ilike, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
+import { pipeline } from "stream/promises";
+import sharp from "sharp";
+import { and, asc, desc, eq, exists, gt, ilike, inArray, isNull, lte, lt, ne, notExists, notInArray, or, sql } from "drizzle-orm";
 import {
   AskFounderBody,
   AskFounderParams,
@@ -12,6 +14,8 @@ import {
   DeleteAccountResponse,
   GetFeedQueryParams,
   GetFeedResponse,
+  GetFeedPageQueryParams,
+  GetFeedPageResponse,
   GetPostParams,
   GetPostResponse,
   GetProfileParams,
@@ -69,6 +73,7 @@ import {
   moderationSubjectsTable,
   moderationJobsTable,
   accountFollowsTable,
+  accountSanctionsTable,
   type FounderRow,
   type PostRow,
   type CommentRow,
@@ -558,6 +563,15 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       eq(postReshuutsTable.deletionStatus, "active"),
     ))
     : [];
+  // A paged set of original post authors need not contain the author of the
+  // viewer's reSHÜÜT. Resolve them separately instead of assuming they do.
+  const missingReshuutAuthors = [...new Set(currentReshuuts.map((row) => row.founderId))]
+    .filter((id) => !byId.has(id));
+  if (missingReshuutAuthors.length) {
+    const additional = await activeFounders(await db.select().from(foundersTable)
+      .where(inArray(foundersTable.id, missingReshuutAuthors)));
+    for (const founder of additional) byId.set(founder.id, founder);
+  }
   const reshuutByPostId = new Map(currentReshuuts.map((row) => [row.postId, row]));
   return rows.flatMap((row) => {
     const author = byId.get(row.authorId);
@@ -569,7 +583,8 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       reshuutedPostIds.has(row.id),
        (() => {
          const current = reshuutByPostId.get(row.id);
-         return current ? reshuutJson(current, { ...byId.get(current.founderId)! }) : null;
+          const reshuutAuthor = current && byId.get(current.founderId);
+          return current && reshuutAuthor ? reshuutJson(current, reshuutAuthor) : null;
        })(),
     )] : [];
   });
@@ -639,6 +654,112 @@ router.get("/feed", async (req, res): Promise<void> => {
   }
   res.setHeader("Cache-Control", "private, no-store");
   res.json(GetFeedResponse.parse(await hydratePosts(rows, viewer?.id)));
+});
+
+// Use the database's full microsecond timestamp as the seek key. A JavaScript
+// Date loses sub-millisecond precision and can skip posts that share a millisecond.
+type FeedCursor = { time: string; id: number; view: "everyone" | "following" };
+function parseFeedCursor(value: string | undefined, view: FeedCursor["view"]): FeedCursor | null {
+  if (!value) return null;
+  try {
+    if (Buffer.from(value, "base64url").toString("base64url") !== value) return null;
+    const cursor: FeedCursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (cursor.view !== view || !Number.isSafeInteger(cursor.id) || cursor.id <= 0 ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(cursor.time) ||
+        !Number.isFinite(Date.parse(cursor.time))) return null;
+    return cursor;
+  } catch {
+    return null;
+  }
+}
+
+router.get("/feed/page", async (req, res): Promise<void> => {
+  await ensureSeeded();
+  const params = GetFeedPageQueryParams.safeParse(req.query);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid feed page request" });
+    return;
+  }
+  const { view, limit } = params.data;
+  const cursor = parseFeedCursor(params.data.cursor, view);
+  if (params.data.cursor && !cursor) {
+    res.status(400).json({ error: "Invalid feed cursor" });
+    return;
+  }
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  res.setHeader("Cache-Control", "private, no-store");
+  if (view === "following" && !viewer) {
+    res.json(GetFeedPageResponse.parse({ posts: [], nextCursor: null }));
+    return;
+  }
+
+  // Match canDistributePost's eligibility in a single bounded query rather
+  // than invoking the moderation and block checks serially for every post.
+  const sanction = db.select({ id: accountSanctionsTable.id })
+    .from(accountSanctionsTable)
+    .where(and(
+      eq(accountSanctionsTable.userId, foundersTable.userId),
+      eq(accountSanctionsTable.status, "active"),
+      inArray(accountSanctionsTable.type, ["ban", "suspend"]),
+      or(isNull(accountSanctionsTable.expiresAt), gt(accountSanctionsTable.expiresAt, new Date())),
+    ));
+  const blocked = viewer ? db.select({ id: accountBlocksTable.id })
+    .from(accountBlocksTable)
+    .where(or(
+      and(eq(accountBlocksTable.blockerFounderId, viewer.id), eq(accountBlocksTable.blockedFounderId, postsTable.authorId)),
+      and(eq(accountBlocksTable.blockedFounderId, viewer.id), eq(accountBlocksTable.blockerFounderId, postsTable.authorId)),
+    )) : null;
+  const following = viewer ? db.select({ id: accountFollowsTable.id })
+    .from(accountFollowsTable)
+    .where(and(
+      eq(accountFollowsTable.followerFounderId, viewer.id),
+      eq(accountFollowsTable.followedFounderId, postsTable.authorId),
+    )) : null;
+  const timeKey = sql<string>`to_char(${postsTable.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+  const rows = await db.select({ post: postsTable, cursorTime: timeKey })
+    .from(postsTable)
+    .innerJoin(foundersTable, eq(foundersTable.id, postsTable.authorId))
+    .leftJoin(usersTable, eq(usersTable.id, foundersTable.userId))
+    .where(and(
+      eq(postsTable.deletionStatus, "active"),
+      eq(postsTable.transcriptionStatus, "ready"),
+      or(
+        and(
+          inArray(postsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+          or(isNull(foundersTable.userId), eq(usersTable.deletionStatus, "active")),
+          notExists(sanction),
+        ),
+        viewer ? and(
+          eq(postsTable.authorId, viewer.id),
+          notInArray(postsTable.moderationStatus, ["removed", "quarantined"]),
+        ) : undefined,
+      ),
+      blocked ? notExists(blocked) : undefined,
+      view === "following" && following ? exists(following) : undefined,
+      cursor ? or(
+        lt(postsTable.createdAt, sql`${cursor.time}::timestamptz`),
+        and(eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`), lt(postsTable.id, cursor.id)),
+      ) : undefined,
+    ))
+    .orderBy(desc(postsTable.createdAt), desc(postsTable.id))
+    .limit(limit + 1);
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
+  const nextCursor = rows.length > limit && last
+    ? Buffer.from(JSON.stringify({ time: last.cursorTime, id: last.post.id, view })).toString("base64url")
+    : null;
+  const posts = await hydratePosts(page.map(({ post }) => post), viewer?.id);
+  res.json(GetFeedPageResponse.parse({
+    posts: posts.map((post) => ({
+      ...post,
+      imageUrl: post.imageUrl ? `${post.imageUrl}?width=960` : null,
+      reshuut: post.reshuut ? {
+        ...post.reshuut,
+        imageUrl: post.reshuut.imageUrl ? `${post.reshuut.imageUrl}?width=960` : null,
+      } : null,
+    })),
+    nextCursor,
+  }));
 });
 
 router.get("/notifications", async (req, res): Promise<void> => {
@@ -1249,9 +1370,32 @@ router.get("/posts/:postId/audio", async (req, res): Promise<void> => {
   }
 });
 
+function feedImageWidth(req: Request): number | null | undefined {
+  if (req.query.width === undefined) return null;
+  return req.query.width === "960" ? 960 : undefined;
+}
+
+async function servePostImage(path: string, width: number | null, res: Response) {
+  const object = await objectStorage.streamPrivate(path);
+  // Media visibility changes on moderation, blocks, and deletion; never serve
+  // a long-lived cached response that bypasses a later authorization check.
+  res.setHeader("Cache-Control", "private, no-store");
+  const source = Readable.fromWeb(object.body as ReadableStream<Uint8Array>);
+  if (width && ["image/jpeg", "image/png", "image/webp"].includes(object.contentType)) {
+    res.setHeader("Content-Type", "image/webp");
+    await pipeline(source, sharp().rotate().resize({
+      width, height: width, fit: "inside", withoutEnlargement: true,
+    }).webp({ quality: 80, effort: 3 }), res);
+  } else {
+    res.setHeader("Content-Type", object.contentType);
+    await pipeline(source, res);
+  }
+}
+
 router.get("/posts/:postId/image", async (req, res): Promise<void> => {
   const params = GetPostParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: "Invalid post" }); return; }
+  const width = feedImageWidth(req);
+  if (!params.success || width === undefined) { res.status(400).json({ error: "Invalid post image request" }); return; }
   const [post] = await db.select().from(postsTable).where(and(
     eq(postsTable.id, params.data.postId),
     eq(postsTable.deletionStatus, "active"),
@@ -1260,19 +1404,19 @@ router.get("/posts/:postId/image", async (req, res): Promise<void> => {
   const ownVisiblePost = Boolean(
     post &&
     viewer?.id === post.authorId &&
-    post.transcriptionStatus === "ready",
+    post.transcriptionStatus === "ready" &&
+    !["removed", "quarantined"].includes(post.moderationStatus),
   );
-  if (!post?.imageUrl || (!ownVisiblePost && !(await canDistributePost(post.id)))) {
+  if (!post?.imageUrl || (!ownVisiblePost && !(await canDistributePost(post.id))) ||
+      (viewer && !(await visibleToViewer(viewer.id, post.authorId)))) {
     res.status(404).json({ error: "Image not found" });
     return;
   }
   try {
-    const object = await objectStorage.streamPrivate(post.imageUrl);
-    res.setHeader("Content-Type", object.contentType);
-    res.setHeader("Cache-Control", "private, max-age=86400, immutable");
-    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+    await servePostImage(post.imageUrl, width, res);
   } catch {
-    res.status(404).json({ error: "Image not found" });
+    if (!res.headersSent) res.status(404).json({ error: "Image not found" });
+    else res.destroy();
   }
 });
 
@@ -1312,6 +1456,8 @@ router.get("/reshuuts/:reshuutId/audio", async (req, res): Promise<void> => {
 
 router.get("/reshuuts/:reshuutId/image", async (req, res): Promise<void> => {
   const id = Number(req.params.reshuutId);
+  const width = feedImageWidth(req);
+  if (width === undefined) { res.status(400).json({ error: "Invalid image request" }); return; }
   const [reshuut] = Number.isInteger(id)
     ? await db.select().from(postReshuutsTable).where(and(eq(postReshuutsTable.id, id), eq(postReshuutsTable.deletionStatus, "active")))
     : [];
@@ -1321,12 +1467,10 @@ router.get("/reshuuts/:reshuutId/image", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const object = await objectStorage.streamPrivate(reshuut.imageUrl);
-    res.setHeader("Content-Type", object.contentType);
-    res.setHeader("Cache-Control", "private, no-store");
-    Readable.fromWeb(object.body as ReadableStream<Uint8Array>).pipe(res);
+    await servePostImage(reshuut.imageUrl, width, res);
   } catch {
-    res.status(404).json({ error: "Image not found" });
+    if (!res.headersSent) res.status(404).json({ error: "Image not found" });
+    else res.destroy();
   }
 });
 

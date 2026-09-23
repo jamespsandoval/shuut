@@ -7,6 +7,7 @@ import { cn, formatTime } from "@/lib/utils"
 import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio, useGetVoiceAiConsent } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
+import { refreshFeedPages } from "@/lib/feed-refresh"
 import { useToast } from "@/hooks/use-toast"
 import { useAnalytics } from "@/lib/analytics"
 import { ToastAction } from "@/components/ui/toast"
@@ -354,6 +355,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         onSuccess: () => {
           capture('post_published')
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          void refreshFeedPages(queryClient)
           handleCancel()
         },
         onError: () => {

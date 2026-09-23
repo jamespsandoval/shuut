@@ -5,12 +5,12 @@ import { useColors } from '../../hooks/useColors';
 import { useAnalytics } from '../../hooks/useAnalytics';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
-import { Founder, Post, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
+import { Founder, Post, FeedPage, getGetFeedPageQueryKey, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
 import { Pause, Play, Send, Square } from 'lucide-react-native';
 import { MentionPicker } from '../../components/MentionPicker';
 import { KeyboardAwareScrollViewCompat } from '../../components/KeyboardAwareScrollViewCompat';
 import { SPEECH_RECORDING_OPTIONS } from '../../lib/audioRecording';
-import { useQueryClient } from '@tanstack/react-query';
+import { InfiniteData, useQueryClient } from '@tanstack/react-query';
 import { useVoiceConsentCheck } from '../../hooks/useVoiceConsentCheck';
 import { VoiceAiConsentModal } from '../../components/VoiceAiConsentModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -595,13 +595,18 @@ export default function RecordScreen() {
       setIsProcessing(false);
       if (isScreenActiveRef.current) {
         if (createdPost.transcriptionStatus === 'ready') {
-          queryClient.setQueriesData<Post[]>({ queryKey: ['feed'] }, (current) => {
-            if (!current) return [createdPost];
-            if (current.some((post) => post.id === createdPost.id)) {
-              return current.map((post) => post.id === createdPost.id ? createdPost : post);
-            }
-            return [createdPost, ...current];
-          });
+          queryClient.setQueryData<InfiniteData<FeedPage, string | null>>(
+            getGetFeedPageQueryKey({ view: 'everyone' }),
+            (current) => {
+              if (!current) return current;
+              const firstPage = current.pages[0];
+              if (!firstPage) return current;
+              const posts = firstPage.posts.some((post) => post.id === createdPost.id)
+                ? firstPage.posts.map((post) => post.id === createdPost.id ? createdPost : post)
+                : [createdPost, ...firstPage.posts];
+              return { ...current, pages: [{ ...firstPage, posts }, ...current.pages.slice(1)] };
+            },
+          );
         }
 
         publishedPostIdRef.current = null;

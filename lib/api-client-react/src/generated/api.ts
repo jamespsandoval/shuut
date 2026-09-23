@@ -43,8 +43,10 @@ import type {
   EligibleModerationAppealList,
   EmailCodeInput,
   ExchangeMobilePasskeyHandoff200,
+  FeedPage,
   FollowState,
   Founder,
+  GetFeedPageParams,
   GetFeedParams,
   HealthStatus,
   LegalPolicyConsentInput,
@@ -2866,6 +2868,84 @@ export function useGetFeed<TData = Awaited<ReturnType<typeof getFeed>>, TError =
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetFeedQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetFeedPageUrl = (params?: GetFeedPageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/feed/page?${stringifiedParams}` : `/api/feed/page`
+}
+
+export const getFeedPage = async (params?: GetFeedPageParams, options?: Parameters<typeof customFetch>[1]): Promise<FeedPage> => {
+
+  return customFetch<FeedPage>(getGetFeedPageUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFeedPageQueryKey = (params?: GetFeedPageParams,) => {
+    return [
+    `/api/feed/page`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetFeedPageQueryOptions = <TData = Awaited<ReturnType<typeof getFeedPage>>, TError = ErrorType<void>>(params?: GetFeedPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFeedPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFeedPageQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFeedPage>>> = ({ signal }) => getFeedPage(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFeedPage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFeedPageQueryResult = NonNullable<Awaited<ReturnType<typeof getFeedPage>>>
+export type GetFeedPageQueryError = ErrorType<void>
+
+
+
+export function useGetFeedPage<TData = Awaited<ReturnType<typeof getFeedPage>>, TError = ErrorType<void>>(
+ params?: GetFeedPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFeedPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFeedPageQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

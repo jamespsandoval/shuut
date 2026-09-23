@@ -414,6 +414,21 @@ paths:
         '200':
           description: Feed
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Post' } } } }
+  /feed/page:
+    get:
+      operationId: getFeedPage
+      tags: [feed]
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [everyone, following], default: everyone } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: A bounded page of currently visible posts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeedPage' }
+        '400': { description: Invalid cursor or page size }
   /notifications:
     get:
       operationId: getNotifications
@@ -1420,6 +1435,12 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Reshuut' }
             - { type: 'null' }
+    FeedPage:
+      type: object
+      required: [posts, nextCursor]
+      properties:
+        posts: { type: array, items: { $ref: '#/components/schemas/Post' } }
+        nextCursor: { type: [string, 'null'] }
     ProfileDetail:
       type: object
       required: [founder, followerCount, followingCount, postCount, posts, suggestedQuestions]
