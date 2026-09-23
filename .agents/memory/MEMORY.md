@@ -9,7 +9,7 @@
 - [Native public-page navigation](native-public-page-returns.md) — show public pages in-app with one web back control; do not use Safari chrome or load the homepage inside a web view.
 - [Native recording transitions](native-recording-transition.md) — paint active recording on entry; after a successful POST, leave recorder lifecycle before transcription polling.
 - [Native recording interruptions](native-recording-interruptions.md) — cancel detached starts; preserve interrupted posts for review, but visibly discard interrupted comments.
-- [Dev recording interruptions](dev-recording-interruptions.md) — web workflow restarts can abort an in-flight voice transcription; avoid restarts during active recording.
+- [Dev recording interruptions](dev-recording-interruptions.md) — avoid web restarts during recording; creator accepts rare dev losses rather than persistent browser drafts.
 - [Expo QR launch branding](expo-qr-launch-branding.md) — the pre-Expo loading card can use mobile artifact registration, independently of app icon and splash configuration.
 - [Cross-platform feature parity](cross-platform-feature-parity.md) — user-facing SHÜÜT features added to native should also be represented in the desktop web app.
 - [Explicit post tagging](explicit-post-tagging.md) — select accounts manually during final audio review; do not infer tags from spoken handles.

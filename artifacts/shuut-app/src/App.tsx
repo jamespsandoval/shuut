@@ -197,6 +197,17 @@ function AnalyticsRouteTracker() {
 }
 
 function App() {
+  useEffect(() => {
+    // Retire browser audio saved by the removed voice-draft recovery feature.
+    try {
+      const request = indexedDB.deleteDatabase('shuut-voice-draft');
+      request.onerror = () => console.warn('Could not clear retired voice draft storage.');
+      request.onblocked = () => console.warn('Close other SHÜÜT tabs to clear retired voice draft storage.');
+    } catch {
+      // IndexedDB may be unavailable in restricted browsing contexts.
+    }
+  }, []);
+
   return (
     <ThemeProvider defaultTheme="light" storageKey="shuut-theme">
       <QueryClientProvider client={queryClient}>

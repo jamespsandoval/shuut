@@ -13,8 +13,6 @@ import { ToastAction } from "@/components/ui/toast"
 import { AudioPlayer } from "./audio-player"
 import { MentionPicker } from "./mention-picker"
 import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
-import { useAuth } from "@/hooks/use-auth"
-import { discardVoiceDraft, loadVoiceDraft, saveVoiceDraft } from "@/lib/voice-draft"
 
 const MAX_DURATION = 90
 const RECORDING_TYPES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
@@ -57,21 +55,20 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null)
   const [imageUploadError, setImageUploadError] = useState<string | null>(null)
   const [isPreparing, setIsPreparing] = useState(false)
-  const [isSavingDraft, setIsSavingDraft] = useState(false)
-  const [recoveredDraft, setRecoveredDraft] = useState(false)
-  const [draftSaveFailed, setDraftSaveFailed] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const idleContainerRef = useRef<HTMLDivElement>(null)
+  const recordingContainerRef = useRef<HTMLDivElement>(null)
+  const reviewContainerRef = useRef<HTMLDivElement>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<number | null>(null)
   const audioBlobRef = useRef<Blob | null>(null)
   const recordingStartedAtRef = useRef(0)
   const preparingRef = useRef(false)
   const mountedRef = useRef(true)
-  const draftGenerationRef = useRef(0)
+  const preparationGenerationRef = useRef(0)
 
   const createPost = useCreatePost()
-  const { user } = useAuth()
   const { capture } = useAnalytics()
   const transcribeAudio = useTranscribeAudio()
   const { data: profile } = useGetProfile("me")
@@ -84,7 +81,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
 
   const prepareRecording = useCallback(async (blob: Blob, existingPath?: string | null) => {
     if (preparingRef.current) return
-    const generation = draftGenerationRef.current
+    const generation = preparationGenerationRef.current
     preparingRef.current = true
     setIsPreparing(true)
     try {
@@ -102,21 +99,21 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
           body: JSON.stringify({ name: "shuut-recording", size: blob.size, contentType }),
         })
         const upload = await uploadResponse.json()
-        if (generation !== draftGenerationRef.current) return
+        if (generation !== preparationGenerationRef.current) return
         if (!uploadResponse.ok) throw new Error(upload.error || "Could not prepare recording upload")
         const putResponse = await fetch(upload.uploadURL, {
           method: "PUT",
           headers: { "Content-Type": contentType },
           body: blob,
         })
-        if (generation !== draftGenerationRef.current) return
+        if (generation !== preparationGenerationRef.current) return
         if (!putResponse.ok) throw new Error("Recording upload failed")
         path = upload.objectPath
         if (mountedRef.current) setAudioObjectPath(path ?? null)
       }
       if (!path) throw new Error("Recording upload did not return a file path")
       const result = await transcribeAudio.mutateAsync({ data: { audioObjectPath: path } })
-      if (!mountedRef.current || generation !== draftGenerationRef.current) return
+      if (!mountedRef.current || generation !== preparationGenerationRef.current) return
       if (result.cleanupStatus === "raw") {
         setTranscript("")
         setPendingRawTranscript(result.transcript)
@@ -125,66 +122,18 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         setPendingRawTranscript(null)
       }
     } catch (error) {
-      if (mountedRef.current && generation === draftGenerationRef.current) toast({
+      if (mountedRef.current && generation === preparationGenerationRef.current) toast({
         title: "Could not prepare your recording",
         description: `Your recording is still available to review. ${error instanceof Error ? error.message : "Please try again."}`,
         variant: "destructive",
       })
     } finally {
-      if (generation === draftGenerationRef.current) {
+      if (generation === preparationGenerationRef.current) {
         preparingRef.current = false
         if (mountedRef.current) setIsPreparing(false)
       }
     }
   }, [toast, transcribeAudio])
-
-  useEffect(() => {
-    if (!user?.id) return
-    let cancelled = false
-    void loadVoiceDraft(user.id).then((draft) => {
-      if (cancelled || !draft || audioBlobRef.current) return
-      audioBlobRef.current = draft.audio
-      setAudioData(URL.createObjectURL(draft.audio))
-      setTime(draft.durationSeconds)
-      setAudioObjectPath(draft.audioObjectPath)
-      setTranscript(draft.transcript)
-      setPendingRawTranscript(draft.pendingRawTranscript)
-      setRawAccepted(draft.rawAccepted)
-      setRecoveredDraft(true)
-      requestAnimationFrame(() => onReviewReady?.())
-    }).catch(() => {
-      if (!cancelled) setDraftSaveFailed(true)
-    })
-    return () => { cancelled = true }
-  }, [user?.id, onReviewReady])
-
-  useEffect(() => {
-    if (!user?.id || !audioBlobRef.current || !audioData) return
-    const draft = {
-      ownerId: user.id,
-      audio: audioBlobRef.current,
-      durationSeconds: time || 1,
-      audioObjectPath,
-      transcript,
-      pendingRawTranscript,
-      rawAccepted,
-      savedAt: Date.now(),
-    }
-    const timer = window.setTimeout(() => {
-      void saveVoiceDraft(draft).catch(() => setDraftSaveFailed(true))
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [user?.id, audioData, time, audioObjectPath, transcript, pendingRawTranscript, rawAccepted])
-
-  useEffect(() => {
-    if (!isRecording && !isSavingDraft) return
-    const warnOnReload = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ""
-    }
-    window.addEventListener("beforeunload", warnOnReload)
-    return () => window.removeEventListener("beforeunload", warnOnReload)
-  }, [isRecording, isSavingDraft])
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -249,9 +198,8 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
 
-      mediaRecorderRef.current.onstop = async () => {
+      mediaRecorderRef.current.onstop = () => {
         if (!mountedRef.current) return
-        const generation = draftGenerationRef.current
         const recorderType = mediaRecorderRef.current?.mimeType || chunksRef.current[0]?.type || "audio/webm"
         const contentType = recorderType.split(";")[0].toLowerCase()
         const blob = new Blob(chunksRef.current, { type: contentType })
@@ -264,26 +212,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         setTime(durationSeconds)
         setAudioData(URL.createObjectURL(blob))
         requestAnimationFrame(() => onReviewReady?.())
-        if (user?.id) {
-          setIsSavingDraft(true)
-          try {
-            await saveVoiceDraft({
-              ownerId: user.id,
-              audio: blob,
-              durationSeconds,
-              audioObjectPath: null,
-              transcript: "",
-              pendingRawTranscript: null,
-              rawAccepted: false,
-              savedAt: Date.now(),
-            })
-          } catch {
-            setDraftSaveFailed(true)
-          } finally {
-            if (mountedRef.current) setIsSavingDraft(false)
-          }
-        }
-        if (mountedRef.current && generation === draftGenerationRef.current) void prepareRecording(blob)
+        void prepareRecording(blob)
       }
 
       mediaRecorderRef.current.start()
@@ -307,7 +236,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         variant: "destructive"
       })
     }
-  }, [audioData, isRecording, toast, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent, user?.id, prepareRecording, onReviewReady])
+  }, [audioData, isRecording, toast, voiceAiConsentLoading, voiceAiConsentError, voiceAiConsent, refetchVoiceAiConsent, prepareRecording, onReviewReady])
 
   useImperativeHandle(ref, () => ({
     startRecording: () => {
@@ -324,11 +253,10 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   }
 
   const handleCancel = () => {
-    draftGenerationRef.current += 1
+    preparationGenerationRef.current += 1
     preparingRef.current = false
     audioBlobRef.current = null
     if (audioData) URL.revokeObjectURL(audioData)
-    if (user?.id) void discardVoiceDraft(user.id).catch(() => setDraftSaveFailed(true))
     if (imagePreview) URL.revokeObjectURL(imagePreview)
     setAudioData(null)
     setAudioObjectPath(null)
@@ -343,9 +271,6 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     setImageUploadProgress(null)
     setImageUploadError(null)
     setIsPreparing(false)
-    setIsSavingDraft(false)
-    setRecoveredDraft(false)
-    setDraftSaveFailed(false)
   }
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -446,6 +371,13 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const isExpanded = isRecording || audioData !== null;
 
   useEffect(() => {
+    // React's current DOM renderer does not accept boolean inert attributes.
+    if (idleContainerRef.current) idleContainerRef.current.inert = isExpanded
+    if (recordingContainerRef.current) recordingContainerRef.current.inert = !isRecording || audioData !== null
+    if (reviewContainerRef.current) reviewContainerRef.current.inert = audioData === null
+  }, [isExpanded, isRecording, audioData])
+
+  useEffect(() => {
     onExpandedChange?.(isExpanded)
   }, [isExpanded, onExpandedChange])
 
@@ -478,11 +410,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       >
       {/* State 1: Idle */}
       <div
+        ref={idleContainerRef}
         className={cn(
           "flex flex-col items-center justify-center transition-[opacity,transform] duration-200 absolute inset-0",
           !isExpanded ? "opacity-100 translate-y-0 z-10" : "opacity-0 -translate-y-8 pointer-events-none"
         )}
-        inert={isExpanded}
       >
         <div className="flex h-14 items-center justify-center mb-4">
           <img
@@ -502,11 +434,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
 
       {/* State 2: Recording */}
       <div
+        ref={recordingContainerRef}
         className={cn(
           "flex flex-col items-center justify-center transition-[opacity,transform] duration-200 absolute inset-0 p-6 pb-20 md:pb-6",
           (isRecording && !audioData) ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
         )}
-        inert={!isRecording || audioData !== null}
       >
         <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto gap-8 md:gap-12">
           <div className="text-center space-y-2">
@@ -539,11 +471,11 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
 
       {/* State 3: Review / Edit */}
       <div
+        ref={reviewContainerRef}
         className={cn(
           "flex flex-col transition-[opacity,transform] duration-200 absolute inset-0 p-3 pb-20 md:p-5",
           audioData ? "opacity-100 translate-y-0 z-10" : "opacity-0 translate-y-8 pointer-events-none"
         )}
-        inert={audioData === null}
       >
         <div className={cn(
           "flex w-full max-w-2xl mx-auto flex-col rounded-2xl border border-border/60 bg-secondary/10 p-3 shadow-sm md:p-4",
@@ -556,16 +488,6 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             <div className="shrink-0" data-testid="wrapper-audio-preview">
               <AudioPlayer audioUrl={audioData || ""} durationSeconds={time} />
             </div>
-             {recoveredDraft && (
-               <p className="text-sm text-muted-foreground" role="status">
-                 Your recording was recovered on this device. Check your feed, then review it before posting.
-               </p>
-             )}
-             {draftSaveFailed && (
-               <p className="text-sm text-destructive" role="alert">
-                 This recording could not be saved for recovery. Keep this page open until you finish.
-               </p>
-             )}
              <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />
              <div className="flex flex-wrap items-center gap-2">
                {imagePreview ? (
@@ -598,10 +520,10 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
               </div>
             ) : (
               <div className="rounded-xl bg-background/60 px-4 py-3 text-center">
-                 <h3 className="text-lg font-bold md:text-xl">{isSavingDraft ? "Saving your recording…" : isPreparing ? "Preparing your transcript…" : transcript ? "Ready, Set…" : "Transcript not ready"}</h3>
+                 <h3 className="text-lg font-bold md:text-xl">{isPreparing ? "Preparing your transcript…" : transcript ? "Ready, Set…" : "Transcript not ready"}</h3>
               </div>
             )}
-             {!transcript.trim() && pendingRawTranscript === null && !isPreparing && !isSavingDraft && (
+             {!transcript.trim() && pendingRawTranscript === null && !isPreparing && (
                <Button variant="outline" onClick={() => {
                  if (audioBlobRef.current) void prepareRecording(audioBlobRef.current, audioObjectPath)
                }}>
@@ -619,7 +541,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
             </Button>
             <Button
               onClick={handleSubmit}
-               disabled={createPost.isPending || isPreparing || isSavingDraft || !audioObjectPath || !transcript.trim() || pendingRawTranscript !== null}
+               disabled={createPost.isPending || isPreparing || !audioObjectPath || !transcript.trim() || pendingRawTranscript !== null}
               className="h-11 rounded-full px-7 text-base font-bold gap-2 shadow-md shadow-primary/20 transition-all active:scale-95 md:px-10"
               data-testid="button-submit-recording"
             >
