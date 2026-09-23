@@ -12,6 +12,7 @@ import {
 } from 'wouter';
 import { ThemeProvider } from '@/components/theme-provider';
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
+import { AnalyticsProvider, useAnalytics } from '@/lib/analytics';
 import { Loader2 } from 'lucide-react';
 
 import Landing from '@/pages/landing';
@@ -169,17 +170,38 @@ function ScrollToTop() {
   return null;
 }
 
+function AnalyticsRouteTracker() {
+  const [location] = useLocation();
+  const { active, capture } = useAnalytics();
+  useEffect(() => {
+    if (!active) return;
+    const firstSegment = location.slice(1).split('/')[0];
+    const knownScreens = ['feed', 'settings', 'notifications', 'explore', 'about', 'community', 'terms', 'privacy', 'cookies', 'contact', 'appeals'];
+    const screen = location.startsWith('/p/') ? 'post'
+      : location.startsWith('/u/') ? 'profile'
+      : location.startsWith('/onboarding/') ? 'onboarding'
+      : location.startsWith('/moderation') ? 'moderation'
+      : location === '/' ? 'home'
+      : knownScreens.includes(firstSegment) ? firstSegment : 'other';
+    capture('screen_viewed', { screen });
+  }, [location, active, capture]);
+  return null;
+}
+
 function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="shuut-theme">
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <WouterRouter base={basePath}>
-            <ScrollToTop />
-            <TooltipProvider>
-              <Router />
-              <Toaster />
-            </TooltipProvider>
+            <AnalyticsProvider>
+              <ScrollToTop />
+              <AnalyticsRouteTracker />
+              <TooltipProvider>
+                <Router />
+                <Toaster />
+              </TooltipProvider>
+            </AnalyticsProvider>
           </WouterRouter>
         </AuthProvider>
       </QueryClientProvider>

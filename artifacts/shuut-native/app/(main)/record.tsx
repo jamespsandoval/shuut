@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, SafeAreaView, Alert, Linking, Animated, Easing, Platform, ActivityIndicator, AppState } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
+import { useAnalytics } from '../../hooks/useAnalytics';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, PermissionResponse } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { Founder, Post, useRequestUploadUrl, useCreatePost, useGetProfile, useTranscribeAudio } from '@workspace/api-client-react';
@@ -22,6 +23,7 @@ import { ImagePlus, X } from 'lucide-react-native';
 
 export default function RecordScreen() {
   const colors = useColors();
+  const { capture } = useAnalytics();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -581,6 +583,7 @@ export default function RecordScreen() {
           mentionedFounderIds: mentionedFounders.map((founder) => founder.id),
         }
       });
+      capture('post_published');
       publishedPostIdRef.current = createdPost.id;
       try {
         await AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);

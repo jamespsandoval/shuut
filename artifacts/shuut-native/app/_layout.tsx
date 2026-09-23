@@ -11,6 +11,7 @@ import { setAudioModeAsync } from 'expo-audio';
 import { useEffect } from 'react';
 import Colors from '../constants/colors';
 import { AuthProvider, useAuth } from '../hooks/useAuthStore';
+import { AnalyticsProvider, useAnalytics } from '../hooks/useAnalytics';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setBaseUrl, setDefaultCredentials } from '@workspace/api-client-react';
 import { GlobalRecordButton } from '../components/GlobalRecordButton';
@@ -40,8 +41,22 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   const { authState, user } = useAuth();
+  const { active: analyticsActive, capture } = useAnalytics();
   const segments = useSegments();
   const router = useRouter();
+  const route = segments.join('/');
+
+  useEffect(() => {
+    if (!analyticsActive || authState !== 'ready') return;
+    const screen = route.includes('record') || route === 'compose' ? 'record'
+      : route.includes('settings') ? 'settings'
+      : route.includes('notifications') ? 'notifications'
+      : route.includes('profile') ? 'profile'
+      : route.includes('feed') ? 'feed'
+      : route.startsWith('post/') ? 'post'
+      : 'other';
+    capture('screen_viewed', { screen });
+  }, [analyticsActive, authState, route, capture]);
 
   useEffect(() => {
     if (authState === 'loading') return;
@@ -141,7 +156,9 @@ export default function RootLayout() {
       <KeyboardProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <RootLayoutNav />
+            <AnalyticsProvider>
+              <RootLayoutNav />
+            </AnalyticsProvider>
           </AuthProvider>
         </QueryClientProvider>
       </KeyboardProvider>

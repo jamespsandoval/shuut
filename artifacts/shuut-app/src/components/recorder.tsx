@@ -8,6 +8,7 @@ import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio, useGetV
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAnalytics } from "@/lib/analytics"
 import { ToastAction } from "@/components/ui/toast"
 import { AudioPlayer } from "./audio-player"
 import { MentionPicker } from "./mention-picker"
@@ -59,6 +60,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
   const timerRef = useRef<number | null>(null)
 
   const createPost = useCreatePost()
+  const { capture } = useAnalytics()
   const transcribeAudio = useTranscribeAudio()
   const { data: profile } = useGetProfile("me")
   const { data: voiceAiConsent, isLoading: voiceAiConsentLoading, isError: voiceAiConsentError, refetch: refetchVoiceAiConsent } = useGetVoiceAiConsent()
@@ -319,6 +321,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
         },
       {
         onSuccess: () => {
+          capture('post_published')
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
           handleCancel()
         },

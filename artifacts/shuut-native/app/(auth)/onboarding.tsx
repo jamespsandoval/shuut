@@ -4,6 +4,7 @@ import { getCheckUsernameAvailabilityQueryKey, useCheckUsernameAvailability, use
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { useAuth } from '../../hooks/useAuthStore';
+import { useAnalytics } from '../../hooks/useAnalytics';
 
 function usernameFromName(first: string, last: string) {
   return `${first}_${last}`.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -22,6 +23,7 @@ export default function OnboardingScreen() {
   const colors = useColors();
   const mutation = useCompleteOnboarding();
   const { completeOnboarding, refreshSession, user } = useAuth();
+  const { capture } = useAnalytics();
   const validHandle = /^[a-z0-9_]{2,30}$/.test(handle);
   const availability = useCheckUsernameAvailability(handle, { query: { queryKey: getCheckUsernameAvailabilityQueryKey(handle), enabled: step === 2 && validHandle, retry: false } });
   const handleReady = validHandle && availability.data?.available === true;
@@ -43,7 +45,10 @@ export default function OnboardingScreen() {
       termsVersion: user?.legalPolicyConsent.terms.currentVersion ?? '',
       communityGuidelinesVersion: user?.legalPolicyConsent.communityGuidelines.currentVersion ?? '',
     } }, {
-      onSuccess: (session) => completeOnboarding(session.user),
+      onSuccess: (session) => {
+        capture('onboarding_completed');
+        completeOnboarding(session.user);
+      },
       onError: async (requestError) => {
         setError(requestError.message);
         const errorValue = requestError as {

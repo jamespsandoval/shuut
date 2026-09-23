@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Footer } from "@/components/footer";
 import { useAuth } from "@/hooks/use-auth";
+import { useAnalytics } from "@/lib/analytics";
 import { useLocation, Redirect } from "wouter";
 
 function usernameFromName(firstName: string, lastName: string) {
@@ -57,6 +58,7 @@ function readDraft(): { firstName: string; lastName: string; handle: string; ref
 }
 
 export default function Onboarding({ stepName }: { stepName: StepName }) {
+  const { capture } = useAnalytics();
   const [draft, setDraft] = useState(readDraft);
   const { firstName, lastName, handle, referralSource } = draft;
   const [, navigate] = useLocation();
@@ -118,6 +120,7 @@ export default function Onboarding({ stepName }: { stepName: StepName }) {
       },
       {
         onSuccess: () => {
+          capture('onboarding_completed');
           sessionStorage.removeItem(DRAFT_KEY);
           queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
         },
