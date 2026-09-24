@@ -621,6 +621,21 @@ export const GetFeedQueryParams = zod.object({
 })
 
 export const GetFeedResponseItem = zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
   "id": zod.number().int(),
@@ -651,7 +666,8 @@ export const GetFeedResponseItem = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
   "reshuut": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -666,6 +682,8 @@ export const GetFeedResponseItem = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -673,8 +691,41 @@ export const GetFeedResponseItem = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
-}),zod.null()]).optional()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
 })
 export const GetFeedResponse = zod.array(GetFeedResponseItem)
 
@@ -695,6 +746,21 @@ export const GetFeedPageQueryParams = zod.object({
 
 export const GetFeedPageResponse = zod.object({
   "posts": zod.array(zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
   "id": zod.number().int(),
@@ -725,7 +791,8 @@ export const GetFeedPageResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
   "reshuut": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -740,6 +807,8 @@ export const GetFeedPageResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -747,8 +816,41 @@ export const GetFeedPageResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
-}),zod.null()]).optional()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
 })),
   "nextCursor": zod.string().nullable()
 })
@@ -802,6 +904,21 @@ export const GetProfileResponse = zod.object({
   "followingCount": zod.number().int(),
   "postCount": zod.number().int(),
   "posts": zod.array(zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
   "id": zod.number().int(),
@@ -832,7 +949,8 @@ export const GetProfileResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
   "reshuut": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -847,6 +965,8 @@ export const GetProfileResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -854,8 +974,41 @@ export const GetProfileResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
-}),zod.null()]).optional()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
@@ -908,6 +1061,21 @@ export const UpdateProfileResponse = zod.object({
   "followingCount": zod.number().int(),
   "postCount": zod.number().int(),
   "posts": zod.array(zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
   "id": zod.number().int(),
@@ -938,7 +1106,8 @@ export const UpdateProfileResponse = zod.object({
   "reshuutedBy": zod.string().nullish(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean(),
-  "editableUntil": zod.coerce.date().nullable(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
   "reshuut": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -953,6 +1122,8 @@ export const UpdateProfileResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -960,8 +1131,41 @@ export const UpdateProfileResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
-}),zod.null()]).optional()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
 })),
   "suggestedQuestions": zod.array(zod.string())
 })
@@ -1081,6 +1285,8 @@ export const CreatePostResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -1088,7 +1294,40 @@ export const CreatePostResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
 }),zod.null()]).optional()
 })
 
@@ -1181,6 +1420,8 @@ export const GetPostResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -1188,7 +1429,40 @@ export const GetPostResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
 }),zod.null()]).optional()
 })
 
@@ -1260,6 +1534,8 @@ export const UpdatePostResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -1267,7 +1543,40 @@ export const UpdatePostResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
 }),zod.null()]).optional()
 })
 
@@ -1326,6 +1635,8 @@ export const SetReactionResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -1333,7 +1644,40 @@ export const SetReactionResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
 }),zod.null()]).optional()
 })
 
@@ -1453,6 +1797,8 @@ export const ReshuutPostResponse = zod.object({
   "isFollowing": zod.boolean(),
   "previewTranscript": zod.boolean()
 }),
+  "name": zod.string(),
+  "handle": zod.string(),
   "mode": zod.enum(['text', 'audio']),
   "text": zod.string().nullable(),
   "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
@@ -1460,7 +1806,40 @@ export const ReshuutPostResponse = zod.object({
   "durationSeconds": zod.number().int().nullable(),
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
 }),zod.null()]).optional()
 })
 

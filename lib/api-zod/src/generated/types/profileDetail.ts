@@ -5,14 +5,14 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
+import type { FeedItem } from './feedItem';
 import type { Founder } from './founder';
-import type { Post } from './post';
 
 export interface ProfileDetail {
   founder: Founder;
   followerCount: number;
   followingCount: number;
   postCount: number;
-  posts: Post[];
+  posts: FeedItem[];
   suggestedQuestions: string[];
 }

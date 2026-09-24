@@ -413,7 +413,7 @@ paths:
       responses:
         '200':
           description: Feed
-          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Post' } } } }
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FeedItem' } } } }
   /feed/page:
     get:
       operationId: getFeedPage
@@ -424,7 +424,7 @@ paths:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         '200':
-          description: A bounded page of currently visible posts
+          description: A bounded page of currently visible posts and reSHÜÜT events
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FeedPage' }
@@ -1446,11 +1446,46 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Reshuut' }
             - { type: 'null' }
+    PostSnapshot:
+      type: object
+      required: [id, author, transcript, transcriptionStatus, durationSeconds, createdAt, reactions, isReshuuted, canEdit, canDelete, editableUntil]
+      properties:
+        id: { type: integer }
+        author: { $ref: '#/components/schemas/Founder' }
+        transcript: { type: string }
+        transcriptionStatus: { type: string, enum: [processing, ready, failed] }
+        moderationStatus: { type: string, enum: [pending, processing, approved, unreviewed, quarantined, failed, removed] }
+        audioUrl: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        durationSeconds: { type: integer }
+        createdAt: { type: string, format: date-time }
+        reactions: { $ref: '#/components/schemas/ReactionSummary' }
+        viewerReaction: { type: [string, 'null'], enum: [rocket, laughing, thumbsDown, null] }
+        isReshuuted: { type: boolean }
+        reshuutedBy: { type: [string, 'null'] }
+        canEdit: { type: boolean }
+        canDelete: { type: boolean }
+        editableUntil: { type: [string, 'null'], format: date-time }
+    FeedItem:
+      type: object
+      required: [feedItemKey, type, author, post, reshuut]
+      properties:
+        feedItemKey: { type: string }
+        type: { type: string, enum: [post, reshuut] }
+        author: { $ref: '#/components/schemas/Founder' }
+        post:
+          oneOf:
+            - { $ref: '#/components/schemas/PostSnapshot' }
+            - { type: 'null' }
+        reshuut:
+          oneOf:
+            - { $ref: '#/components/schemas/Reshuut' }
+            - { type: 'null' }
     FeedPage:
       type: object
       required: [posts, nextCursor]
       properties:
-        posts: { type: array, items: { $ref: '#/components/schemas/Post' } }
+        posts: { type: array, items: { $ref: '#/components/schemas/FeedItem' } }
         nextCursor: { type: [string, 'null'] }
     ProfileDetail:
       type: object
@@ -1460,7 +1495,7 @@ components:
         followerCount: { type: integer }
         followingCount: { type: integer }
         postCount: { type: integer }
-        posts: { type: array, items: { $ref: '#/components/schemas/Post' } }
+        posts: { type: array, items: { $ref: '#/components/schemas/FeedItem' } }
         suggestedQuestions: { type: array, items: { type: string } }
     ProfileUpdate:
       type: object
@@ -1519,10 +1554,12 @@ components:
         imageObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
     Reshuut:
       type: object
-      required: [id, author, mode, text, transcriptionStatus, audioUrl, durationSeconds, imageUrl, moderationStatus, createdAt]
+      required: [id, author, name, handle, mode, text, transcriptionStatus, audioUrl, durationSeconds, imageUrl, moderationStatus, createdAt, originalPost]
       properties:
         id: { type: integer }
         author: { $ref: '#/components/schemas/Founder' }
+        name: { type: string }
+        handle: { type: string }
         mode: { type: string, enum: [text, audio] }
         text: { type: [string, 'null'] }
         transcriptionStatus: { type: string, enum: [none, processing, ready, failed] }
@@ -1531,6 +1568,10 @@ components:
         imageUrl: { type: [string, 'null'] }
         moderationStatus: { type: string, enum: [pending, processing, approved, unreviewed, quarantined, failed, removed] }
         createdAt: { type: string, format: date-time }
+        originalPost:
+          oneOf:
+            - { $ref: '#/components/schemas/PostSnapshot' }
+            - { type: 'null' }
     VoiceCommentInput:
       type: object
       required: [audioObjectPath, durationSeconds]

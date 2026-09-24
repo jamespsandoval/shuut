@@ -748,9 +748,69 @@ export const ReshuutModerationStatus = {
   removed: 'removed',
 } as const;
 
+export type PostSnapshotTranscriptionStatus = typeof PostSnapshotTranscriptionStatus[keyof typeof PostSnapshotTranscriptionStatus];
+
+
+export const PostSnapshotTranscriptionStatus = {
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
+export type PostSnapshotModerationStatus = typeof PostSnapshotModerationStatus[keyof typeof PostSnapshotModerationStatus];
+
+
+export const PostSnapshotModerationStatus = {
+  pending: 'pending',
+  processing: 'processing',
+  approved: 'approved',
+  unreviewed: 'unreviewed',
+  quarantined: 'quarantined',
+  failed: 'failed',
+  removed: 'removed',
+} as const;
+
+/**
+ * @nullable
+ */
+export type PostSnapshotViewerReaction = typeof PostSnapshotViewerReaction[keyof typeof PostSnapshotViewerReaction] | null;
+
+
+export const PostSnapshotViewerReaction = {
+  rocket: 'rocket',
+  laughing: 'laughing',
+  thumbsDown: 'thumbsDown',
+} as const;
+
+export interface PostSnapshot {
+  id: number;
+  author: Founder;
+  transcript: string;
+  transcriptionStatus: PostSnapshotTranscriptionStatus;
+  moderationStatus?: PostSnapshotModerationStatus;
+  /** @nullable */
+  audioUrl?: string | null;
+  /** @nullable */
+  imageUrl?: string | null;
+  durationSeconds: number;
+  createdAt: string;
+  reactions: ReactionSummary;
+  /** @nullable */
+  viewerReaction?: PostSnapshotViewerReaction;
+  isReshuuted: boolean;
+  /** @nullable */
+  reshuutedBy?: string | null;
+  canEdit: boolean;
+  canDelete: boolean;
+  /** @nullable */
+  editableUntil: string | null;
+}
+
 export interface Reshuut {
   id: number;
   author: Founder;
+  name: string;
+  handle: string;
   mode: ReshuutMode;
   /** @nullable */
   text: string | null;
@@ -763,6 +823,7 @@ export interface Reshuut {
   imageUrl: string | null;
   moderationStatus: ReshuutModerationStatus;
   createdAt: string;
+  originalPost: PostSnapshot | null;
 }
 
 export interface Post {
@@ -790,8 +851,24 @@ export interface Post {
   reshuut?: Reshuut | null;
 }
 
+export type FeedItemType = typeof FeedItemType[keyof typeof FeedItemType];
+
+
+export const FeedItemType = {
+  post: 'post',
+  reshuut: 'reshuut',
+} as const;
+
+export interface FeedItem {
+  feedItemKey: string;
+  type: FeedItemType;
+  author: Founder;
+  post: PostSnapshot | null;
+  reshuut: Reshuut | null;
+}
+
 export interface FeedPage {
-  posts: Post[];
+  posts: FeedItem[];
   /** @nullable */
   nextCursor: string | null;
 }
@@ -801,7 +878,7 @@ export interface ProfileDetail {
   followerCount: number;
   followingCount: number;
   postCount: number;
-  posts: Post[];
+  posts: FeedItem[];
   suggestedQuestions: string[];
 }
 

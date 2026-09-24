@@ -43,6 +43,7 @@ import type {
   EligibleModerationAppealList,
   EmailCodeInput,
   ExchangeMobilePasskeyHandoff200,
+  FeedItem,
   FeedPage,
   FollowState,
   Founder,
@@ -2817,9 +2818,9 @@ export const getGetFeedUrl = (params?: GetFeedParams,) => {
   return stringifiedParams.length > 0 ? `/api/feed?${stringifiedParams}` : `/api/feed`
 }
 
-export const getFeed = async (params?: GetFeedParams, options?: Parameters<typeof customFetch>[1]): Promise<Post[]> => {
+export const getFeed = async (params?: GetFeedParams, options?: Parameters<typeof customFetch>[1]): Promise<FeedItem[]> => {
 
-  return customFetch<Post[]>(getGetFeedUrl(params),
+  return customFetch<FeedItem[]>(getGetFeedUrl(params),
   {
     ...options,
     method: 'GET'

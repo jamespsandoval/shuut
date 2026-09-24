@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, ActivityIndicator } from 'react-native';
 import { useColors } from '../../hooks/useColors';
-import { getFeedPage, getGetFeedPageQueryKey, Post } from '@workspace/api-client-react';
+import { getFeedPage, getGetFeedPageQueryKey, type FeedItem } from '@workspace/api-client-react';
 import { InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Mic, Square } from 'lucide-react-native';
-import { PostCard } from '../../components/PostCard';
+import { FeedItemCard } from '../../components/FeedItemCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 
@@ -22,7 +22,7 @@ export default function FeedScreen() {
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const floatingMicScrollThreshold = useRef(DEFAULT_FLOATING_MIC_SCROLL_THRESHOLD);
-  const listRef = useRef<FlatList<Post>>(null);
+  const listRef = useRef<FlatList<FeedItem>>(null);
   const scrollOffsetRef = useRef(0);
 
   const feedQueryKey = useMemo(() => getGetFeedPageQueryKey({ view }), [view]);
@@ -46,9 +46,9 @@ export default function FeedScreen() {
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
 
-  const posts = useMemo(() => feedData?.pages.reduce<Post[]>((all, page) => {
-    const seen = new Set(all.map((post) => post.id));
-    return all.concat(page.posts.filter((post) => !seen.has(post.id)));
+  const posts = useMemo(() => feedData?.pages.reduce<FeedItem[]>((all, page) => {
+    const seen = new Set(all.map((item) => item.feedItemKey));
+    return all.concat(page.posts.filter((item) => !seen.has(item.feedItemKey)));
   }, []) ?? [], [feedData]);
 
   // Refresh only the first page. This is used by post cards and publish polling,
@@ -78,9 +78,9 @@ export default function FeedScreen() {
     }
   }, [refetchFeed]);
 
-  const renderPost = ({ item }: { item: Post }) => (
-    <PostCard
-      post={item}
+  const renderPost = ({ item }: { item: FeedItem }) => (
+    <FeedItemCard
+      item={item}
       refetchFeed={() => { void refetchFeed(); }}
       onRevealReshuut={(distance) => listRef.current?.scrollToOffset({ offset: scrollOffsetRef.current + distance, animated: true })}
     />
@@ -90,7 +90,7 @@ export default function FeedScreen() {
     if (!params.newPostId) return;
 
     const newPostId = Number(params.newPostId);
-    if (posts?.some((post) => post.id === newPostId)) {
+    if (posts?.some((item) => item.type === 'post' && item.post?.id === newPostId)) {
       router.setParams({ newPostId: undefined });
       return;
     }
@@ -102,7 +102,7 @@ export default function FeedScreen() {
       try {
         const result = await refetchFeed();
         if (isCancelled) return;
-        if (result.posts.some((post) => post.id === newPostId)) {
+        if (result.posts.some((item) => item.type === 'post' && item.post?.id === newPostId)) {
           router.setParams({ newPostId: undefined });
           return;
         }
@@ -192,7 +192,7 @@ export default function FeedScreen() {
       <FlatList
         ref={listRef}
         data={posts || []}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => item.feedItemKey}
         renderItem={renderPost}
         onEndReached={() => {
           if (hasNextPage && !isFetching && !isRefreshing) void fetchNextPage();

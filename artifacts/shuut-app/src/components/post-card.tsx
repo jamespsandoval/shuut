@@ -388,7 +388,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   return (
     <>
     <article
-      id={`post-${post.id}`}
+      id={post.reshuut ? `reshuut-${post.reshuut.id}` : `post-${post.id}`}
       onClick={openPostFromCard}
       onPointerDownCapture={(event) => {
         pointerStartedInControlRef.current = Boolean((event.target as Element).closest(POST_INTERACTIVE_SELECTOR))
@@ -409,7 +409,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
         isFocused && "ring-2 ring-primary/20 bg-card/80 shadow-sm"
       )}
     >
-      {post.isReshuuted && post.reshuutedBy && (
+      {!post.reshuut && post.isReshuuted && post.reshuutedBy && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold mb-3 px-1 uppercase tracking-wider">
           <Repeat2 className="w-3.5 h-3.5" />
           <span>{post.reshuutedBy} reshüüted</span>
@@ -418,6 +418,49 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       )}
 
       <div className="flex flex-col gap-3">
+        {post.reshuut && canShowReshuut && (
+          <div className="space-y-3" data-post-navigation-ignore>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold px-1">
+              <Repeat2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <Link href={`/u/${post.reshuut.author.handle}`} className="hover:text-primary hover:underline">
+                @{post.reshuut.author.handle}
+              </Link>
+              <span>reSHÜÜTed</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link href={`/u/${post.reshuut.author.handle}`} className="flex items-center gap-3 min-w-0 group">
+                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full flex items-center justify-center text-white font-bold shadow-sm"
+                  style={{ backgroundColor: post.reshuut.author.avatarColor || "#3B82F6" }}>
+                  {post.reshuut.author.avatarUrl
+                    ? <img src={post.reshuut.author.avatarUrl} alt="" className="h-full w-full object-cover" />
+                    : post.reshuut.author.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-bold text-foreground group-hover:underline">{post.reshuut.author.name}</span>
+                  <span className="block truncate text-[13px] text-muted-foreground">@{post.reshuut.author.handle}</span>
+                </span>
+              </Link>
+              <span className="ml-auto text-[13px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(post.reshuut.createdAt), { addSuffix: true })}</span>
+            </div>
+            {post.reshuut.mode === "text" && post.reshuut.text && (
+              <p className="select-text whitespace-pre-wrap break-words text-[15px] leading-relaxed">{post.reshuut.text}</p>
+            )}
+            {post.reshuut.mode === "audio" && post.reshuut.audioUrl && (
+              <AudioPlayer audioUrl={post.reshuut.audioUrl} durationSeconds={post.reshuut.durationSeconds ?? 1} compact />
+            )}
+            {post.reshuut.mode === "audio" && post.reshuut.transcriptionStatus === "processing" && (
+              <p className="text-xs text-muted-foreground" role="status">Transcribing reSHÜÜT commentary…</p>
+            )}
+            {post.reshuut.mode === "audio" && post.reshuut.text && post.reshuut.transcriptionStatus === "ready" && (
+              <p className="select-text whitespace-pre-wrap break-words text-[15px] leading-relaxed">{post.reshuut.text}</p>
+            )}
+            {post.reshuut.imageUrl && (
+              <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author.name}'s reSHÜÜT`}
+                className="max-h-[28rem] w-full rounded-xl border border-border/50 object-contain" loading="lazy" />
+            )}
+          </div>
+        )}
+        <div className={cn(post.reshuut && canShowReshuut && "rounded-xl border border-border bg-background p-3 sm:p-4")}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <Link href={post.canDelete ? "/u/me" : `/u/${post.author.handle}`} className="flex items-center gap-3 group min-w-0">
@@ -489,22 +532,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
             <img src={post.imageUrl} alt={`Photo attached to ${post.author.name}'s SHÜÜT`} className="mb-3 max-h-[28rem] w-full rounded-xl object-contain border border-border/50" loading="lazy" />
           )}
 
-          {canShowReshuut && post.reshuut && (
-            <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3" data-post-navigation-ignore>
-              {post.reshuut.mode === "text" && post.reshuut.text && <p className="whitespace-pre-wrap text-sm">{post.reshuut.text}</p>}
-              {post.reshuut.mode === "audio" && post.reshuut.audioUrl && (
-                <AudioPlayer audioUrl={post.reshuut.audioUrl} durationSeconds={1} compact />
-              )}
-              {post.reshuut.mode === "audio" && post.reshuut.transcriptionStatus === "processing" && (
-                <p className="mt-2 text-xs text-muted-foreground" role="status">Transcribing reSHÜÜT commentary…</p>
-              )}
-              {post.reshuut.mode === "audio" && post.reshuut.text && post.reshuut.transcriptionStatus === "ready" && (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{post.reshuut.text}</p>
-              )}
-              {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author?.name ?? post.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-contain" loading="lazy" />}
-            </div>
-          )}
-
           {!post.audioUrl && (
             <div
               className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground"
@@ -517,6 +544,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
             </div>
           )}
 
+        </div>
           {/* Action Bar */}
           <div className="flex items-center gap-1.5 sm:gap-4 mt-1 pt-2 border-t border-border/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-1" data-post-navigation-ignore>
             {/* Reactions */}

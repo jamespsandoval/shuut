@@ -606,9 +606,16 @@ export default function RecordScreen() {
               if (!current) return current;
               const firstPage = current.pages[0];
               if (!firstPage) return current;
-              const posts = firstPage.posts.some((post) => post.id === createdPost.id)
-                ? firstPage.posts.map((post) => post.id === createdPost.id ? createdPost : post)
-                : [createdPost, ...firstPage.posts];
+              const item = {
+                feedItemKey: `post:${createdPost.id}`,
+                type: 'post' as const,
+                author: createdPost.author,
+                post: createdPost,
+                reshuut: null,
+              };
+              const posts = firstPage.posts.some((entry) => entry.feedItemKey === item.feedItemKey)
+                ? firstPage.posts.map((entry) => entry.feedItemKey === item.feedItemKey ? item : entry)
+                : [item, ...firstPage.posts];
               return { ...current, pages: [{ ...firstPage, posts }, ...current.pages.slice(1)] };
             },
           );

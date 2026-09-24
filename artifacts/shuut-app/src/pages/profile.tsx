@@ -4,7 +4,7 @@ import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGet
 import { refreshFeedPages } from "@/lib/feed-refresh"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
-import { PostCard } from "@/components/post-card"
+import { FeedItemCard } from "@/components/feed-item-card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -398,7 +398,7 @@ export default function Profile() {
   }
 
   useEffect(() => {
-    if (focusedPostId && profile?.posts.find(p => p.id === focusedPostId)) {
+    if (focusedPostId && profile?.posts.find(item => item.type === "post" && item.post?.id === focusedPostId)) {
       const timeout = setTimeout(() => {
         const el = document.getElementById(`post-${focusedPostId}`)
         if (el) {
@@ -621,8 +621,8 @@ export default function Profile() {
                 No posts yet.
               </div>
             ) : (
-              profile.posts.map(post => (
-                <PostCard key={post.id} post={post} isFocused={post.id === focusedPostId} />
+              profile.posts.map(item => (
+                <FeedItemCard key={item.feedItemKey} item={item} isFocused={item.type === "post" && item.post?.id === focusedPostId} />
               ))
             )}
           </div>

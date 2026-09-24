@@ -527,7 +527,7 @@ export function PostCard({
     <View
       style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
     >
-      {post.isReshuuted && post.reshuutedBy && (
+      {!post.reshuut && post.isReshuuted && post.reshuutedBy && (
         <View style={styles.reshuutHeader}>
           <Repeat2 color={colors.mutedForeground} size={14} />
           <Text style={[styles.reshuutText, { color: colors.mutedForeground }]}>{post.reshuutedBy} RESHÜÜTED</Text>
@@ -539,6 +539,62 @@ export function PostCard({
         </View>
       )}
 
+      {canShowReshuut && post.reshuut && (
+        <View style={styles.reshuutContent}>
+          <View style={styles.reshuutHeader}>
+            <Repeat2 color={colors.mutedForeground} size={14} />
+            <TouchableOpacity onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)} accessibilityRole="link"
+              accessibilityLabel={`View @${post.reshuut.author.handle}'s profile`}>
+              <Text style={[styles.reshuutText, { color: colors.mutedForeground }]}>@{post.reshuut.author.handle} reSHÜÜTed</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.postHeader}>
+            <TouchableOpacity style={styles.authorInfo} onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)} accessibilityRole="link">
+              {post.reshuut.author.avatarUrl ? (
+                <Image source={authenticatedImageSource(post.reshuut.author.avatarUrl, token)} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: post.reshuut.author.avatarColor || colors.primary }]}>
+                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
+                    {post.reshuut.author.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <View>
+                <Text style={[styles.authorName, { color: colors.foreground }]}>{post.reshuut.author.name}</Text>
+                <Text style={[styles.authorHandle, { color: colors.mutedForeground }]}>@{post.reshuut.author.handle}</Text>
+              </View>
+            </TouchableOpacity>
+            <Text style={[styles.time, { color: colors.mutedForeground }]}>{formatApproximateTimeAgo(post.reshuut.createdAt)}</Text>
+          </View>
+          {post.reshuut.mode === 'text' && post.reshuut.text && (
+            <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
+          )}
+          {post.reshuut.mode === 'audio' && (
+            <AuthenticatedAudioPlayer url={post.reshuut.audioUrl} durationSeconds={post.reshuut.durationSeconds ?? 1} />
+          )}
+          {post.reshuut.mode === 'audio' && post.reshuut.transcriptionStatus === 'ready' && post.reshuut.text && (
+            <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
+          )}
+          {post.reshuut.transcriptionStatus === 'processing' && (
+            <Text style={[styles.reshuutStatus, { color: colors.mutedForeground }]}>Transcribing reSHÜÜT commentary…</Text>
+          )}
+          {post.reshuut.imageUrl && (
+            <Image
+              source={authenticatedImageSource(post.reshuut.imageUrl, token)}
+              style={[styles.reshuutImage, { aspectRatio: reshuutPhotoRatio }]}
+              contentFit="contain"
+              onLoad={(event) => {
+                if (event.source.width > 0 && event.source.height > 0) {
+                  setReshuutPhotoRatio(Math.max(0.65, Math.min(2, event.source.width / event.source.height)));
+                }
+              }}
+              accessibilityLabel="Photo attached to this reSHÜÜT"
+            />
+          )}
+        </View>
+      )}
+
+      <View style={canShowReshuut ? [styles.originalPost, { borderColor: colors.cardBorder, backgroundColor: colors.background }] : undefined}>
       <View style={styles.postHeader}>
         <TouchableOpacity
           style={styles.authorInfo}
@@ -634,33 +690,7 @@ export function PostCard({
         </TouchableOpacity>
       )}
       <AuthenticatedAudioPlayer url={post.audioUrl} durationSeconds={post.durationSeconds} />
-
-      {canShowReshuut && post.reshuut && (
-        <View style={[styles.reshuutContent, { borderColor: colors.border, backgroundColor: colors.background }]}>
-          {post.reshuut.mode === 'text' && post.reshuut.text && (
-            <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
-          )}
-          {post.reshuut.mode === 'audio' && (
-            <AuthenticatedAudioPlayer url={post.reshuut.audioUrl} durationSeconds={post.reshuut.durationSeconds ?? 1} />
-          )}
-          {post.reshuut.transcriptionStatus === 'processing' && (
-            <Text style={[styles.reshuutStatus, { color: colors.mutedForeground }]}>Transcribing reSHÜÜT commentary…</Text>
-          )}
-          {post.reshuut.imageUrl && (
-            <Image
-              source={authenticatedImageSource(post.reshuut.imageUrl, token)}
-              style={[styles.reshuutImage, { aspectRatio: reshuutPhotoRatio }]}
-              contentFit="contain"
-              onLoad={(event) => {
-                if (event.source.width > 0 && event.source.height > 0) {
-                  setReshuutPhotoRatio(Math.max(0.65, Math.min(2, event.source.width / event.source.height)));
-                }
-              }}
-              accessibilityLabel="Photo attached to this reSHÜÜT"
-            />
-          )}
-        </View>
-      )}
+      </View>
 
       {showReshuutMenu && (
         <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutMenu, { borderColor: colors.border, backgroundColor: colors.background }]}>
@@ -962,11 +992,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   reshuutContent: {
+    marginBottom: 12,
+    gap: 8,
+  },
+  originalPost: {
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
-    gap: 8,
   },
   reshuutContentText: {
     fontFamily: 'Inter_400Regular',

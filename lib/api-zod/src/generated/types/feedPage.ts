@@ -5,10 +5,10 @@
  * SHUUT founder voice feed API
  * OpenAPI spec version: 0.1.0
  */
-import type { Post } from './post';
+import type { FeedItem } from './feedItem';
 
 export interface FeedPage {
-  posts: Post[];
+  posts: FeedItem[];
   /** @nullable */
   nextCursor: string | null;
 }

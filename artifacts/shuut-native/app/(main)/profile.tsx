@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
-import { useGetProfile, useUpdateProfile, useRequestUploadUrl, Post } from '@workspace/api-client-react';
+import { useGetProfile, useUpdateProfile, useRequestUploadUrl } from '@workspace/api-client-react';
 import { X, MapPin, Link as LinkIcon, Camera } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { createEditableProfileUpdate } from '../../lib/profileUpdate';
-import { PostCard } from '../../components/PostCard';
+import { FeedItemCard } from '../../components/FeedItemCard';
 import * as ImagePicker from 'expo-image-picker';
 import { authenticatedImageSource, resolveApiUrl } from '../../lib/apiUrl';
 import { useAuth } from '../../hooks/useAuthStore';
@@ -284,10 +284,10 @@ export default function MyProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>SHÜÜTs</Text>
 
         <View style={styles.feed}>
-          {profileData?.posts?.map((post: Post) => (
-            <PostCard
-              key={post.id}
-              post={post}
+          {profileData?.posts?.map((item) => (
+            <FeedItemCard
+              key={item.feedItemKey}
+              item={item}
               refetchFeed={refetch}
               disableAuthorNavigation
               onRevealReshuut={(distance) => postsScrollRef.current?.scrollTo({ y: postsScrollOffsetRef.current + distance, animated: true })}

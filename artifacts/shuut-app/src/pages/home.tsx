@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { getFeedPage, getGetFeedPageQueryKey, type GetFeedView, type Post } from "@workspace/api-client-react"
+import { getFeedPage, getGetFeedPageQueryKey, type GetFeedView, type FeedItem } from "@workspace/api-client-react"
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { refreshFeedPages } from "@/lib/feed-refresh"
 import { Layout } from "@/components/layout"
 import { Recorder, type RecorderHandle } from "@/components/recorder"
-import { PostCard } from "@/components/post-card"
+import { FeedItemCard } from "@/components/feed-item-card"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Loader2, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -17,7 +17,8 @@ function FeedPostError() {
   )
 }
 
-function canRenderPost(post: Post): boolean {
+function canRenderPost(item: FeedItem): boolean {
+  const post = item.type === "reshuut" ? item.reshuut?.originalPost : item.post
   return Boolean(
     post?.author
     && typeof post.author.name === "string"
@@ -58,7 +59,7 @@ export default function Home() {
   })
 
   const posts = data?.pages.flatMap((page) => page.posts) ?? []
-  const dedupedPosts = Array.from(new Map(posts.map((post) => [post.id, post])).values())
+  const dedupedPosts = Array.from(new Map(posts.map((item) => [item.feedItemKey, item])).values())
 
   useEffect(() => {
     const sentinel = feedSentinelRef.current
@@ -203,11 +204,11 @@ export default function Home() {
         )}
 
         {dedupedPosts.map((post, index) => canRenderPost(post) ? (
-          <ErrorBoundary key={post.id} FallbackComponent={FeedPostError}>
-            <PostCard post={post} />
+          <ErrorBoundary key={post.feedItemKey} FallbackComponent={FeedPostError}>
+            <FeedItemCard item={post} />
           </ErrorBoundary>
         ) : (
-          <FeedPostError key={post?.id ?? `invalid-post-${index}`} />
+          <FeedPostError key={post?.feedItemKey ?? `invalid-post-${index}`} />
         ))}
 
         {isFetchNextPageError && (

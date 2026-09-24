@@ -459,6 +459,8 @@ function reshuutJson(row: typeof postReshuutsTable.$inferSelect, author: Founder
   return {
     id: row.id,
     author: founderJson(author),
+    name: author.name,
+    handle: author.handle,
     mode: row.audioUrl ? "audio" as const : "text" as const,
     text: row.transcript,
     transcriptionStatus: row.transcriptionStatus,
@@ -467,6 +469,7 @@ function reshuutJson(row: typeof postReshuutsTable.$inferSelect, author: Founder
     imageUrl: row.imageUrl ? `/api/reshuuts/${row.id}/image` : null,
     moderationStatus: row.moderationStatus,
     createdAt: row.createdAt,
+    originalPost: null,
   };
 }
 
@@ -557,23 +560,6 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       ))
     : [];
   const reshuutedPostIds = new Set(viewerReshuuts.map((reshuut) => reshuut.postId));
-  const currentReshuuts = viewerFounderId
-    ? await db.select().from(postReshuutsTable).where(and(
-      eq(postReshuutsTable.founderId, viewerFounderId),
-      inArray(postReshuutsTable.postId, rows.map((row) => row.id)),
-      eq(postReshuutsTable.deletionStatus, "active"),
-    ))
-    : [];
-  // A paged set of original post authors need not contain the author of the
-  // viewer's reSHÜÜT. Resolve them separately instead of assuming they do.
-  const missingReshuutAuthors = [...new Set(currentReshuuts.map((row) => row.founderId))]
-    .filter((id) => !byId.has(id));
-  if (missingReshuutAuthors.length) {
-    const additional = await activeFounders(await db.select().from(foundersTable)
-      .where(inArray(foundersTable.id, missingReshuutAuthors)));
-    for (const founder of additional) byId.set(founder.id, founder);
-  }
-  const reshuutByPostId = new Map(currentReshuuts.map((row) => [row.postId, row]));
   return rows.flatMap((row) => {
     const author = byId.get(row.authorId);
     return author ? [postJson(
@@ -582,13 +568,110 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
       viewerFounderId,
       reactionByPostId.get(row.id),
       reshuutedPostIds.has(row.id),
-       (() => {
-         const current = reshuutByPostId.get(row.id);
-          const reshuutAuthor = current && byId.get(current.founderId);
-          return current && reshuutAuthor ? reshuutJson(current, reshuutAuthor) : null;
-       })(),
+      null,
     )] : [];
   });
+}
+
+type ReshuutFeedSource = {
+  reshuut: typeof postReshuutsTable.$inferSelect;
+  post: PostRow;
+  author: FounderRow;
+  cursorTime: string;
+};
+
+type FeedItemJson = {
+  feedItemKey: string;
+  type: "post" | "reshuut";
+  author: ReturnType<typeof founderJson>;
+  post: ReturnType<typeof postJson> | null;
+  reshuut: (Omit<ReturnType<typeof reshuutJson>, "originalPost"> & { originalPost: ReturnType<typeof postJson> }) | null;
+};
+
+function postFeedItem(post: ReturnType<typeof postJson>): FeedItemJson {
+  return {
+    feedItemKey: `post:${post.id}`,
+    type: "post",
+    author: post.author,
+    post,
+    reshuut: null,
+  };
+}
+
+function reshuutFeedItem(
+  source: ReshuutFeedSource,
+  originalPost: ReturnType<typeof postJson>,
+): FeedItemJson {
+  return {
+    feedItemKey: `reshuut:${source.reshuut.id}`,
+    type: "reshuut",
+    author: founderJson(source.author),
+    post: null,
+    reshuut: {
+      ...reshuutJson(source.reshuut, source.author),
+      originalPost,
+    },
+  };
+}
+
+async function visibleReshuutSources(options: {
+  viewerFounderId?: number | null;
+  followedFounderIds?: Set<number>;
+  authorFounderId?: number;
+} = {}): Promise<ReshuutFeedSource[]> {
+  const timeKey = sql<string>`to_char(${postReshuutsTable.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+  const sources = await db.select({
+    reshuut: postReshuutsTable,
+    post: postsTable,
+    author: foundersTable,
+    cursorTime: timeKey,
+  })
+    .from(postReshuutsTable)
+    .innerJoin(postsTable, eq(postsTable.id, postReshuutsTable.postId))
+    .innerJoin(foundersTable, eq(foundersTable.id, postReshuutsTable.founderId))
+    .where(and(
+      eq(postReshuutsTable.deletionStatus, "active"),
+      inArray(postReshuutsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+      options.authorFounderId === undefined ? undefined : eq(postReshuutsTable.founderId, options.authorFounderId),
+    ));
+  const visible: ReshuutFeedSource[] = [];
+  for (const source of sources) {
+    if (source.reshuut.audioUrl && source.reshuut.transcriptionStatus !== "ready") continue;
+    if (!(await canDistributePost(source.post.id))) continue;
+    if (!(await isFounderActive(source.author)) || !(await isFounderDistributable(source.author.id))) continue;
+    if (options.viewerFounderId &&
+        (!(await visibleToViewer(options.viewerFounderId, source.post.authorId)) ||
+         !(await visibleToViewer(options.viewerFounderId, source.author.id)))) continue;
+    if (options.followedFounderIds && !options.followedFounderIds.has(source.author.id)) continue;
+    visible.push(source);
+  }
+  return visible;
+}
+
+async function profileFeedItems(
+  posts: PostRow[],
+  authorFounderId: number,
+  viewerFounderId?: number | null,
+) {
+  const hydratedPosts = await hydratePosts(posts, viewerFounderId);
+  const items: FeedItemJson[] = hydratedPosts.map(postFeedItem);
+  const sources = await visibleReshuutSources({ viewerFounderId, authorFounderId });
+  const originals = await hydratePosts(
+    [...new Map(sources.map((source) => [source.post.id, source.post])).values()],
+    viewerFounderId,
+  );
+  const byId = new Map(originals.map((post) => [post.id, post]));
+  for (const source of sources) {
+    const original = byId.get(source.post.id);
+    if (original) items.push(reshuutFeedItem(source, original));
+  }
+  items.sort((left, right) => {
+    const leftTime = left.type === "reshuut" ? left.reshuut!.createdAt : left.post!.createdAt;
+    const rightTime = right.type === "reshuut" ? right.reshuut!.createdAt : right.post!.createdAt;
+    return new Date(rightTime).getTime() - new Date(leftTime).getTime() ||
+      left.feedItemKey.localeCompare(right.feedItemKey);
+  });
+  return items;
 }
 
 async function viewerReactionFor(postId: number, viewerFounderId?: number | null) {
@@ -654,18 +737,45 @@ router.get("/feed", async (req, res): Promise<void> => {
     }
   }
   res.setHeader("Cache-Control", "private, no-store");
-  res.json(GetFeedResponse.parse(await hydratePosts(rows, viewer?.id)));
+  const followingRows = viewer
+    ? await db.select({ id: accountFollowsTable.followedFounderId }).from(accountFollowsTable)
+      .where(eq(accountFollowsTable.followerFounderId, viewer.id))
+    : [];
+  const followedIds = new Set(followingRows.map((row) => row.id));
+  const hydratedPosts = await hydratePosts(rows, viewer?.id);
+  const items: FeedItemJson[] = hydratedPosts.map(postFeedItem);
+  const reshuutSources = await visibleReshuutSources({
+    viewerFounderId: viewer?.id,
+    followedFounderIds: params.data.view === "following" ? followedIds : undefined,
+  });
+  const originalPosts = await hydratePosts(
+    [...new Map(reshuutSources.map((source) => [source.post.id, source.post])).values()],
+    viewer?.id,
+  );
+  const originalById = new Map(originalPosts.map((post) => [post.id, post]));
+  for (const source of reshuutSources) {
+    const original = originalById.get(source.post.id);
+    if (original) items.push(reshuutFeedItem(source, original));
+  }
+  items.sort((left, right) => {
+    const leftTime = left.type === "reshuut" ? left.reshuut!.createdAt : left.post!.createdAt;
+    const rightTime = right.type === "reshuut" ? right.reshuut!.createdAt : right.post!.createdAt;
+    return new Date(rightTime).getTime() - new Date(leftTime).getTime() ||
+      left.feedItemKey.localeCompare(right.feedItemKey);
+  });
+  res.json(GetFeedResponse.parse(items));
 });
 
 // Use the database's full microsecond timestamp as the seek key. A JavaScript
 // Date loses sub-millisecond precision and can skip posts that share a millisecond.
-type FeedCursor = { time: string; id: number; view: "everyone" | "following" };
+type FeedCursor = { time: string; id: number; type: "post" | "reshuut"; view: "everyone" | "following" };
 function parseFeedCursor(value: string | undefined, view: FeedCursor["view"]): FeedCursor | null {
   if (!value) return null;
   try {
     if (Buffer.from(value, "base64url").toString("base64url") !== value) return null;
     const cursor: FeedCursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-    if (cursor.view !== view || !Number.isSafeInteger(cursor.id) || cursor.id <= 0 ||
+    if (cursor.view !== view || !["post", "reshuut"].includes(cursor.type) ||
+        !Number.isSafeInteger(cursor.id) || cursor.id <= 0 ||
         !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(cursor.time) ||
         !Number.isFinite(Date.parse(cursor.time))) return null;
     return cursor;
@@ -739,26 +849,80 @@ router.get("/feed/page", async (req, res): Promise<void> => {
       view === "following" && following ? exists(following) : undefined,
       cursor ? or(
         lt(postsTable.createdAt, sql`${cursor.time}::timestamptz`),
-        and(eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`), lt(postsTable.id, cursor.id)),
+        cursor.type === "reshuut"
+          ? eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`)
+          : and(eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`), lt(postsTable.id, cursor.id)),
       ) : undefined,
     ))
     .orderBy(desc(postsTable.createdAt), desc(postsTable.id))
     .limit(limit + 1);
-  const page = rows.slice(0, limit);
-  const last = page.at(-1);
-  const nextCursor = rows.length > limit && last
-    ? Buffer.from(JSON.stringify({ time: last.cursorTime, id: last.post.id, view })).toString("base64url")
-    : null;
-  const posts = await hydratePosts(page.map(({ post }) => post), viewer?.id);
-  res.json(GetFeedPageResponse.parse({
-    posts: posts.map((post) => ({
-      ...post,
-      imageUrl: post.imageUrl ? `${post.imageUrl}?width=960` : null,
-      reshuut: post.reshuut ? {
-        ...post.reshuut,
-        imageUrl: post.reshuut.imageUrl ? `${post.reshuut.imageUrl}?width=960` : null,
-      } : null,
+  const followingRows = viewer
+    ? await db.select({ id: accountFollowsTable.followedFounderId }).from(accountFollowsTable)
+      .where(eq(accountFollowsTable.followerFounderId, viewer.id))
+    : [];
+  const followedIds = new Set(followingRows.map((row) => row.id));
+  const reshuutSources = await visibleReshuutSources({
+    viewerFounderId: viewer?.id,
+    followedFounderIds: view === "following" ? followedIds : undefined,
+  });
+  const afterCursor = (type: "post" | "reshuut", time: string, id: number) => {
+    if (!cursor) return true;
+    if (time !== cursor.time) return time < cursor.time;
+    const rank = type === "post" ? 0 : 1;
+    const cursorRank = cursor.type === "post" ? 0 : 1;
+    return rank < cursorRank || (rank === cursorRank && id < cursor.id);
+  };
+  const candidates = [
+    ...rows.map(({ post, cursorTime }) => ({
+      type: "post" as const,
+      id: post.id,
+      time: cursorTime,
+      post,
+      source: null,
     })),
+    ...reshuutSources.filter((source) => afterCursor("reshuut", source.cursorTime, source.reshuut.id))
+      .map((source) => ({
+        type: "reshuut" as const,
+        id: source.reshuut.id,
+        time: source.cursorTime,
+        post: source.post,
+        source,
+      })),
+  ].sort((left, right) =>
+    right.time.localeCompare(left.time) ||
+    (left.type === right.type ? right.id - left.id : left.type === "post" ? -1 : 1),
+  );
+  const page = candidates.slice(0, limit);
+  const hasMore = candidates.length > limit;
+  const last = page.at(-1);
+  const nextCursor = hasMore && last
+    ? Buffer.from(JSON.stringify({ time: last.time, id: last.id, type: last.type, view })).toString("base64url")
+    : null;
+  const hydratedPosts = await hydratePosts(
+    [...new Map(page.map((item) => [item.post.id, item.post])).values()],
+    viewer?.id,
+  );
+  const hydratedById = new Map(hydratedPosts.map((post) => [post.id, post]));
+  const pageItems = page.flatMap((item) => {
+    const original = hydratedById.get(item.post.id);
+    if (!original) return [];
+    if (item.type === "post") return [postFeedItem({
+      ...original,
+      imageUrl: original.imageUrl ? `${original.imageUrl}?width=960` : null,
+    })];
+    return [reshuutFeedItem(item.source!, {
+      ...original,
+      imageUrl: original.imageUrl ? `${original.imageUrl}?width=960` : null,
+    })];
+  });
+  res.json(GetFeedPageResponse.parse({
+    posts: pageItems.map((item) => item.reshuut ? {
+      ...item,
+      reshuut: {
+        ...item.reshuut,
+        imageUrl: item.reshuut.imageUrl ? `${item.reshuut.imageUrl}?width=960` : null,
+      },
+    } : item),
     nextCursor,
   }));
 });
@@ -1177,6 +1341,7 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
   const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followerFounderId, founder.id));
+  const profilePosts = await profileFeedItems(rows, founder.id, viewer?.id);
   res.json(
     GetProfileResponse.parse({
       founder: {
@@ -1190,8 +1355,8 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
       },
       followerCount: Number(followerCount),
       followingCount: Number(followingCount),
-      postCount: rows.length,
-      posts: await hydratePosts(rows, viewer?.id),
+      postCount: profilePosts.length,
+      posts: profilePosts,
       suggestedQuestions: [
         `What is ${founder.name.split(" ")[0]} learning right now?`,
         `What does ${founder.name.split(" ")[0]} believe about building teams?`,
@@ -1282,13 +1447,14 @@ router.patch("/profiles/:handle", async (req, res): Promise<void> => {
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
   const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followerFounderId, founder.id));
+  const profilePosts = await profileFeedItems(rows, founder.id, founder.id);
   res.json(
     UpdateProfileResponse.parse({
       founder: { ...founderJson(founder), isFollowing: false },
       followerCount: Number(followerCount),
       followingCount: Number(followingCount),
-      postCount: rows.length,
-      posts: await hydratePosts(rows, founder.id),
+      postCount: profilePosts.length,
+      posts: profilePosts,
       suggestedQuestions: [
         `What is ${founder.name.split(" ")[0]} learning right now?`,
         `What does ${founder.name.split(" ")[0]} believe about building teams?`,

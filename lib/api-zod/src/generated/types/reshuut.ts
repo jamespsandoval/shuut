@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Founder } from './founder';
+import type { PostSnapshot } from './postSnapshot';
 import type { ReshuutMode } from './reshuutMode';
 import type { ReshuutModerationStatus } from './reshuutModerationStatus';
 import type { ReshuutTranscriptionStatus } from './reshuutTranscriptionStatus';
@@ -13,6 +14,8 @@ import type { ReshuutTranscriptionStatus } from './reshuutTranscriptionStatus';
 export interface Reshuut {
   id: number;
   author: Founder;
+  name: string;
+  handle: string;
   mode: ReshuutMode;
   /** @nullable */
   text: string | null;
@@ -25,4 +28,5 @@ export interface Reshuut {
   imageUrl: string | null;
   moderationStatus: ReshuutModerationStatus;
   createdAt: Date;
+  originalPost: PostSnapshot | null;
 }

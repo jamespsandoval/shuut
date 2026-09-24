@@ -694,8 +694,8 @@ test("blocks are mutual, idempotent, remove follows, hide content and writes, an
     assert.ok(JSON.stringify(await followingBeforeBlock.json()).includes(String(fixture.post.id)));
     const pagedBeforeBlock = await request("/api/feed/page?view=following&limit=20", { session: fixture.viewerSession });
     assert.equal(pagedBeforeBlock.status, 200);
-    assert.ok(((await pagedBeforeBlock.json()) as { posts: Array<{ id: number }> }).posts
-      .some((post) => post.id === fixture.post.id));
+    assert.ok(((await pagedBeforeBlock.json()) as { posts: Array<{ post: { id: number } | null }> }).posts
+      .some((item) => item.post?.id === fixture.post.id));
     const search = await request(`/api/profiles/search?q=${encodeURIComponent(fixture.owner.handle)}`, {
       session: fixture.viewerSession,
     });
@@ -730,8 +730,8 @@ test("blocks are mutual, idempotent, remove follows, hide content and writes, an
     for (const view of ["everyone", "following"]) {
       const page = await request(`/api/feed/page?view=${view}&limit=50`, { session: fixture.viewerSession });
       assert.equal(page.status, 200);
-      assert.ok(!((await page.json()) as { posts: Array<{ id: number }> }).posts
-        .some((post) => post.id === fixture.post.id));
+      assert.ok(!((await page.json()) as { posts: Array<{ post: { id: number } | null }> }).posts
+        .some((item) => item.post?.id === fixture.post.id));
     }
     for (const [path, method, json] of [
       [`/api/posts/${fixture.post.id}/reaction`, "PUT", { emojiType: "rocket" }],
@@ -782,8 +782,8 @@ test("blocks are mutual, idempotent, remove follows, hide content and writes, an
     await db.update(postsTable).set({ moderationStatus: "removed" }).where(eq(postsTable.id, fixture.post.id));
     const removedPage = await request("/api/feed/page?view=everyone&limit=50", { session: fixture.ownerSession });
     assert.equal(removedPage.status, 200);
-    assert.ok(!((await removedPage.json()) as { posts: Array<{ id: number }> }).posts
-      .some((post) => post.id === fixture.post.id));
+    assert.ok(!((await removedPage.json()) as { posts: Array<{ post: { id: number } | null }> }).posts
+      .some((item) => item.post?.id === fixture.post.id));
   } finally {
     await fixture.cleanup();
   }
@@ -1087,6 +1087,24 @@ test("mobile sessions do not require an enrolled passkey", async () => {
   assert.equal((await request("/api/auth/me", { session: browser })).status, 401);
 });
 
+type FeedTestItem = {
+  feedItemKey: string;
+  type: "post" | "reshuut";
+  post: { id: number; createdAt: string; imageUrl: string | null } | null;
+  reshuut: {
+    id: number;
+    createdAt: string;
+    author: { id: number; name: string; handle: string };
+    name: string;
+    handle: string;
+    originalPost: { id: number; isReshuuted: boolean; imageUrl: string | null };
+  } | null;
+};
+
+function feedTestItemCreatedAt(item: FeedTestItem) {
+  return item.type === "reshuut" ? item.reshuut!.createdAt : item.post!.createdAt;
+}
+
 test("feed pages stay bounded, ordered, and reject invalid cursors", async () => {
   const browser = await register(`${prefix}-feed-pages@example.test`);
   const legacyStart = performance.now();
@@ -1101,7 +1119,7 @@ test("feed pages stay bounded, ordered, and reject invalid cursors", async () =>
   const pageMs = Math.round(performance.now() - pageStart);
   console.log(`feed delivery sample (${JSON.parse(legacyBody).length} visible posts): legacy ${legacyMs}ms / ${Buffer.byteLength(legacyBody)} bytes, first page ${pageMs}ms / ${Buffer.byteLength(pageBody)} bytes`);
   const page = JSON.parse(pageBody) as {
-    posts: Array<{ id: number; createdAt: string }>;
+    posts: FeedTestItem[];
     nextCursor: string | null;
   };
   assert.ok(page.posts.length <= 20);
@@ -1110,12 +1128,74 @@ test("feed pages stay bounded, ordered, and reject invalid cursors", async () =>
     assert.equal(second.status, 200);
     const older = await second.json() as typeof page;
     assert.ok(older.posts.length <= 20);
-    assert.ok(!older.posts.some((post) => page.posts.some((newer) => newer.id === post.id)));
-    assert.ok(older.posts.every((post) => new Date(post.createdAt).getTime() <=
-      new Date(page.posts.at(-1)!.createdAt).getTime()));
+    assert.ok(!older.posts.some((item) => page.posts.some((newer) => newer.feedItemKey === item.feedItemKey)));
+    assert.ok(older.posts.every((item) => new Date(feedTestItemCreatedAt(item)).getTime() <=
+      new Date(feedTestItemCreatedAt(page.posts.at(-1)!)).getTime()));
     assert.equal((await request(`/api/feed/page?view=following&cursor=${encodeURIComponent(page.nextCursor)}`, { session: browser })).status, 400);
   }
   assert.equal((await request("/api/feed/page?cursor=not-a-cursor", { session: browser })).status, 400);
+});
+
+test("other viewers get distinct reSHÜÜT feed/profile entries with cursor-stable keys", async (t) => {
+  const fixture = await securityFixture("reshuut-feed");
+  t.after(() => fixture.cleanup());
+  const imagePath = `/objects/uploads/${prefix}-reshuut-original-image`;
+  await db.update(postsTable).set({
+    createdAt: new Date("2098-01-01T00:00:00.000Z"),
+    imageUrl: imagePath,
+  }).where(eq(postsTable.id, fixture.post.id));
+  const createdReshuut = await request(`/api/posts/${fixture.post.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+  });
+  assert.equal(createdReshuut.status, 200);
+  assert.equal((await createdReshuut.json() as { isReshuuted: boolean }).isReshuuted, true);
+  const [createdReshuutRow] = await db.select().from(postReshuutsTable).where(and(
+    eq(postReshuutsTable.postId, fixture.post.id),
+    eq(postReshuutsTable.founderId, fixture.viewer.id),
+  ));
+  assert.ok(createdReshuutRow);
+  await db.update(postReshuutsTable).set({ createdAt: new Date("2099-01-01T00:00:00.000Z") })
+    .where(eq(postReshuutsTable.id, createdReshuutRow.id));
+
+  const firstResponse = await request("/api/feed/page?view=everyone&limit=1", {
+    session: fixture.ownerSession,
+  });
+  assert.equal(firstResponse.status, 200);
+  const firstPage = await firstResponse.json() as { posts: FeedTestItem[]; nextCursor: string | null };
+  const event = firstPage.posts[0];
+  assert.equal(event.type, "reshuut");
+  assert.equal(event.feedItemKey, `reshuut:${createdReshuutRow.id}`);
+  assert.equal(event.author.id, fixture.viewer.id);
+  assert.equal(event.author.name, fixture.viewer.name);
+  assert.equal(event.author.handle, fixture.viewer.handle);
+  assert.equal(event.reshuut?.author.id, fixture.viewer.id);
+  assert.equal(event.reshuut?.name, fixture.viewer.name);
+  assert.equal(event.reshuut?.handle, fixture.viewer.handle);
+  assert.equal(event.reshuut?.originalPost.id, fixture.post.id);
+  assert.equal(event.reshuut?.originalPost.isReshuuted, false);
+  assert.equal(event.reshuut?.originalPost.imageUrl?.split("?").length, 2);
+  assert.match(event.reshuut?.originalPost.imageUrl ?? "", /[?]width=960$/);
+  assert.ok(firstPage.nextCursor);
+
+  const secondResponse = await request(`/api/feed/page?view=everyone&limit=1&cursor=${encodeURIComponent(firstPage.nextCursor)}`, {
+    session: fixture.ownerSession,
+  });
+  assert.equal(secondResponse.status, 200);
+  const secondPage = await secondResponse.json() as { posts: FeedTestItem[]; nextCursor: string | null };
+  assert.equal(secondPage.posts[0]?.feedItemKey, `post:${fixture.post.id}`);
+  assert.ok(!secondPage.posts.some((item) => item.feedItemKey === event.feedItemKey));
+
+  const profileResponse = await request(`/api/profiles/${fixture.viewer.handle}`, {
+    session: fixture.ownerSession,
+  });
+  assert.equal(profileResponse.status, 200);
+  const profile = await profileResponse.json() as { posts: FeedTestItem[] };
+  const profileEvent = profile.posts.find((item) => item.feedItemKey === event.feedItemKey);
+  assert.ok(profileEvent);
+  assert.equal(profileEvent.type, "reshuut");
+  assert.equal(profileEvent.author.id, fixture.viewer.id);
+  assert.equal(profileEvent.reshuut?.originalPost.id, fixture.post.id);
 });
 
 test("browser sessions do not require an enrolled passkey", async () => {

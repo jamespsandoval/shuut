@@ -2,13 +2,13 @@ import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
-import { getGetFeedPageQueryKey, useGetProfile, useToggleFollow, Post } from '@workspace/api-client-react';
+import { getGetFeedPageQueryKey, useGetProfile, useToggleFollow } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, MapPin, Link as LinkIcon } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { authenticatedImageSource } from '../../lib/apiUrl';
 import { useAuth } from '../../hooks/useAuthStore';
-import { PostCard } from '../../components/PostCard';
+import { FeedItemCard } from '../../components/FeedItemCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafetyActionSheet } from '../../components/SafetyActionSheet';
 
@@ -128,10 +128,10 @@ export default function ProfileScreen() {
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>SHÜÜTs</Text>
 
         <View style={styles.feed}>
-          {profileData?.posts?.map((post: Post) => (
-            <PostCard
-              key={post.id}
-              post={post}
+          {profileData?.posts?.map((item) => (
+            <FeedItemCard
+              key={item.feedItemKey}
+              item={item}
               refetchFeed={refetch}
               onRevealReshuut={(distance) => postsScrollRef.current?.scrollTo({ y: postsScrollOffsetRef.current + distance, animated: true })}
             />
