@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import app from "../src/app";
-import { retryDueCleanupJobs } from "../src/routes/shuut";
+import { retryDueCleanupJobs, visibleReshuutPageQuery } from "../src/routes/shuut";
 import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
 import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
@@ -1196,6 +1196,89 @@ test("other viewers get distinct reSHÜÜT feed/profile entries with cursor-stab
   assert.equal(profileEvent.type, "reshuut");
   assert.equal(profileEvent.author.id, fixture.viewer.id);
   assert.equal(profileEvent.reshuut?.originalPost.id, fixture.post.id);
+});
+
+test("many reSHÜÜTs paginate without scanning past the cursor or losing tied items", async (t) => {
+  const fixture = await securityFixture("reshuut-pages");
+  t.after(() => fixture.cleanup());
+  const [blockedAuthor] = await db.insert(foundersTable).values({
+    name: "Blocked feed author", handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-10)}blocked`,
+    bio: "", avatarColor: "#333333",
+  }).returning();
+  t.after(async () => {
+    await db.delete(accountBlocksTable).where(or(
+      eq(accountBlocksTable.blockerFounderId, blockedAuthor.id),
+      eq(accountBlocksTable.blockedFounderId, blockedAuthor.id),
+    ));
+    await db.delete(postsTable).where(eq(postsTable.authorId, blockedAuthor.id));
+    await db.delete(foundersTable).where(eq(foundersTable.id, blockedAuthor.id));
+  });
+
+  await db.insert(accountFollowsTable).values({
+    followerFounderId: fixture.owner.id, followedFounderId: fixture.viewer.id,
+  });
+  await db.insert(accountBlocksTable).values({
+    blockerFounderId: blockedAuthor.id, blockedFounderId: fixture.owner.id,
+  });
+  const originalTime = new Date("2094-01-01T00:00:00.000Z");
+  const sharedTime = new Date("2095-01-01T00:00:00.000Z");
+  const posts = await db.insert(postsTable).values(Array.from({ length: 75 }, (_, i) => ({
+    authorId: fixture.owner.id, transcript: `Feed stress original ${i}`,
+    durationSeconds: 2, moderationStatus: "approved", createdAt: originalTime,
+  }))).returning();
+  const shares = await db.insert(postReshuutsTable).values(posts.map((post) => ({
+    postId: post.id, founderId: fixture.viewer.id,
+    moderationStatus: "approved", createdAt: sharedTime,
+  }))).returning();
+  const [blockedOriginal] = await db.insert(postsTable).values({
+    authorId: blockedAuthor.id, transcript: "Blocked original", durationSeconds: 2,
+    moderationStatus: "approved", createdAt: originalTime,
+  }).returning();
+  const [blockedShare, blockedSharer, hiddenShare, unfinishedShare] = await db.insert(postReshuutsTable).values([
+    { postId: blockedOriginal.id, founderId: fixture.viewer.id, createdAt: sharedTime },
+    { postId: fixture.post.id, founderId: blockedAuthor.id, createdAt: sharedTime },
+    { postId: fixture.post.id, founderId: fixture.owner.id, moderationStatus: "quarantined", createdAt: sharedTime },
+    { postId: posts[0].id, founderId: fixture.owner.id, audioUrl: "/objects/uploads/unready-share", transcriptionStatus: "processing", createdAt: sharedTime },
+  ]).returning();
+  const excludedKeys = [blockedShare, blockedSharer, hiddenShare, unfinishedShare].map((row) => `reshuut:${row.id}`);
+  // A post at the same instant must sort before every reSHÜÜT at that instant.
+  await db.update(postsTable).set({ createdAt: sharedTime }).where(eq(postsTable.id, fixture.post.id));
+
+  const query = visibleReshuutPageQuery({
+    viewerFounderId: fixture.owner.id, view: "following",
+    cursor: { time: "2095-01-01T00:00:00.000000Z", id: shares[40].id, type: "reshuut", view: "following" },
+    limit: 9,
+  }).toSQL();
+  assert.match(query.sql, /order by .*created_at.*desc.*id.*desc limit/i);
+  assert.match(query.sql, /shuut_post_reshuuts.*created_at.*</i);
+  assert.equal(query.params.at(-1), 10);
+
+  for (const view of ["everyone", "following"] as const) {
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const pageResponse = await request(
+        `/api/feed/page?view=${view}&limit=9${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+        { session: fixture.ownerSession },
+      );
+      assert.equal(pageResponse.status, 200);
+      const page = await pageResponse.json() as { posts: FeedTestItem[]; nextCursor: string | null };
+      assert.ok(page.posts.length > 0 && page.posts.length <= 9);
+      seen.push(...page.posts.map((item) => item.feedItemKey));
+      cursor = page.nextCursor;
+      assert.ok(seen.length < 300, "Pagination must terminate");
+    } while (cursor);
+    assert.equal(new Set(seen).size, seen.length, "No item is repeated at a page boundary");
+    assert.ok(excludedKeys.every((key) => !seen.includes(key)));
+    const expectedShares = shares.map((share) => `reshuut:${share.id}`).reverse();
+    assert.deepEqual(seen.filter((key) => expectedShares.includes(key)), expectedShares);
+    if (view === "following") {
+      assert.deepEqual(seen, expectedShares);
+    } else {
+      assert.ok(seen.indexOf(`post:${fixture.post.id}`) < seen.indexOf(expectedShares[0]));
+      assert.ok(posts.every((post) => seen.includes(`post:${post.id}`)));
+    }
+  }
 });
 
 test("browser sessions do not require an enrolled passkey", async () => {

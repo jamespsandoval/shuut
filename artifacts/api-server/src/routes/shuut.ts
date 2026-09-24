@@ -2,7 +2,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import sharp from "sharp";
-import { and, asc, desc, eq, exists, gt, ilike, inArray, isNull, lte, lt, ne, notExists, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gt, ilike, inArray, isNull, lte, lt, ne, notExists, notInArray, or, sql, type AnyColumn } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   AskFounderBody,
   AskFounderParams,
@@ -784,6 +785,81 @@ function parseFeedCursor(value: string | undefined, view: FeedCursor["view"]): F
   }
 }
 
+// Keep the reSHÜÜT branch bounded before hydration. Both the sharer and the
+// original author must remain distributable and visible to this viewer.
+export function visibleReshuutPageQuery(options: {
+  viewerFounderId?: number;
+  view: FeedCursor["view"];
+  cursor: FeedCursor | null;
+  limit: number;
+}) {
+  const originalAuthor = alias(foundersTable, "original_author");
+  const originalUser = alias(usersTable, "original_user");
+  const sharerUser = alias(usersTable, "sharer_user");
+  const activeSanction = (userId: AnyColumn) => db
+    .select({ id: accountSanctionsTable.id }).from(accountSanctionsTable)
+    .where(and(
+      eq(accountSanctionsTable.userId, userId),
+      eq(accountSanctionsTable.status, "active"),
+      inArray(accountSanctionsTable.type, ["ban", "suspend"]),
+      or(isNull(accountSanctionsTable.expiresAt), gt(accountSanctionsTable.expiresAt, new Date())),
+    ));
+  const blocked = (authorId: AnyColumn) => options.viewerFounderId
+    ? db.select({ id: accountBlocksTable.id }).from(accountBlocksTable).where(or(
+      and(eq(accountBlocksTable.blockerFounderId, options.viewerFounderId), eq(accountBlocksTable.blockedFounderId, authorId)),
+      and(eq(accountBlocksTable.blockedFounderId, options.viewerFounderId), eq(accountBlocksTable.blockerFounderId, authorId)),
+    ))
+    : null;
+  const originalBlocked = blocked(postsTable.authorId);
+  const sharerBlocked = blocked(postReshuutsTable.founderId);
+  const following = options.viewerFounderId
+    ? db.select({ id: accountFollowsTable.id }).from(accountFollowsTable).where(and(
+      eq(accountFollowsTable.followerFounderId, options.viewerFounderId),
+      eq(accountFollowsTable.followedFounderId, postReshuutsTable.founderId),
+    ))
+    : null;
+  const cursorTime = sql<string>`to_char(${postReshuutsTable.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+  const cursor = options.cursor;
+  return db.select({
+    reshuut: postReshuutsTable,
+    post: postsTable,
+    author: foundersTable,
+    cursorTime,
+  })
+    .from(postReshuutsTable)
+    .innerJoin(postsTable, eq(postsTable.id, postReshuutsTable.postId))
+    .innerJoin(foundersTable, eq(foundersTable.id, postReshuutsTable.founderId))
+    .innerJoin(originalAuthor, eq(originalAuthor.id, postsTable.authorId))
+    .leftJoin(sharerUser, eq(sharerUser.id, foundersTable.userId))
+    .leftJoin(originalUser, eq(originalUser.id, originalAuthor.userId))
+    .where(and(
+      eq(postReshuutsTable.deletionStatus, "active"),
+      inArray(postReshuutsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+      or(isNull(postReshuutsTable.audioUrl), eq(postReshuutsTable.transcriptionStatus, "ready")),
+      eq(postsTable.deletionStatus, "active"),
+      eq(postsTable.transcriptionStatus, "ready"),
+      inArray(postsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+      or(isNull(foundersTable.userId), eq(sharerUser.deletionStatus, "active")),
+      or(isNull(originalAuthor.userId), eq(originalUser.deletionStatus, "active")),
+      notExists(activeSanction(foundersTable.userId)),
+      notExists(activeSanction(originalAuthor.userId)),
+      originalBlocked ? notExists(originalBlocked) : undefined,
+      sharerBlocked ? notExists(sharerBlocked) : undefined,
+      options.view === "following" && following ? exists(following) : undefined,
+      cursor ? or(
+        lt(postReshuutsTable.createdAt, sql`${cursor.time}::timestamptz`),
+        cursor.type === "post"
+          ? eq(postReshuutsTable.createdAt, sql`${cursor.time}::timestamptz`)
+          : and(
+            eq(postReshuutsTable.createdAt, sql`${cursor.time}::timestamptz`),
+            lt(postReshuutsTable.id, cursor.id),
+          ),
+      ) : undefined,
+    ))
+    .orderBy(desc(postReshuutsTable.createdAt), desc(postReshuutsTable.id))
+    .limit(options.limit + 1);
+}
+
 router.get("/feed/page", async (req, res): Promise<void> => {
   await ensureSeeded();
   const params = GetFeedPageQueryParams.safeParse(req.query);
@@ -849,29 +925,19 @@ router.get("/feed/page", async (req, res): Promise<void> => {
       view === "following" && following ? exists(following) : undefined,
       cursor ? or(
         lt(postsTable.createdAt, sql`${cursor.time}::timestamptz`),
-        cursor.type === "reshuut"
-          ? eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`)
-          : and(eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`), lt(postsTable.id, cursor.id)),
+        cursor.type === "post"
+          ? and(eq(postsTable.createdAt, sql`${cursor.time}::timestamptz`), lt(postsTable.id, cursor.id))
+          : undefined,
       ) : undefined,
     ))
     .orderBy(desc(postsTable.createdAt), desc(postsTable.id))
     .limit(limit + 1);
-  const followingRows = viewer
-    ? await db.select({ id: accountFollowsTable.followedFounderId }).from(accountFollowsTable)
-      .where(eq(accountFollowsTable.followerFounderId, viewer.id))
-    : [];
-  const followedIds = new Set(followingRows.map((row) => row.id));
-  const reshuutSources = await visibleReshuutSources({
+  const reshuutSources = await visibleReshuutPageQuery({
     viewerFounderId: viewer?.id,
-    followedFounderIds: view === "following" ? followedIds : undefined,
+    view,
+    cursor,
+    limit,
   });
-  const afterCursor = (type: "post" | "reshuut", time: string, id: number) => {
-    if (!cursor) return true;
-    if (time !== cursor.time) return time < cursor.time;
-    const rank = type === "post" ? 0 : 1;
-    const cursorRank = cursor.type === "post" ? 0 : 1;
-    return rank < cursorRank || (rank === cursorRank && id < cursor.id);
-  };
   const candidates = [
     ...rows.map(({ post, cursorTime }) => ({
       type: "post" as const,
@@ -880,8 +946,7 @@ router.get("/feed/page", async (req, res): Promise<void> => {
       post,
       source: null,
     })),
-    ...reshuutSources.filter((source) => afterCursor("reshuut", source.cursorTime, source.reshuut.id))
-      .map((source) => ({
+    ...reshuutSources.map((source) => ({
         type: "reshuut" as const,
         id: source.reshuut.id,
         time: source.cursorTime,

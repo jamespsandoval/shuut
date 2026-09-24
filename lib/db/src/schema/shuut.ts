@@ -111,6 +111,7 @@ export const postReshuutsTable = pgTable(
   (table) => [
     uniqueIndex("shuut_post_reshuuts_post_founder_idx").on(table.postId, table.founderId),
     index("shuut_post_reshuuts_founder_idx").on(table.founderId),
+    index("shuut_post_reshuuts_feed_created_id_idx").on(table.createdAt, table.id),
   ],
 );
 
