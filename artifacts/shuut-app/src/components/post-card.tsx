@@ -420,16 +420,11 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       <div className="flex flex-col gap-3">
         {post.reshuut && canShowReshuut && (
           <div className="space-y-3" data-post-navigation-ignore>
-            <div className="flex items-start gap-3 px-1">
-              <Link href={`/u/${post.reshuut.author.handle}`} className="min-w-0 flex-1 group">
-                <span className="flex flex-wrap items-baseline gap-x-1.5">
-                  <span className="text-[15px] font-bold text-foreground group-hover:underline">{post.reshuut.author.name}</span>
-                  <span className="text-[13px] font-semibold text-muted-foreground">reSHÜÜTed</span>
-                </span>
-                <span className="block truncate text-[13px] text-muted-foreground">@{post.reshuut.author.handle}</span>
-              </Link>
-              <span className="shrink-0 pt-0.5 text-[13px] text-muted-foreground">{formatDistanceToNow(new Date(post.reshuut.createdAt), { addSuffix: true })}</span>
-            </div>
+            <Link href={`/u/${post.reshuut.author.handle}`} aria-label={`View @${post.reshuut.author.handle}'s profile`}
+              className="inline-flex max-w-full items-center gap-2 px-1 text-[13px] font-semibold text-muted-foreground hover:text-primary hover:underline">
+              <Repeat2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">@{post.reshuut.author.handle}</span>
+            </Link>
             {post.reshuut.mode === "text" && post.reshuut.text && (
               <p className="select-text whitespace-pre-wrap break-words text-[15px] leading-relaxed">{post.reshuut.text}</p>
             )}

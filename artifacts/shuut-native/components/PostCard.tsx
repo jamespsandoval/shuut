@@ -541,17 +541,11 @@ export function PostCard({
 
       {canShowReshuut && post.reshuut && (
         <View style={styles.reshuutContent}>
-          <View style={styles.reshuutAttribution}>
-            <TouchableOpacity style={styles.reshuutIdentity} onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)} accessibilityRole="link"
-              accessibilityLabel={`View ${post.reshuut.author.name}'s profile, @${post.reshuut.author.handle}, reSHÜÜTed`}>
-              <View style={styles.reshuutNameRow}>
-                <Text style={[styles.authorName, { color: colors.foreground }]}>{post.reshuut.author.name}</Text>
-                <Text style={[styles.reshuutAction, { color: colors.mutedForeground }]}>reSHÜÜTed</Text>
-              </View>
-              <Text style={[styles.authorHandle, { color: colors.mutedForeground }]} numberOfLines={1}>@{post.reshuut.author.handle}</Text>
-            </TouchableOpacity>
-            <Text style={[styles.time, { color: colors.mutedForeground }]}>{formatApproximateTimeAgo(post.reshuut.createdAt)}</Text>
-          </View>
+          <TouchableOpacity style={styles.reshuutAttribution} onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)}
+            accessibilityRole="link" accessibilityLabel={`View @${post.reshuut.author.handle}'s profile`}>
+            <Repeat2 color={colors.mutedForeground} size={14} />
+            <Text style={[styles.reshuutHandle, { color: colors.mutedForeground }]} numberOfLines={1}>@{post.reshuut.author.handle}</Text>
+          </TouchableOpacity>
           {post.reshuut.mode === 'text' && post.reshuut.text && (
             <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
           )}
@@ -983,23 +977,15 @@ const styles = StyleSheet.create({
   },
   reshuutAttribution: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    gap: 8,
   },
-  reshuutIdentity: {
-    flex: 1,
-    minWidth: 0,
-  },
-  reshuutNameRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    flexWrap: 'wrap',
-    columnGap: 6,
-  },
-  reshuutAction: {
+  reshuutHandle: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
+    flexShrink: 1,
   },
   originalPost: {
     borderWidth: 1,
