@@ -10,7 +10,7 @@ export default function About() {
       <article className="pb-6 text-gray-700">
         <header className="border-b border-gray-200 pb-10">
           <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-gray-950 sm:text-5xl">About SHÜÜT</h1>
-          <p className="text-lg font-medium leading-relaxed text-gray-900 sm:text-xl">SHÜÜT is a voice-first joint where people share short verbal messages and media, while other people listen and engage.</p>
+          <p className="text-lg font-medium leading-relaxed text-gray-900 sm:text-xl">SHÜÜT (pronounced shoot) is a voice-first joint where people share short verbal messages and media, while other people listen and engage.</p>
         </header>
 
         <section aria-labelledby="what-shuut-does" className="border-b border-gray-200 py-10">
