@@ -170,6 +170,16 @@ export function CommentComposer({
   }, [autoStart, startRecording, voiceAiConsentLoading])
 
   const handleCancel = () => {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = null
+      if (mediaRecorderRef.current.state !== "inactive") mediaRecorderRef.current.stop()
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop())
+      mediaRecorderRef.current = null
+    }
     if (audioData) URL.revokeObjectURL(audioData)
     setAudioData(null)
     setBlob(null)
@@ -249,9 +259,12 @@ export function CommentComposer({
               <div className="font-mono text-xl tracking-tight text-foreground">{formatTime(time)}</div>
               <div className="text-muted-foreground text-sm font-mono">/ 1:30</div>
             </div>
-            <Button size="icon" variant="destructive" className="rounded-full w-12 h-12 shadow-lg shadow-destructive/20 hover:scale-105 active:scale-95 transition-all" onClick={stopRecording} disabled={isStarting}>
-              <Square className="w-5 h-5 fill-current" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" className="text-muted-foreground" onClick={handleCancel}>Cancel</Button>
+              <Button size="icon" variant="destructive" className="rounded-full w-12 h-12 shadow-lg shadow-destructive/20 hover:scale-105 active:scale-95 transition-all" onClick={stopRecording} disabled={isStarting} aria-label="Stop recording">
+                <Square className="w-5 h-5 fill-current" />
+              </Button>
+            </div>
           </div>
         ) : audioData ? (
           <div className="flex flex-col gap-4">
@@ -264,7 +277,7 @@ export function CommentComposer({
             <AudioPlayer audioUrl={audioData} durationSeconds={time} className="bg-background/80 shadow-sm" />
             <div className="flex justify-between items-center mt-1">
               <Button variant="ghost" className="rounded-full px-5 text-muted-foreground hover:text-foreground" onClick={handleCancel} disabled={isUploading}>
-                Discard
+                Cancel
               </Button>
               <Button className="rounded-full px-8 font-bold shadow-md active:scale-95 transition-all" onClick={handleSubmit} disabled={isUploading || createComment.isPending}>
                 {(isUploading || createComment.isPending) ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}

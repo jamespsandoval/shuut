@@ -84,6 +84,11 @@ export default function PostDetailScreen() {
     }
   };
 
+  const cancelReply = async () => {
+    await discardRecording(false);
+    setRecordedUri(null);
+  };
+
   const startRecording = async () => {
     const generation = ++generationRef.current;
     pendingStartRef.current = true;
@@ -284,8 +289,8 @@ export default function PostDetailScreen() {
                 <AuthenticatedAudioPlayer url={recordedUri} durationSeconds={duration} />
               </View>
               <View style={styles.composerButtonsRow}>
-                <TouchableOpacity onPress={() => setRecordedUri(null)} disabled={isUploading}>
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 13, marginRight: 8 }}>Discard</Text>
+                <TouchableOpacity onPress={() => void cancelReply()} disabled={isUploading} accessibilityRole="button" accessibilityLabel="Cancel voice reply">
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 13, marginRight: 8 }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.publishCommentBtn, { backgroundColor: colors.primary }]}
@@ -309,12 +314,18 @@ export default function PostDetailScreen() {
                 </Text>
               </TouchableOpacity>
               {recorderState.isRecording && (
-                <TouchableOpacity
-                  style={[styles.publishCommentBtn, { backgroundColor: colors.destructive }]}
-                  onPress={stopRecording}
-                >
-                  <Square color="#fff" size={14} />
-                </TouchableOpacity>
+                <View style={styles.composerButtonsRow}>
+                  <TouchableOpacity onPress={() => void cancelReply()} accessibilityRole="button" accessibilityLabel="Cancel voice reply" hitSlop={8}>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 13, marginRight: 8 }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.publishCommentBtn, { backgroundColor: colors.destructive }]}
+                    onPress={stopRecording}
+                    accessibilityLabel="Stop recording"
+                  >
+                    <Square color="#fff" size={14} />
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           )}

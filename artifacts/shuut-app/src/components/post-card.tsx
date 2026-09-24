@@ -150,6 +150,12 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     setShowReshuutComposer((value) => !value)
   }
 
+  const handleReply = () => {
+    if (autoStartReply) return
+    setAutoStartReply(true)
+    setShowComments(true)
+  }
+
   const startReshuutRecording = async () => {
     if (reshuutRecording) {
       reshuutRecorderRef.current?.stop()
@@ -489,15 +495,10 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               })}
             </div>
 
-            {/* Comment */}
             <button
-              onClick={() => {
-                if (autoStartReply) return
-                setAutoStartReply(true)
-                setShowComments(true)
-              }}
+              onClick={handleReply}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[15px] font-medium transition-all hover:bg-secondary text-muted-foreground hover:text-foreground active:scale-95 shrink-0"
-              title="Comment"
+              title="Reply"
             >
               <Mic className="w-4 h-4" />
               <span className="hidden sm:inline">Reply</span>
@@ -505,9 +506,8 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
             <div className="flex-1 min-w-4" />
 
-            {/* Reshüüt */}
             <button
-               onClick={handleReshuut}
+              onClick={handleReshuut}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95 text-muted-foreground hover:text-foreground shrink-0",
                 post.isReshuuted && "text-green-500 font-medium"

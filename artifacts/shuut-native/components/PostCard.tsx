@@ -131,6 +131,22 @@ export function PostCard({
     setShowReshuutComposer((value) => !value);
   };
 
+  const handleReply = () => {
+    if (onReply) {
+      onReply();
+      return;
+    }
+    if (showCommentComposer) return;
+    setShowCommentComposer(true);
+    void startRecording();
+  };
+
+  const cancelReply = async () => {
+    await discardRecording(false);
+    setRecordedUri(null);
+    setShowCommentComposer(false);
+  };
+
   const chooseReshuutPhoto = () => {
     Alert.alert('Attach a photo', 'Choose where to get your reSHÜÜT photo.', [
       { text: 'Cancel', style: 'cancel' },
@@ -600,15 +616,7 @@ export function PostCard({
           {post.reactions.thumbsDown > 0 && <Text style={[styles.reactionCount, { color: post.viewerReaction === 'thumbsDown' ? colors.primary : colors.mutedForeground }]}>{post.reactions.thumbsDown}</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionBtn} onPress={() => {
-          if (onReply) {
-            onReply();
-            return;
-          }
-          if (showCommentComposer) return;
-          setShowCommentComposer(true);
-          void startRecording();
-        }}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleReply} accessibilityRole="button" accessibilityLabel="Reply with a voice note">
           <Mic color={colors.mutedForeground} size={18} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={handleReshuut}>
@@ -632,6 +640,12 @@ export function PostCard({
       {!isDetail && showCommentComposer && (
         <View style={styles.commentSection}>
           <View style={[styles.composerContainer, { borderColor: colors.border }]}>
+            <View style={styles.replyComposerHeader}>
+              <Text style={[styles.replyComposerTitle, { color: colors.foreground }]}>Voice reply</Text>
+              <TouchableOpacity onPress={() => void cancelReply()} disabled={isUploading} accessibilityRole="button" accessibilityLabel="Cancel voice reply" hitSlop={8}>
+                <Text style={[styles.replyCancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
             {recordedUri ? (
               <View style={styles.composerActions}>
                 <View style={{ flex: 1, marginRight: 8 }}>
@@ -920,6 +934,20 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
+  },
+  replyComposerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  replyComposerTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+  },
+  replyCancelText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
   },
   composerContainer: {
     padding: 12,
