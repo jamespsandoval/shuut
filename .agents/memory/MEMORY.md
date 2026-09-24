@@ -30,3 +30,4 @@
 - [Transcript cleanup consent](transcript-cleanup-consent.md) — prepare before publishing, ask before raw fallback, and fail background voice content closed.
 - [Selectable post text](selectable-post-text.md) — keep transcript selection separate from post navigation so web and native users can copy text.
 - [Automatic limited analytics](automatic-analytics.md) — cookieless PostHog baseline; review expansions and beware bot-filtered browser checks.
+- [Static public-page entries](static-public-page-entries.md) — direct crawler-visible HTML must coexist with SPA navigation and restore route metadata on exit.

@@ -20,6 +20,10 @@ serve = "static"
 publicDir = "artifacts/shuut-app/dist/public"
 
 [[services.production.rewrites]]
+from = "/about"
+to = "/about.html"
+
+[[services.production.rewrites]]
 from = "/*"
 to = "/index.html"
 

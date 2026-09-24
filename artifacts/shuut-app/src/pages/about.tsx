@@ -8,22 +8,25 @@ const description =
 
 export default function About() {
   useEffect(() => {
-    const previousTitle = document.title;
+    // A direct /about load starts with About metadata in the HTML entry, not
+    // the homepage shell. Restore the homepage metadata on client navigation.
+    const directAboutEntry = document.documentElement.hasAttribute("data-about-entry");
+    const previousTitle = directAboutEntry ? "SHÜÜT" : document.title;
     document.title = title;
 
     const updates = [
-      ['meta[name="description"]', description],
-      ['meta[property="og:title"]', title],
-      ['meta[property="og:description"]', description],
-      ['meta[property="og:url"]', "https://shuut.me/about"],
-      ['meta[name="twitter:title"]', title],
-      ['meta[name="twitter:description"]', description],
-      ['link[rel="canonical"]', "https://shuut.me/about"],
+      ['meta[name="description"]', description, "Share voice notes. Hear what people are thinking, in their own words."],
+      ['meta[property="og:title"]', title, "SHÜÜT"],
+      ['meta[property="og:description"]', description, "Share voice notes. Hear what people are thinking, in their own words."],
+      ['meta[property="og:url"]', "https://shuut.me/about", "https://shuut.me/"],
+      ['meta[name="twitter:title"]', title, "SHÜÜT"],
+      ['meta[name="twitter:description"]', description, "Share voice notes. Hear what people are thinking, in their own words."],
+      ['link[rel="canonical"]', "https://shuut.me/about", "https://shuut.me/"],
     ] as const;
-    const previous = updates.map(([selector, value]) => {
+    const previous = updates.map(([selector, value, homeValue]) => {
       const element = document.querySelector(selector);
       const attribute = element?.tagName === "LINK" ? "href" : "content";
-      const original = element?.getAttribute(attribute);
+      const original = directAboutEntry ? homeValue : element?.getAttribute(attribute);
       element?.setAttribute(attribute, value);
       return { element, attribute, original };
     });

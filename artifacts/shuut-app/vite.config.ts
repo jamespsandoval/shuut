@@ -30,6 +30,26 @@ if (!basePath) {
 export default defineConfig({
   base: basePath,
   plugins: [
+    {
+      name: 'about-html-route',
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          // Keep the public URL at /about while Vite transforms the About HTML entry.
+          if ((req.method === 'GET' || req.method === 'HEAD') && /^\/about(?:\?|$)/.test(req.url ?? '')) {
+            req.url = req.url!.replace(/^\/about(?=\?|$)/, '/about.html');
+          }
+          next();
+        });
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if ((req.method === 'GET' || req.method === 'HEAD') && /^\/about(?:\?|$)/.test(req.url ?? '')) {
+            req.url = req.url!.replace(/^\/about(?=\?|$)/, '/about.html');
+          }
+          next();
+        });
+      },
+    },
     react(),
     tailwindcss({ optimize: false }),
     runtimeErrorOverlay(),
@@ -65,6 +85,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        index: path.resolve(import.meta.dirname, 'index.html'),
+        about: path.resolve(import.meta.dirname, 'about.html'),
+      },
+    },
   },
   server: {
     port,
