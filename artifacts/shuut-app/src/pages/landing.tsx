@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, ArrowRight, ArrowLeft, Mail } from 'lucide-react';
 import { Footer } from '@/components/footer';
+import { usePublicPageMetadata } from '@/lib/public-page-meta';
 import { useQueryClient } from '@tanstack/react-query';
 import { 
   useStartAuth,
@@ -20,6 +21,7 @@ function normalizeConfirmationCode(value: string): string {
 }
 
 export default function Landing() {
+  usePublicPageMetadata("home");
   const [mode, setMode] = useState<AuthMode>('email');
   const [flow, setFlow] = useState<AuthFlow | null>(null);
   const [email, setEmail] = useState('');
@@ -107,6 +109,7 @@ export default function Landing() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white text-foreground">
       <main className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-[420px] mx-auto relative z-10">
+        <h1 className="sr-only">SHÜÜT — voice-note-first social platform</h1>
         <div className="relative w-full flex flex-col items-center justify-center mb-10">
           <img src={`${basePath}/shuut-logo.png`} alt="SHÜÜT" className="h-[100px] w-auto" />
           <p className="-mt-2 text-[17px] font-semibold text-muted-foreground text-center tracking-tight leading-snug">

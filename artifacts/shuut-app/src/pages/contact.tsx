@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useSendContactMessage } from "@workspace/api-client-react";
 import { PublicLayout } from "@/components/public-layout";
+import { usePublicPageMetadata } from "@/lib/public-page-meta";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
@@ -8,6 +9,7 @@ import { Loader2 } from "lucide-react";
 const MAX_MESSAGE_LENGTH = 1000;
 
 export default function Contact() {
+  usePublicPageMetadata("contact");
   const isNativeApp = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('native') === '1';
   const sendMessage = useSendContactMessage();

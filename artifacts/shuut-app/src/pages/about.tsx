@@ -1,44 +1,9 @@
-import { useEffect } from "react";
 import { Link } from "wouter";
 import { PublicLayout } from "@/components/public-layout";
-
-const title = "About SHÜÜT | A voice-note-first social platform";
-const description =
-  "SHÜÜT is a voice-note-first social platform for sharing short recordings with readable transcripts. Hear people's voices, read their words, and join the conversation.";
+import { usePublicPageMetadata } from "@/lib/public-page-meta";
 
 export default function About() {
-  useEffect(() => {
-    // A direct /about load starts with About metadata in the HTML entry, not
-    // the homepage shell. Restore the homepage metadata on client navigation.
-    const directAboutEntry = document.documentElement.hasAttribute("data-about-entry");
-    const previousTitle = directAboutEntry ? "SHÜÜT" : document.title;
-    document.title = title;
-
-    const updates = [
-      ['meta[name="description"]', description, "Share voice notes. Hear what people are thinking, in their own words."],
-      ['meta[property="og:title"]', title, "SHÜÜT"],
-      ['meta[property="og:description"]', description, "Share voice notes. Hear what people are thinking, in their own words."],
-      ['meta[property="og:url"]', "https://shuut.me/about", "https://shuut.me/"],
-      ['meta[name="twitter:title"]', title, "SHÜÜT"],
-      ['meta[name="twitter:description"]', description, "Share voice notes. Hear what people are thinking, in their own words."],
-      ['link[rel="canonical"]', "https://shuut.me/about", "https://shuut.me/"],
-    ] as const;
-    const previous = updates.map(([selector, value, homeValue]) => {
-      const element = document.querySelector(selector);
-      const attribute = element?.tagName === "LINK" ? "href" : "content";
-      const original = directAboutEntry ? homeValue : element?.getAttribute(attribute);
-      element?.setAttribute(attribute, value);
-      return { element, attribute, original };
-    });
-
-    return () => {
-      document.title = previousTitle;
-      for (const { element, attribute, original } of previous) {
-        if (original == null) element?.removeAttribute(attribute);
-        else element?.setAttribute(attribute, original);
-      }
-    };
-  }, []);
+  usePublicPageMetadata("about");
 
   return (
     <PublicLayout>
@@ -46,16 +11,14 @@ export default function About() {
         <header className="border-b border-gray-200 pb-10">
           <p className="mb-4 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">In their own words</p>
           <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-gray-950 sm:text-5xl">About SHÜÜT</h1>
-          <p className="text-lg font-medium leading-relaxed text-gray-900 sm:text-xl">
-            SHÜÜT is a voice-note-first social platform where people share short recordings alongside readable transcripts.
-          </p>
+          <p className="text-lg font-medium leading-relaxed text-gray-900 sm:text-xl">SHÜÜT is a voice-note-first social platform where people share short verbal messages and media.</p>
           <p className="mt-4 text-base leading-relaxed">
             Read a thought when you have a moment. Press play when you want to hear the person behind it.
           </p>
         </header>
 
         <section aria-labelledby="what-shuut-does" className="border-b border-gray-200 py-10">
-          <h2 id="what-shuut-does" className="mb-6 text-2xl font-bold tracking-tight text-gray-950">What happens on SHÜÜT</h2>
+          <h2 id="what-shuut-does" className="mb-6 text-2xl font-bold tracking-tight text-gray-950">How SHÜÜT happens</h2>
           <div className="grid gap-7 sm:grid-cols-2">
             <div>
               <h3 className="mb-2 text-base font-bold text-gray-900">Speak, then share</h3>

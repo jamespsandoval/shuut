@@ -1,6 +1,8 @@
 import { PublicLayout } from "@/components/public-layout";
+import { usePublicPageMetadata } from "@/lib/public-page-meta";
 
 export default function Community() {
+  usePublicPageMetadata("community");
   return (
     <PublicLayout>
       <h1 className="text-3xl font-extrabold tracking-tight mb-6">Community Guidelines</h1>

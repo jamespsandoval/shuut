@@ -1,9 +1,11 @@
 import path from 'path';
+import { readFile } from 'node:fs/promises';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
+import { renderedPages, renderPublicPage } from './scripts/public-pages.mjs';
 
 const rawPort = process.env.PORT;
 
@@ -31,20 +33,35 @@ export default defineConfig({
   base: basePath,
   plugins: [
     {
-      name: 'about-html-route',
+      name: 'public-html-routes',
       configureServer(server) {
-        server.middlewares.use((req, _res, next) => {
-          // Keep the public URL at /about while Vite transforms the About HTML entry.
-          if ((req.method === 'GET' || req.method === 'HEAD') && /^\/about(?:\?|$)/.test(req.url ?? '')) {
-            req.url = req.url!.replace(/^\/about(?=\?|$)/, '/about.html');
+        server.middlewares.use(async (req, res, next) => {
+          if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+          const route = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+          if (route === '/about') {
+            req.url = req.url!.replace(/^\/about(?=\/?(?:\?|$))/, '/about.html');
+            return next();
           }
-          next();
+          if (!(route in renderedPages)) return next();
+          try {
+            const shell = await readFile(path.resolve(import.meta.dirname, 'index.html'), 'utf8');
+            const html = await renderPublicPage(server, route, await server.transformIndexHtml(route, shell));
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(req.method === 'HEAD' ? undefined : html);
+          } catch (error) {
+            server.ssrFixStacktrace(error as Error);
+            next(error);
+          }
         });
       },
       configurePreviewServer(server) {
         server.middlewares.use((req, _res, next) => {
-          if ((req.method === 'GET' || req.method === 'HEAD') && /^\/about(?:\?|$)/.test(req.url ?? '')) {
-            req.url = req.url!.replace(/^\/about(?=\?|$)/, '/about.html');
+          if (req.method === 'GET' || req.method === 'HEAD') {
+            const route = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/\/+$/, '') || '/';
+            if (route === '/about' || (route !== '/' && route in renderedPages)) {
+              req.url = req.url!.replace(/^\/[^/?]+\/?(?=\?|$)/, `/${route.slice(1)}.html`);
+            }
           }
           next();
         });

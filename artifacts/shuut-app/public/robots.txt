@@ -1,2 +1,12 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /feed
+Disallow: /onboarding/
+Disallow: /notifications
+Disallow: /explore
+Disallow: /u/
+Disallow: /settings
+Disallow: /moderation
+Disallow: /appeals
+Sitemap: https://shuut.me/sitemap.xml
