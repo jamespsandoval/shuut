@@ -566,17 +566,6 @@ export function PostCard({
 
       {canShowReshuut && post.reshuut && (
         <View style={[styles.reshuutContent, { borderColor: colors.border, backgroundColor: colors.background }]}>
-          <Text style={[styles.reshuutContentLabel, { color: colors.mutedForeground }]}>reSHÜÜT by @{post.reshuut.author.handle}</Text>
-          <View style={styles.reshuutPublisherRow}>
-            <Text style={[styles.reshuutPublisherCaption, { color: colors.mutedForeground }]}>Publisher tagged</Text>
-            <TouchableOpacity
-              onPress={() => router.push(post.canDelete ? '/(main)/profile' : `/profile/${post.author.handle}`)}
-              accessibilityRole="link"
-              accessibilityLabel={`Tagged publisher @${post.author.handle}`}
-            >
-              <Text style={[styles.reshuutPublisherHandle, { color: colors.primary }]}>@{post.author.handle}</Text>
-            </TouchableOpacity>
-          </View>
           {post.reshuut.mode === 'text' && post.reshuut.text && (
             <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
           )}
@@ -853,10 +842,6 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
     gap: 8,
-  },
-  reshuutContentLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
   },
   reshuutContentText: {
     fontFamily: 'Inter_400Regular',

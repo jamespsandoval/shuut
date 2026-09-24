@@ -456,10 +456,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
           {canShowReshuut && post.reshuut && (
             <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-              <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-muted-foreground">
-                <span className="inline-flex items-center gap-1 uppercase tracking-wide"><Repeat2 className="h-3.5 w-3.5" /> ReSHÜÜT commentary</span>
-                <span className="ml-auto">Publisher tagged: <Link href={post.canDelete ? "/u/me" : `/u/${post.author.handle}`} className="text-primary hover:underline">@{post.author.handle}</Link></span>
-              </div>
               {post.reshuut.mode === "text" && post.reshuut.text && <p className="whitespace-pre-wrap text-sm">{post.reshuut.text}</p>}
               {post.reshuut.mode === "audio" && post.reshuut.audioUrl && (
                 <AudioPlayer audioUrl={post.reshuut.audioUrl} durationSeconds={1} compact />
