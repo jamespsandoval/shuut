@@ -20,7 +20,7 @@ function eventCopy(item: Notification) {
     const names: Record<string, string> = { rocket: '🚀', laughing: '😂', thumbsDown: '👎' };
     return `reacted ${names[item.reactionType ?? ''] ?? 'to'} to your SHÜÜT`;
   }
-  if (item.eventType === 'reshuut') return 'reshüüted your SHÜÜT';
+  if (item.eventType === 'reshuut') return 'tagged you in a reSHÜÜT of your SHÜÜT';
   if (item.eventType === 'mention') return 'tagged you in a SHÜÜT';
   return 'left a voice comment on your SHÜÜT';
 }

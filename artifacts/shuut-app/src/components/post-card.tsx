@@ -56,6 +56,8 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   const [showComments, setShowComments] = useState(isDetail || isFocused)
   const [autoStartReply, setAutoStartReply] = useState(false)
   const [showReshuutComposer, setShowReshuutComposer] = useState(false)
+  const reshuutPanelRef = useRef<HTMLDivElement>(null)
+  const pendingReshuutRevealRef = useRef(false)
   const [reshuutImage, setReshuutImage] = useState<File | null>(null)
   const [reshuutImagePreview, setReshuutImagePreview] = useState<string | null>(null)
   const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null)
@@ -142,12 +144,32 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
   useEffect(() => () => clearReshuutComposer(), [clearReshuutComposer])
 
+  useEffect(() => {
+    if (!showReshuutComposer || !pendingReshuutRevealRef.current) return
+    const frame = window.requestAnimationFrame(() => {
+      pendingReshuutRevealRef.current = false
+      const panel = reshuutPanelRef.current
+      if (!panel) return
+      let scrollParent = panel.parentElement
+      while (scrollParent && !(
+        /auto|scroll/.test(getComputedStyle(scrollParent).overflowY)
+        && scrollParent.scrollHeight > scrollParent.clientHeight
+      )) scrollParent = scrollParent.parentElement
+      const bottom = scrollParent ? scrollParent.getBoundingClientRect().bottom : window.innerHeight
+      const rect = panel.getBoundingClientRect()
+      const distance = Math.min(180, Math.max(0, rect.top + Math.min(rect.height, 180) - bottom + 24))
+      if (distance > 0) (scrollParent ?? window).scrollBy({ top: distance, behavior: "smooth" })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [showReshuutComposer])
+
   const handleReshuut = () => {
     if (post.isReshuuted && !post.reshuut) {
       reshuutPost.mutate({ postId: post.id }, { onSuccess: () => queryClient.invalidateQueries() })
       return
     }
-    setShowReshuutComposer((value) => !value)
+    pendingReshuutRevealRef.current = !showReshuutComposer
+    setShowReshuutComposer(!showReshuutComposer)
   }
 
   const handleReply = () => {
@@ -440,8 +462,9 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
           {canShowReshuut && post.reshuut && (
             <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <Repeat2 className="h-3.5 w-3.5" /> ReSHÜÜT commentary
+              <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-muted-foreground">
+                <span className="inline-flex items-center gap-1 uppercase tracking-wide"><Repeat2 className="h-3.5 w-3.5" /> ReSHÜÜT commentary</span>
+                <span className="ml-auto">Publisher tagged: <Link href={post.canDelete ? "/u/me" : `/u/${post.author.handle}`} className="text-primary hover:underline">@{post.author.handle}</Link></span>
               </div>
               {post.reshuut.mode === "text" && post.reshuut.text && <p className="whitespace-pre-wrap text-sm">{post.reshuut.text}</p>}
               {post.reshuut.mode === "audio" && post.reshuut.audioUrl && (
@@ -551,28 +574,28 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           </div>
 
           {showReshuutComposer && (
-            <div className="mt-3 rounded-xl border border-border/60 bg-secondary/10 p-3" aria-label="ReSHÜÜT composer">
-              <div className="mb-3 flex items-center justify-between">
+            <div ref={reshuutPanelRef} className="mt-3 rounded-xl border border-border/60 bg-secondary/10 p-3" aria-label="ReSHÜÜT composer">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold">Add to your reSHÜÜT</p>
                 <button type="button" aria-label="Close reSHÜÜT composer" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }} className="rounded-full p-1 hover:bg-secondary"><X className="h-4 w-4" /></button>
               </div>
-              <div className="mb-3 flex items-center gap-3">
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">Tagging publisher</span>
+                <span className="rounded-full bg-primary/10 px-2 py-1 font-semibold text-primary">@{post.author.handle}</span>
+                <span className="text-muted-foreground">{post.canDelete ? "Your SHÜÜT" : "Notified on publish"}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant={reshuutRecording ? "destructive" : "outline"} onClick={() => void startReshuutRecording()} aria-label={reshuutRecording ? "Stop reSHÜÜT recording" : "Record reSHÜÜT voice note"}>
                   {reshuutRecording ? <Square className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
                   {reshuutRecording ? `${reshuutDuration}s` : "Record voice note"}
                 </Button>
-                {reshuutAudioPreview && <audio controls src={reshuutAudioPreview} className="h-9 max-w-[15rem]" />}
+                {reshuutAudioPreview && <audio controls src={reshuutAudioPreview} className="h-9 max-w-full" />}
+                {!reshuutImagePreview && <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"><ImagePlus className="h-4 w-4" /> Add photo<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" className="sr-only" onChange={handleReshuutImage} /></label>}
                 <span className="text-xs text-muted-foreground">Always transcribed</span>
-              </div>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                {reshuutImagePreview ? (
-                  <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-20 w-20 rounded-lg object-contain" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>
-                ) : (
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"><ImagePlus className="h-4 w-4" /> Add photo<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" className="sr-only" onChange={handleReshuutImage} /></label>
-                )}
+                {reshuutImagePreview && <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-16 w-16 rounded-lg object-contain" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>}
                 {reshuutUploadProgress !== null && <span className="text-xs text-muted-foreground" role="status">Uploading… {reshuutUploadProgress}%</span>}
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="mt-2 flex flex-wrap justify-end gap-2">
                 {post.isReshuuted && <Button type="button" variant="ghost" onClick={() => { invalidateReshuut(); setShowReshuutComposer(false); clearReshuutComposer() }}>Remove reSHÜÜT</Button>}
                 <Button type="button" variant="ghost" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }}>Cancel</Button>
                 <Button type="button" onClick={() => void submitReshuut()} disabled={reshuutPost.isPending || reshuutUploadProgress !== null || !reshuutAudioPath}>Publish reSHÜÜT</Button>

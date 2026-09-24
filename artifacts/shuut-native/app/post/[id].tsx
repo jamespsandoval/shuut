@@ -58,6 +58,8 @@ export default function PostDetailScreen() {
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const postScrollRef = useRef<ScrollView>(null);
+  const postScrollOffsetRef = useRef(0);
 
   const restoreAudioMode = () => setAudioModeAsync({
     allowsRecording: false, playsInSilentMode: true, shouldPlayInBackground: false,
@@ -277,8 +279,19 @@ export default function PostDetailScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <PostCard post={post} refetchFeed={refetch} isDetail onReply={() => void startRecording()} />
+      <ScrollView
+        ref={postScrollRef}
+        contentContainerStyle={styles.content}
+        onScroll={(event) => { postScrollOffsetRef.current = event.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
+      >
+        <PostCard
+          post={post}
+          refetchFeed={refetch}
+          isDetail
+          onReply={() => void startRecording()}
+          onRevealReshuut={(distance) => postScrollRef.current?.scrollTo({ y: postScrollOffsetRef.current + distance, animated: true })}
+        />
 
         <Text style={[styles.commentsTitle, { color: colors.foreground }]}>Voice Comments</Text>
 

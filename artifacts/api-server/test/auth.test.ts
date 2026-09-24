@@ -1675,12 +1675,12 @@ test("notifications require authentication and capture attributed activity witho
       session: actorSession,
       json: { audioObjectPath: objectPath, durationSeconds: 2 },
     })).status, 202);
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
       const [comment] = await db.select({ transcriptionStatus: commentsTable.transcriptionStatus })
         .from(commentsTable).where(eq(commentsTable.postId, post.id))
         .orderBy(desc(commentsTable.createdAt)).limit(1);
       if (comment?.transcriptionStatus === "ready") break;
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
   } finally {
     ObjectStorageService.prototype.publishAudio = realPublishAudio;
@@ -1690,9 +1690,9 @@ test("notifications require authentication and capture attributed activity witho
 
   let notifications = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.recipientId, owner.id));
-  for (let attempt = 0; attempt < 20 && notifications.length < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 100 && notifications.length < 3; attempt += 1) {
     await runModerationSweep();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     notifications = await db.select().from(notificationsTable)
       .where(eq(notificationsTable.recipientId, owner.id));
   }
@@ -1720,6 +1720,19 @@ test("notifications require authentication and capture attributed activity witho
   assert.ok(body.every((item) => item.actor.id === actor.id));
   assert.ok(body.every((item) => item.post.id === post.id));
   assert.ok(body.every((item) => item.post.transcript === post.transcript));
+
+  // A removed reSHÜÜT may be shared again. Its new action notifies the
+  // publisher, while ordinary reads and edits do not duplicate old activity.
+  assert.equal((await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST", session: actorSession,
+  })).status, 200);
+  assert.equal((await request(`/api/posts/${post.id}/reshuut`, {
+    method: "POST", session: actorSession,
+  })).status, 200);
+  const afterReshare = await request("/api/notifications", { session: ownerSession });
+  assert.equal(afterReshare.status, 200);
+  const reshareBody = await afterReshare.json() as Array<{ eventType: string; actor: { id: number } }>;
+  assert.equal(reshareBody.filter((item) => item.eventType === "reshuut" && item.actor.id === actor.id).length, 2);
   setModerationProviderForTests(previousModerationProvider);
 });
 

@@ -17,7 +17,7 @@ function eventCopy(item: Notification) {
     };
     return `reacted ${reactions[item.reactionType ?? ""] ?? "to"} to your SHÜÜT`;
   }
-  if (item.eventType === "reshuut") return "reshüüted your SHÜÜT";
+  if (item.eventType === "reshuut") return "tagged you in a reSHÜÜT of your SHÜÜT";
   if (item.eventType === "mention") return "tagged you in a SHÜÜT";
   return "left a voice comment on your SHÜÜT";
 }

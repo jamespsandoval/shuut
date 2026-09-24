@@ -2372,6 +2372,16 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     if (await foundersBlocked(viewer.id, post.authorId)) {
       return { status: "blocked" as const };
     }
+    const notifyPublisher = async (reshuutId: number) => {
+      if (viewer.id === post.authorId) return;
+      await tx.insert(notificationsTable).values({
+        actorId: viewer.id,
+        recipientId: post.authorId,
+        postId: post.id,
+        eventType: "reshuut",
+        dedupeKey: `reshuut:${reshuutId}`,
+      }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
+    };
     const [existing] = await tx.select().from(postReshuutsTable).where(and(
       eq(postReshuutsTable.postId, post.id),
       eq(postReshuutsTable.founderId, viewer.id),
@@ -2433,9 +2443,12 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
       const [reshuut] = existing
         ? await tx.update(postReshuutsTable).set(values).where(eq(postReshuutsTable.id, existing.id)).returning()
         : await tx.insert(postReshuutsTable).values(values).returning();
+      if (!existing) await notifyPublisher(reshuut.id);
       return { status: "updated" as const, updated: post, isReshuuted: true, reshuut };
     }
-    await tx.insert(postReshuutsTable).values({ postId: post.id, founderId: viewer.id });
+    const [reshuut] = await tx.insert(postReshuutsTable)
+      .values({ postId: post.id, founderId: viewer.id }).returning({ id: postReshuutsTable.id });
+    await notifyPublisher(reshuut.id);
     return { status: "updated" as const, updated: post, isReshuuted: true, reshuut: null };
   });
   if (result.status === "account_deleting") {
@@ -2465,14 +2478,6 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
   }
   const reshuutContent = "reshuut" in result ? result.reshuut : null;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
-  if (isReshuuted) {
-    await recordNotification({
-      actorId: viewer.id,
-      recipientId: updated.authorId,
-      postId: updated.id,
-      eventType: "reshuut",
-    });
-  }
   res.json(ReshuutPostResponse.parse(postJson(
     updated,
     author,

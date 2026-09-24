@@ -22,6 +22,8 @@ export default function FeedScreen() {
   const [isOpeningRecorder, setIsOpeningRecorder] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const floatingMicScrollThreshold = useRef(DEFAULT_FLOATING_MIC_SCROLL_THRESHOLD);
+  const listRef = useRef<FlatList<Post>>(null);
+  const scrollOffsetRef = useRef(0);
 
   const feedQueryKey = useMemo(() => getGetFeedPageQueryKey({ view }), [view]);
   const {
@@ -77,7 +79,11 @@ export default function FeedScreen() {
   }, [refetchFeed]);
 
   const renderPost = ({ item }: { item: Post }) => (
-    <PostCard post={item} refetchFeed={() => { void refetchFeed(); }} />
+    <PostCard
+      post={item}
+      refetchFeed={() => { void refetchFeed(); }}
+      onRevealReshuut={(distance) => listRef.current?.scrollToOffset({ offset: scrollOffsetRef.current + distance, animated: true })}
+    />
   );
 
   useEffect(() => {
@@ -152,6 +158,7 @@ export default function FeedScreen() {
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
     const shouldFloat = event.nativeEvent.contentOffset.y >= floatingMicScrollThreshold.current;
     setShowFloatingMic((current) => current === shouldFloat ? current : shouldFloat);
   };
@@ -183,6 +190,7 @@ export default function FeedScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         data={posts || []}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderPost}

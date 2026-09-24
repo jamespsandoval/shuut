@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking, Alert, useWindowDimensions } from 'react-native';
 import { useColors } from '../hooks/useColors';
 import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost, useGetProfile } from '@workspace/api-client-react';
 import { useRouter, usePathname } from 'expo-router';
@@ -24,15 +24,20 @@ export function PostCard({
   isDetail = false,
   disableAuthorNavigation = false,
   onReply,
+  onRevealReshuut,
 }: {
   post: Post;
   refetchFeed: () => void;
   isDetail?: boolean;
   disableAuthorNavigation?: boolean;
   onReply?: () => void;
+  onRevealReshuut?: (distance: number) => void;
 }) {
   const colors = useColors();
   const router = useRouter();
+  const { height: windowHeight } = useWindowDimensions();
+  const pendingReshuutRevealRef = useRef(false);
+  const reshuutPanelRef = useRef<View>(null);
   const { token } = useAuth();
   const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
 
@@ -128,7 +133,21 @@ export function PostCard({
       reshuutPost.mutate({ postId: post.id }, { onSuccess: refetchFeed });
       return;
     }
-    setShowReshuutComposer((value) => !value);
+    pendingReshuutRevealRef.current = !showReshuutComposer;
+    setShowReshuutComposer(!showReshuutComposer);
+  };
+
+  const revealReshuutPanel = () => {
+    if (!pendingReshuutRevealRef.current) return;
+    requestAnimationFrame(() => {
+      reshuutPanelRef.current?.measureInWindow((_x, y, _width, height) => {
+        if (!pendingReshuutRevealRef.current) return;
+        pendingReshuutRevealRef.current = false;
+        const bottom = windowHeight - (isDetail ? 48 : 104);
+        const distance = Math.min(180, Math.max(0, y + Math.min(height, 180) - bottom + 12));
+        if (distance > 0) onRevealReshuut?.(distance);
+      });
+    });
   };
 
   const handleReply = () => {
@@ -535,6 +554,16 @@ export function PostCard({
       {canShowReshuut && post.reshuut && (
         <View style={[styles.reshuutContent, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutContentLabel, { color: colors.mutedForeground }]}>reSHÜÜT by @{post.reshuut.author.handle}</Text>
+          <View style={styles.reshuutPublisherRow}>
+            <Text style={[styles.reshuutPublisherCaption, { color: colors.mutedForeground }]}>Publisher tagged</Text>
+            <TouchableOpacity
+              onPress={() => router.push(post.canDelete ? '/(main)/profile' : `/profile/${post.author.handle}`)}
+              accessibilityRole="link"
+              accessibilityLabel={`Tagged publisher @${post.author.handle}`}
+            >
+              <Text style={[styles.reshuutPublisherHandle, { color: colors.primary }]}>@{post.author.handle}</Text>
+            </TouchableOpacity>
+          </View>
           {post.reshuut.mode === 'text' && post.reshuut.text && (
             <Text selectable style={[styles.reshuutContentText, { color: colors.foreground }]}>{post.reshuut.text}</Text>
           )}
@@ -561,8 +590,15 @@ export function PostCard({
       )}
 
       {showReshuutComposer && !post.isReshuuted && (
-        <View style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
+        <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutComposerTitle, { color: colors.foreground }]}>Add to your reSHÜÜT</Text>
+          <View style={styles.reshuutPublisherRow}>
+            <Text style={[styles.reshuutPublisherCaption, { color: colors.mutedForeground }]}>Tagging publisher</Text>
+            <View style={[styles.reshuutPublisherPill, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.reshuutPublisherHandle, { color: colors.primary }]}>@{post.author.handle}</Text>
+            </View>
+            <Text style={[styles.reshuutPublisherCaption, { color: colors.mutedForeground }]}>{post.canDelete ? 'Your SHÜÜT' : 'Notified on publish'}</Text>
+          </View>
           <View style={styles.reshuutVoiceRow}>
             {recordedUri ? (
               <>
@@ -804,20 +840,39 @@ const styles = StyleSheet.create({
   reshuutComposer: {
     borderWidth: 1,
     borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-    gap: 10,
+    padding: 10,
+    marginBottom: 8,
+    gap: 6,
   },
   reshuutComposerTitle: {
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
+  },
+  reshuutPublisherRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  reshuutPublisherCaption: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+  },
+  reshuutPublisherPill: {
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  reshuutPublisherHandle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
   },
   reshuutModeText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
   },
   reshuutVoiceRow: {
-    minHeight: 44,
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -829,7 +884,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   reshuutPhotoPreviewWrap: {
-    height: 130,
+    height: 104,
     borderRadius: 10,
     overflow: 'hidden',
     position: 'relative',
@@ -853,7 +908,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minHeight: 40,
+    minHeight: 34,
   },
   reshuutComposerActions: {
     flexDirection: 'row',

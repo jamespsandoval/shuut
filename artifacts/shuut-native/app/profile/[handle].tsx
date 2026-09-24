@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
@@ -19,6 +19,8 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
+  const postsScrollRef = useRef<ScrollView>(null);
+  const postsScrollOffsetRef = useRef(0);
 
   const { data: profileData, isLoading, isError, refetch } = useGetProfile(handle, { query: { queryKey: ['profile', handle] } });
   const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
@@ -59,7 +61,12 @@ export default function ProfileScreen() {
         <SafetyActionSheet targetType="profile" targetId={profileData.founder.id} authorHandle={profileData.founder.handle} self={profileData.founder.handle === viewerProfile?.founder?.handle} onBlocked={() => router.back()} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={postsScrollRef}
+        contentContainerStyle={styles.content}
+        onScroll={(event) => { postsScrollOffsetRef.current = event.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
+      >
         <View style={styles.profileTop}>
           <View style={styles.avatarContainer}>
             {profileData?.founder?.avatarUrl ? (
@@ -122,7 +129,12 @@ export default function ProfileScreen() {
 
         <View style={styles.feed}>
           {profileData?.posts?.map((post: Post) => (
-            <PostCard key={post.id} post={post} refetchFeed={refetch} />
+            <PostCard
+              key={post.id}
+              post={post}
+              refetchFeed={refetch}
+              onRevealReshuut={(distance) => postsScrollRef.current?.scrollTo({ y: postsScrollOffsetRef.current + distance, animated: true })}
+            />
           ))}
           {(!profileData?.posts || profileData.posts.length === 0) && (
             <Text style={{textAlign: 'center', color: colors.mutedForeground, marginTop: 32}}>No SHÜÜTs yet.</Text>

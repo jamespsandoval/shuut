@@ -32,6 +32,8 @@ export default function MyProfileScreen() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const lastSavedSignature = useRef('');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postsScrollRef = useRef<ScrollView>(null);
+  const postsScrollOffsetRef = useRef(0);
 
   useEffect(() => {
     if (profileData?.founder && !isEditing) {
@@ -225,7 +227,12 @@ export default function MyProfileScreen() {
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={postsScrollRef}
+        contentContainerStyle={styles.content}
+        onScroll={(event) => { postsScrollOffsetRef.current = event.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
+      >
         <View style={styles.profileTop}>
           <View style={styles.avatarContainer}>
             {profileData?.founder?.avatarUrl ? (
@@ -278,7 +285,13 @@ export default function MyProfileScreen() {
 
         <View style={styles.feed}>
           {profileData?.posts?.map((post: Post) => (
-            <PostCard key={post.id} post={post} refetchFeed={refetch} disableAuthorNavigation />
+            <PostCard
+              key={post.id}
+              post={post}
+              refetchFeed={refetch}
+              disableAuthorNavigation
+              onRevealReshuut={(distance) => postsScrollRef.current?.scrollTo({ y: postsScrollOffsetRef.current + distance, animated: true })}
+            />
           ))}
           {(!profileData?.posts || profileData.posts.length === 0) && (
             <Text style={{textAlign: 'center', color: colors.mutedForeground, marginTop: 32}}>No SHÜÜTs yet.</Text>
