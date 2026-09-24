@@ -38,6 +38,7 @@ export function PostCard({
   const { height: windowHeight } = useWindowDimensions();
   const pendingReshuutRevealRef = useRef(false);
   const reshuutPanelRef = useRef<View>(null);
+  const photoPickGenerationRef = useRef(0);
   const { token } = useAuth();
   const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
 
@@ -76,6 +77,7 @@ export function PostCard({
   const [showReshuutComposer, setShowReshuutComposer] = useState(false);
   const [showReshuutMenu, setShowReshuutMenu] = useState(false);
   const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isPreparingReshuutPhoto, setIsPreparingReshuutPhoto] = useState(false);
   const [postPhotoRatio, setPostPhotoRatio] = useState(4 / 3);
   const [reshuutPhotoRatio, setReshuutPhotoRatio] = useState(4 / 3);
   const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null);
@@ -130,7 +132,7 @@ export function PostCard({
   };
 
   const handleReshuut = () => {
-    if (reshuutPost.isPending) return;
+    if (reshuutPost.isPending || showReshuutComposer) return;
     pendingReshuutRevealRef.current = !showReshuutMenu;
     setShowReshuutMenu(!showReshuutMenu);
   };
@@ -152,7 +154,7 @@ export function PostCard({
         if (!pendingReshuutRevealRef.current) return;
         pendingReshuutRevealRef.current = false;
         const bottom = windowHeight - (isDetail ? 48 : 104);
-        const distance = Math.min(180, Math.max(0, y + Math.min(height, 180) - bottom + 12));
+        const distance = Math.max(0, y + height - bottom + 12);
         if (distance > 0) onRevealReshuut?.(distance);
       });
     });
@@ -174,6 +176,29 @@ export function PostCard({
     setShowCommentComposer(false);
   };
 
+  const discardReshuutDraft = () => {
+    photoPickGenerationRef.current += 1;
+    setIsPreparingReshuutPhoto(false);
+    void discardRecording(false);
+    setShowReshuutComposer(false);
+    setReshuutPhoto(null);
+    setReshuutImagePath(null);
+    setRecordedUri(null);
+    setDuration(0);
+  };
+
+  const confirmCancelReshuut = () => {
+    if (isUploading) return;
+    if (!reshuutPhoto && !recordedUri && !isPreparingReshuutPhoto && !isRecordingRef.current && !pendingStartRef.current) {
+      discardReshuutDraft();
+      return;
+    }
+    Alert.alert('Discard reSHÜÜT draft?', 'Your voice note and selected photo will be lost.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard draft', style: 'destructive', onPress: discardReshuutDraft },
+    ]);
+  };
+
   const chooseReshuutPhoto = () => {
     Alert.alert('Attach a photo', 'Choose where to get your reSHÜÜT photo.', [
       { text: 'Cancel', style: 'cancel' },
@@ -183,6 +208,7 @@ export function PostCard({
   };
 
   const captureReshuutPhoto = async (useCamera: boolean) => {
+    const generation = ++photoPickGenerationRef.current;
     try {
       const permission = useCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
@@ -195,7 +221,10 @@ export function PostCard({
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible, quality: 0.82, selectionLimit: 1 });
       if (!result.canceled && result.assets[0]) {
+        setIsPreparingReshuutPhoto(true);
         const prepared = await prepareNativePostPhoto(result.assets[0], 'reshuut-photo');
+        if (generation !== photoPickGenerationRef.current) return;
+        pendingReshuutRevealRef.current = true;
         setReshuutPhoto({
           ...result.assets[0],
           uri: prepared.file.uri,
@@ -205,8 +234,11 @@ export function PostCard({
         setReshuutImagePath(null);
       }
     } catch (error) {
+      if (generation !== photoPickGenerationRef.current) return;
       console.error('Could not choose reSHÜÜT photo', error);
       Alert.alert('Photo unavailable', error instanceof Error ? error.message : 'We could not open your camera or photo library. Please try again.');
+    } finally {
+      if (generation === photoPickGenerationRef.current) setIsPreparingReshuutPhoto(false);
     }
   };
 
@@ -247,9 +279,11 @@ export function PostCard({
         },
       });
       setShowReshuutComposer(false);
+      photoPickGenerationRef.current += 1;
       setReshuutPhoto(null);
       setReshuutImagePath(null);
       setRecordedUri(null);
+      setDuration(0);
       refetchFeed();
     } catch (error) {
       console.error('Failed to publish reSHÜÜT', error);
@@ -629,6 +663,31 @@ export function PostCard({
               <Text style={[styles.reshuutPublisherHandle, { color: colors.primary }]}>@{post.author.handle}</Text>
             </View>
           </View>
+          {isPreparingReshuutPhoto && (
+            <View style={styles.reshuutPhotoStatus}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.reshuutModeText, { color: colors.mutedForeground }]}>Preparing photo…</Text>
+            </View>
+          )}
+          {reshuutPhoto && (
+            <View style={styles.reshuutPhotoPreviewWrap}>
+              <Text style={[styles.reshuutModeText, { color: colors.foreground }]}>Photo attached · Preview</Text>
+              <Image
+                source={{ uri: reshuutPhoto.uri }}
+                style={[styles.reshuutPhotoPreview, { backgroundColor: colors.secondary }]}
+                contentFit="contain"
+                accessibilityLabel="Selected reSHÜÜT photo preview"
+                onError={() => {
+                  setReshuutPhoto(null);
+                  setReshuutImagePath(null);
+                  Alert.alert('Photo preview unavailable', 'This photo could not be displayed. Please select it again.');
+                }}
+              />
+              <TouchableOpacity style={styles.reshuutPhotoRemove} onPress={() => { setReshuutPhoto(null); setReshuutImagePath(null); }} accessibilityRole="button" accessibilityLabel="Remove reSHÜÜT photo">
+                <X color={colors.primaryForeground} size={16} />
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={styles.reshuutVoiceRow}>
             {recordedUri ? (
               <>
@@ -644,24 +703,15 @@ export function PostCard({
               </TouchableOpacity>
             )}
           </View>
-          {reshuutPhoto ? (
-            <View style={styles.reshuutPhotoPreviewWrap}>
-              <Image source={{ uri: reshuutPhoto.uri }} style={styles.reshuutPhotoPreview} contentFit="contain" />
-              <TouchableOpacity style={styles.reshuutPhotoRemove} onPress={() => { setReshuutPhoto(null); setReshuutImagePath(null); }} accessibilityLabel="Remove reSHÜÜT photo">
-                <X color="#fff" size={16} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.addPhotoButton} onPress={() => void chooseReshuutPhoto()} accessibilityLabel="Add a reSHÜÜT photo">
-              <ImagePlus color={colors.primary} size={18} />
-              <Text style={[styles.reshuutModeText, { color: colors.primary }]}>Add photo</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.addPhotoButton} onPress={() => void chooseReshuutPhoto()} disabled={isPreparingReshuutPhoto || isUploading} accessibilityRole="button" accessibilityLabel={reshuutPhoto ? 'Change reSHÜÜT photo' : 'Add a reSHÜÜT photo'}>
+            <ImagePlus color={colors.primary} size={18} />
+            <Text style={[styles.reshuutModeText, { color: colors.primary }]}>{reshuutPhoto ? 'Change photo' : 'Add photo'}</Text>
+          </TouchableOpacity>
           <View style={styles.reshuutComposerActions}>
-            <TouchableOpacity onPress={() => setShowReshuutComposer(false)} accessibilityLabel="Cancel reSHÜÜT">
+            <TouchableOpacity onPress={confirmCancelReshuut} disabled={isUploading} accessibilityRole="button" accessibilityLabel="Cancel reSHÜÜT">
               <Text style={[styles.editActionText, { color: colors.mutedForeground }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary, opacity: recordedUri && !isUploading ? 1 : 0.5 }]} onPress={() => void publishReshuut()} disabled={isUploading || !recordedUri}>
+            <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary, opacity: recordedUri && !isUploading && !isPreparingReshuutPhoto ? 1 : 0.5 }]} onPress={() => void publishReshuut()} disabled={isUploading || isPreparingReshuutPhoto || !recordedUri}>
               {isUploading ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Send color={colors.primaryForeground} size={14} />}
             </TouchableOpacity>
           </View>
@@ -685,7 +735,7 @@ export function PostCard({
         <TouchableOpacity style={styles.actionBtn} onPress={handleReply} accessibilityRole="button" accessibilityLabel="Reply with a voice note">
           <Mic color={colors.mutedForeground} size={18} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleReshuut} accessibilityRole="button" accessibilityLabel="reSHÜÜT options" disabled={reshuutPost.isPending}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleReshuut} accessibilityRole="button" accessibilityLabel="reSHÜÜT options" disabled={reshuutPost.isPending || showReshuutComposer}>
           <Repeat2 color={post.isReshuuted ? '#22C55E' : colors.mutedForeground} size={18} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
@@ -928,18 +978,24 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   reshuutPhotoPreviewWrap: {
-    height: 104,
+    gap: 8,
     borderRadius: 10,
-    overflow: 'hidden',
     position: 'relative',
   },
   reshuutPhotoPreview: {
     width: '100%',
-    height: '100%',
+    height: 180,
+    borderRadius: 10,
+  },
+  reshuutPhotoStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 36,
   },
   reshuutPhotoRemove: {
     position: 'absolute',
-    top: 8,
+    top: 36,
     right: 8,
     width: 28,
     height: 28,
