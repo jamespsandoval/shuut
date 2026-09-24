@@ -420,27 +420,15 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       <div className="flex flex-col gap-3">
         {post.reshuut && canShowReshuut && (
           <div className="space-y-3" data-post-navigation-ignore>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold px-1">
-              <Repeat2 className="h-3.5 w-3.5" aria-hidden="true" />
-              <Link href={`/u/${post.reshuut.author.handle}`} className="hover:text-primary hover:underline">
-                @{post.reshuut.author.handle}
-              </Link>
-              <span>reSHÜÜTed</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href={`/u/${post.reshuut.author.handle}`} className="flex items-center gap-3 min-w-0 group">
-                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full flex items-center justify-center text-white font-bold shadow-sm"
-                  style={{ backgroundColor: post.reshuut.author.avatarColor || "#3B82F6" }}>
-                  {post.reshuut.author.avatarUrl
-                    ? <img src={post.reshuut.author.avatarUrl} alt="" className="h-full w-full object-cover" />
-                    : post.reshuut.author.name.charAt(0).toUpperCase()}
-                </div>
-                <span className="min-w-0">
-                  <span className="block truncate text-[15px] font-bold text-foreground group-hover:underline">{post.reshuut.author.name}</span>
-                  <span className="block truncate text-[13px] text-muted-foreground">@{post.reshuut.author.handle}</span>
+            <div className="flex items-start gap-3 px-1">
+              <Link href={`/u/${post.reshuut.author.handle}`} className="min-w-0 flex-1 group">
+                <span className="flex flex-wrap items-baseline gap-x-1.5">
+                  <span className="text-[15px] font-bold text-foreground group-hover:underline">{post.reshuut.author.name}</span>
+                  <span className="text-[13px] font-semibold text-muted-foreground">reSHÜÜTed</span>
                 </span>
+                <span className="block truncate text-[13px] text-muted-foreground">@{post.reshuut.author.handle}</span>
               </Link>
-              <span className="ml-auto text-[13px] text-muted-foreground shrink-0">{formatDistanceToNow(new Date(post.reshuut.createdAt), { addSuffix: true })}</span>
+              <span className="shrink-0 pt-0.5 text-[13px] text-muted-foreground">{formatDistanceToNow(new Date(post.reshuut.createdAt), { addSuffix: true })}</span>
             </div>
             {post.reshuut.mode === "text" && post.reshuut.text && (
               <p className="select-text whitespace-pre-wrap break-words text-[15px] leading-relaxed">{post.reshuut.text}</p>

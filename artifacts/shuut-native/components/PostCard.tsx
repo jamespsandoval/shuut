@@ -541,28 +541,14 @@ export function PostCard({
 
       {canShowReshuut && post.reshuut && (
         <View style={styles.reshuutContent}>
-          <View style={styles.reshuutHeader}>
-            <Repeat2 color={colors.mutedForeground} size={14} />
-            <TouchableOpacity onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)} accessibilityRole="link"
-              accessibilityLabel={`View @${post.reshuut.author.handle}'s profile`}>
-              <Text style={[styles.reshuutText, { color: colors.mutedForeground }]}>@{post.reshuut.author.handle} reSHÜÜTed</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.postHeader}>
-            <TouchableOpacity style={styles.authorInfo} onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)} accessibilityRole="link">
-              {post.reshuut.author.avatarUrl ? (
-                <Image source={authenticatedImageSource(post.reshuut.author.avatarUrl, token)} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, { backgroundColor: post.reshuut.author.avatarColor || colors.primary }]}>
-                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
-                    {post.reshuut.author.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              <View>
+          <View style={styles.reshuutAttribution}>
+            <TouchableOpacity style={styles.reshuutIdentity} onPress={() => router.push(`/profile/${post.reshuut!.author.handle}`)} accessibilityRole="link"
+              accessibilityLabel={`View ${post.reshuut.author.name}'s profile, @${post.reshuut.author.handle}, reSHÜÜTed`}>
+              <View style={styles.reshuutNameRow}>
                 <Text style={[styles.authorName, { color: colors.foreground }]}>{post.reshuut.author.name}</Text>
-                <Text style={[styles.authorHandle, { color: colors.mutedForeground }]}>@{post.reshuut.author.handle}</Text>
+                <Text style={[styles.reshuutAction, { color: colors.mutedForeground }]}>reSHÜÜTed</Text>
               </View>
+              <Text style={[styles.authorHandle, { color: colors.mutedForeground }]} numberOfLines={1}>@{post.reshuut.author.handle}</Text>
             </TouchableOpacity>
             <Text style={[styles.time, { color: colors.mutedForeground }]}>{formatApproximateTimeAgo(post.reshuut.createdAt)}</Text>
           </View>
@@ -994,6 +980,26 @@ const styles = StyleSheet.create({
   reshuutContent: {
     marginBottom: 12,
     gap: 8,
+  },
+  reshuutAttribution: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  reshuutIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reshuutNameRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    columnGap: 6,
+  },
+  reshuutAction: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
   },
   originalPost: {
     borderWidth: 1,
