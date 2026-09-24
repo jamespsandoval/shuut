@@ -74,7 +74,9 @@ export function PostCard({
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPublishingReshuut, setIsPublishingReshuut] = useState(false);
   const [showReshuutComposer, setShowReshuutComposer] = useState(false);
+  const [showReshuutDiscardConfirm, setShowReshuutDiscardConfirm] = useState(false);
   const [showReshuutMenu, setShowReshuutMenu] = useState(false);
   const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isPreparingReshuutPhoto, setIsPreparingReshuutPhoto] = useState(false);
@@ -180,6 +182,7 @@ export function PostCard({
     photoPickGenerationRef.current += 1;
     setIsPreparingReshuutPhoto(false);
     void discardRecording(false);
+    setShowReshuutDiscardConfirm(false);
     setShowReshuutComposer(false);
     setReshuutPhoto(null);
     setReshuutImagePath(null);
@@ -188,15 +191,16 @@ export function PostCard({
   };
 
   const confirmCancelReshuut = () => {
-    if (isUploading) return;
+    if (isPublishingReshuut) {
+      Alert.alert('Publishing reSHÜÜT', 'Please wait for publishing to finish before cancelling.');
+      return;
+    }
     if (!reshuutPhoto && !recordedUri && !isPreparingReshuutPhoto && !isRecordingRef.current && !pendingStartRef.current) {
       discardReshuutDraft();
       return;
     }
-    Alert.alert('Discard reSHÜÜT draft?', 'Your voice note and selected photo will be lost.', [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard draft', style: 'destructive', onPress: discardReshuutDraft },
-    ]);
+    pendingReshuutRevealRef.current = true;
+    setShowReshuutDiscardConfirm(true);
   };
 
   const chooseReshuutPhoto = () => {
@@ -256,9 +260,9 @@ export function PostCard({
   };
 
   const publishReshuut = async () => {
-    if (!recordedUri) return;
+    if (!recordedUri || isPublishingReshuut) return;
     try {
-      setIsUploading(true);
+      setIsPublishingReshuut(true);
       const imageObjectPath = await uploadReshuutPhoto();
       let audioObjectPath: string | undefined;
       if (recordedUri) {
@@ -279,6 +283,7 @@ export function PostCard({
         },
       });
       setShowReshuutComposer(false);
+      setShowReshuutDiscardConfirm(false);
       photoPickGenerationRef.current += 1;
       setReshuutPhoto(null);
       setReshuutImagePath(null);
@@ -290,7 +295,7 @@ export function PostCard({
       Alert.alert('Could not reSHÜÜT', error instanceof Error && /photo|image|JPEG|PNG|WebP/i.test(error.message)
         ? error.message : 'Your reSHÜÜT could not be processed. Please try again.');
     } finally {
-      setIsUploading(false);
+      setIsPublishingReshuut(false);
     }
   };
 
@@ -701,18 +706,32 @@ export function PostCard({
               </TouchableOpacity>
             )}
           </View>
-          <TouchableOpacity style={styles.addPhotoButton} onPress={() => void chooseReshuutPhoto()} disabled={isPreparingReshuutPhoto || isUploading} accessibilityRole="button" accessibilityLabel={reshuutPhoto ? 'Change reSHÜÜT photo' : 'Add a reSHÜÜT photo'}>
+          <TouchableOpacity style={styles.addPhotoButton} onPress={() => void chooseReshuutPhoto()} disabled={isPreparingReshuutPhoto || isPublishingReshuut} accessibilityRole="button" accessibilityLabel={reshuutPhoto ? 'Change reSHÜÜT photo' : 'Add a reSHÜÜT photo'}>
             <ImagePlus color={colors.primary} size={18} />
             <Text style={[styles.reshuutModeText, { color: colors.primary }]}>{reshuutPhoto ? 'Change photo' : 'Add photo'}</Text>
           </TouchableOpacity>
-          <View style={styles.reshuutComposerActions}>
-            <TouchableOpacity onPress={confirmCancelReshuut} disabled={isUploading} accessibilityRole="button" accessibilityLabel="Cancel reSHÜÜT">
-              <Text style={[styles.editActionText, { color: colors.mutedForeground }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary, opacity: recordedUri && !isUploading && !isPreparingReshuutPhoto ? 1 : 0.5 }]} onPress={() => void publishReshuut()} disabled={isUploading || isPreparingReshuutPhoto || !recordedUri}>
-              {isUploading ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Send color={colors.primaryForeground} size={14} />}
-            </TouchableOpacity>
-          </View>
+          {showReshuutDiscardConfirm ? (
+            <View style={[styles.reshuutDiscardPrompt, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
+              <Text style={[styles.reshuutDiscardMessage, { color: colors.foreground }]}>Discard this reSHÜÜT draft? Your voice note and selected photo will be lost.</Text>
+              <View style={styles.reshuutComposerActions}>
+                <TouchableOpacity style={styles.reshuutCancelButton} onPress={() => setShowReshuutDiscardConfirm(false)} accessibilityRole="button" accessibilityLabel="Keep editing reSHÜÜT">
+                  <Text style={[styles.reshuutModeText, { color: colors.foreground }]}>Keep editing</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.reshuutCancelButton} onPress={discardReshuutDraft} accessibilityRole="button" accessibilityLabel="Discard reSHÜÜT draft">
+                  <Text style={[styles.reshuutModeText, { color: colors.destructive }]}>Discard draft</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.reshuutComposerActions}>
+              <TouchableOpacity style={styles.reshuutCancelButton} onPress={confirmCancelReshuut} accessibilityRole="button" accessibilityLabel="Cancel reSHÜÜT">
+                <Text style={[styles.editActionText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.publishCommentBtn, { backgroundColor: colors.primary, opacity: recordedUri && !isPublishingReshuut && !isPreparingReshuutPhoto ? 1 : 0.5 }]} onPress={() => void publishReshuut()} disabled={isPublishingReshuut || isPreparingReshuutPhoto || !recordedUri} accessibilityRole="button" accessibilityLabel="Publish reSHÜÜT">
+                {isPublishingReshuut ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <Send color={colors.primaryForeground} size={14} />}
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
 
@@ -1012,7 +1031,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
-    gap: 16,
+    gap: 8,
+  },
+  reshuutCancelButton: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  reshuutDiscardPrompt: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+  },
+  reshuutDiscardMessage: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    lineHeight: 19,
   },
   editComposer: {
     marginBottom: 12,
