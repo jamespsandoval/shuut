@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import app from "../src/app";
-import { retryDueCleanupJobs, visibleReshuutPageQuery } from "../src/routes/shuut";
+import { retryDueCleanupJobs, visibleReshuutPageQuery, visibleReshuutSourcesQuery } from "../src/routes/shuut";
 import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
 import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
@@ -1253,6 +1253,37 @@ test("many reSHÜÜTs paginate without scanning past the cursor or losing tied i
   assert.match(query.sql, /shuut_post_reshuuts.*created_at.*</i);
   assert.equal(query.params.at(-1), 10);
 
+  const legacyQuery = visibleReshuutSourcesQuery({
+    viewerFounderId: fixture.owner.id, followedFounderIds: new Set([fixture.viewer.id]),
+    authorFounderId: fixture.viewer.id,
+  }).toSQL();
+  assert.match(legacyQuery.sql, /legacy_original_author/);
+  assert.match(legacyQuery.sql, /not exists/i);
+  assert.match(legacyQuery.sql, /shuut_account_blocks/);
+  assert.match(legacyQuery.sql, /shuut_account_sanctions/);
+  assert.equal((legacyQuery.sql.match(/ limit /gi) ?? []).length, 2,
+    "Only the two latest-sanction lookups are limited, not the legacy history");
+
+  const expectedShares = shares.map((share) => `reshuut:${share.id}`).reverse();
+  const legacyShares = [...expectedShares].sort((left, right) => left.localeCompare(right));
+  for (const view of ["everyone", "following"] as const) {
+    const response = await request(`/api/feed?view=${view}`, { session: fixture.ownerSession });
+    assert.equal(response.status, 200);
+    const items = await response.json() as FeedTestItem[];
+    const keys = items.map((item) => item.feedItemKey);
+    assert.deepEqual(keys.filter((key) => expectedShares.includes(key)), legacyShares);
+    assert.ok(excludedKeys.every((key) => !keys.includes(key)));
+    if (view === "following") assert.deepEqual(keys, legacyShares);
+    else assert.ok(keys.indexOf(`post:${fixture.post.id}`) < keys.indexOf(legacyShares[0]));
+  }
+  const profileResponse = await request(`/api/profiles/${fixture.viewer.handle}`, { session: fixture.ownerSession });
+  assert.equal(profileResponse.status, 200);
+  const profile = await profileResponse.json() as { posts: FeedTestItem[]; postCount: number };
+  const profileKeys = profile.posts.map((item) => item.feedItemKey);
+  assert.deepEqual(profileKeys.filter((key) => expectedShares.includes(key)), legacyShares);
+  assert.ok(excludedKeys.every((key) => !profileKeys.includes(key)));
+  assert.equal(profile.postCount, profile.posts.length);
+
   for (const view of ["everyone", "following"] as const) {
     const seen: string[] = [];
     let cursor: string | null = null;
@@ -1270,7 +1301,6 @@ test("many reSHÜÜTs paginate without scanning past the cursor or losing tied i
     } while (cursor);
     assert.equal(new Set(seen).size, seen.length, "No item is repeated at a page boundary");
     assert.ok(excludedKeys.every((key) => !seen.includes(key)));
-    const expectedShares = shares.map((share) => `reshuut:${share.id}`).reverse();
     assert.deepEqual(seen.filter((key) => expectedShares.includes(key)), expectedShares);
     if (view === "following") {
       assert.deepEqual(seen, expectedShares);

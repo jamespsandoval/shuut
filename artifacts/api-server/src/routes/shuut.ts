@@ -615,13 +615,38 @@ function reshuutFeedItem(
   };
 }
 
-async function visibleReshuutSources(options: {
+// Legacy feed/profile responses return the entire history. Filter eligibility in
+// SQL so the amount of database work does not grow by several queries per share.
+export function visibleReshuutSourcesQuery(options: {
   viewerFounderId?: number | null;
   followedFounderIds?: Set<number>;
   authorFounderId?: number;
-} = {}): Promise<ReshuutFeedSource[]> {
+} = {}) {
+  const originalAuthor = alias(foundersTable, "legacy_original_author");
+  const originalUser = alias(usersTable, "legacy_original_user");
+  const sharerUser = alias(usersTable, "legacy_sharer_user");
+  // Match activeSanctionForUser: only the latest active sanction determines
+  // distribution (a later non-restrictive sanction supersedes an earlier one).
+  const distributable = (userId: AnyColumn) => sql<boolean>`coalesce((
+    ${db.select({ type: accountSanctionsTable.type }).from(accountSanctionsTable)
+      .where(and(
+        eq(accountSanctionsTable.userId, userId),
+        eq(accountSanctionsTable.status, "active"),
+        or(isNull(accountSanctionsTable.expiresAt), gt(accountSanctionsTable.expiresAt, new Date())),
+      ))
+      .orderBy(desc(accountSanctionsTable.createdAt))
+      .limit(1)}
+  ) not in ('ban', 'suspend'), true)`;
+  const blocked = (authorId: AnyColumn) => options.viewerFounderId
+    ? db.select({ id: accountBlocksTable.id }).from(accountBlocksTable).where(or(
+      and(eq(accountBlocksTable.blockerFounderId, options.viewerFounderId), eq(accountBlocksTable.blockedFounderId, authorId)),
+      and(eq(accountBlocksTable.blockedFounderId, options.viewerFounderId), eq(accountBlocksTable.blockerFounderId, authorId)),
+    ))
+    : null;
+  const originalBlocked = blocked(postsTable.authorId);
+  const sharerBlocked = blocked(postReshuutsTable.founderId);
   const timeKey = sql<string>`to_char(${postReshuutsTable.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
-  const sources = await db.select({
+  return db.select({
     reshuut: postReshuutsTable,
     post: postsTable,
     author: foundersTable,
@@ -630,23 +655,33 @@ async function visibleReshuutSources(options: {
     .from(postReshuutsTable)
     .innerJoin(postsTable, eq(postsTable.id, postReshuutsTable.postId))
     .innerJoin(foundersTable, eq(foundersTable.id, postReshuutsTable.founderId))
+    .innerJoin(originalAuthor, eq(originalAuthor.id, postsTable.authorId))
+    .leftJoin(sharerUser, eq(sharerUser.id, foundersTable.userId))
+    .leftJoin(originalUser, eq(originalUser.id, originalAuthor.userId))
     .where(and(
       eq(postReshuutsTable.deletionStatus, "active"),
       inArray(postReshuutsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+      or(isNull(postReshuutsTable.audioUrl), eq(postReshuutsTable.transcriptionStatus, "ready")),
+      eq(postsTable.deletionStatus, "active"),
+      eq(postsTable.transcriptionStatus, "ready"),
+      inArray(postsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+      or(isNull(foundersTable.userId), eq(sharerUser.deletionStatus, "active")),
+      or(isNull(originalAuthor.userId), eq(originalUser.deletionStatus, "active")),
+      distributable(foundersTable.userId),
+      distributable(originalAuthor.userId),
+      originalBlocked ? notExists(originalBlocked) : undefined,
+      sharerBlocked ? notExists(sharerBlocked) : undefined,
+      options.followedFounderIds
+        ? options.followedFounderIds.size
+          ? inArray(postReshuutsTable.founderId, [...options.followedFounderIds])
+          : sql`false`
+        : undefined,
       options.authorFounderId === undefined ? undefined : eq(postReshuutsTable.founderId, options.authorFounderId),
     ));
-  const visible: ReshuutFeedSource[] = [];
-  for (const source of sources) {
-    if (source.reshuut.audioUrl && source.reshuut.transcriptionStatus !== "ready") continue;
-    if (!(await canDistributePost(source.post.id))) continue;
-    if (!(await isFounderActive(source.author)) || !(await isFounderDistributable(source.author.id))) continue;
-    if (options.viewerFounderId &&
-        (!(await visibleToViewer(options.viewerFounderId, source.post.authorId)) ||
-         !(await visibleToViewer(options.viewerFounderId, source.author.id)))) continue;
-    if (options.followedFounderIds && !options.followedFounderIds.has(source.author.id)) continue;
-    visible.push(source);
-  }
-  return visible;
+}
+
+async function visibleReshuutSources(options: Parameters<typeof visibleReshuutSourcesQuery>[0] = {}): Promise<ReshuutFeedSource[]> {
+  return visibleReshuutSourcesQuery(options);
 }
 
 async function profileFeedItems(
