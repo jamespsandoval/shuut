@@ -514,7 +514,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               )}
             >
               <Repeat2 className="w-[18px] h-[18px]" />
-              <span className="hidden sm:inline">Reshüüt</span>
+              <span className="hidden sm:inline">reSHÜÜT</span>
             </button>
 
             <button

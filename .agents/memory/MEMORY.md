@@ -25,7 +25,7 @@
 - [Native App Store identity](native-app-store-identity.md) — preserve the first Replit-published bundle ID and never make runtime startup depend solely on build-shell variables.
 - [Native crash diagnostics](native-crash-diagnostics.md) — keep release artifacts provider-neutral for now; add Sentry only when the creator is ready to connect it.
 - [Voice-first reSHÜÜTs](voice-only-reshuuts.md) — reSHÜÜT commentary must be a voice note; an optional photo is allowed, but written commentary is not.
-- [Reply and Reshüüt are separate](reply-reshuut-separation.md) — Reply is the voice-comment action, not a type of Reshüüt; keep both post actions distinct.
+- [Reply and reSHÜÜT are separate](reply-reshuut-separation.md) — Reply is the voice-comment action, not a type of reSHÜÜT; keep both post actions distinct.
 - [Launch content review](launch-content-review.md) — do not add automated pre-publication content review without an explicit product decision.
 - [Transcript cleanup consent](transcript-cleanup-consent.md) — prepare before publishing, ask before raw fallback, and fail background voice content closed.
 - [Selectable post text](selectable-post-text.md) — keep transcript selection separate from post navigation so web and native users can copy text.

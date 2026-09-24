@@ -1,9 +1,9 @@
 ---
-name: Reply and Reshüüt are separate
+name: Reply and reSHÜÜT are separate
 description: Product meaning of the two post actions and their interaction boundary.
 ---
 
-Keep Reply as its own post action for voice comments. Keep Reshüüt as a separate action rather than merging Reply into a Reshüüt menu. A voice-reply composer must offer Cancel so people can discard an unfinished recording without posting it.
+Keep Reply as its own post action for voice comments. Keep reSHÜÜT as a separate action rather than merging Reply into a reSHÜÜT menu. A voice-reply composer must offer Cancel so people can discard an unfinished recording without posting it.
 
 **Why:** The creator clarified that Reply is SHÜÜT's voice-based equivalent of a comment on X, not an alternative form of repost.
 
