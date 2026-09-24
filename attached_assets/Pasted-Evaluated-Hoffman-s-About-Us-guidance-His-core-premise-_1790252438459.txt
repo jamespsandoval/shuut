@@ -1,0 +1,30 @@
+Evaluated Hoffman's About-Us guidance
+His core premise is spot-on for 2026: AI search engines (Perplexity, SearchGPT, Claude, Google SGE) treat the /about page as the primary ground-truth anchor for "What is this company, who made it, and who is it for?" If that page is purely poetic or narrative, LLMs either guess or get your category wrong.
+
+However, Rob Hoffman's playbook is written for cookie-cutter B2B SaaS and marketing agencies. If followed literally, it would make Suru look like an insecure sales funnel rather than a principled editorial platform.
+
+Here is what is worth adopting, what should be left behind, and how to apply it to Suru:
+
+What to steal (High value)
+The opening definition before the story (Point 1)
+
+Currently: Suru's About page opens with the origin story ("Suru was born at a Lovable vibe coding event in London in April 2026...").
+Critique: Narrative is great for human warmth, but an LLM or busy visitor needs the anchor immediately: What category is this, and what does it do for whom?
+Better: Open with our unified promise: "Suru is an independent publishing platform and reporting pipeline for solo writers, beat reporters, and independent journalists." Then transition into the origin story and ethos.
+The "Key Facts" structured block (Point 7) — pure gold
+
+This is the single highest-leverage tip in his post. Search engines and AI crawlers adore semantic HTML definition lists (<dl>) or compact fact tables.
+A clean, quiet "At a glance" or "Key Facts" box at the base of the page with:
+Founded: April 2026, London
+Founders: James Sandoval (Founder), George Harsini (Co-creator)
+Parent: DoublePortrait Labs
+Platform: Mobile-first capture, AI drafting assistant, Journalism Integrity Check, independent mastheads (custom domains & subdomains)
+Standards: Suru Editorial Charter, mandatory human bylines, declared AI disclosures
+Model: Self-serve subscription (Publisher Free & Publisher Max) with reader memberships
+This directly feeds Google Knowledge Graph, Perplexity entity resolution, and AI brand citations without bloating the narrative.
+Stronger founder E-E-A-T links (Point 5)
+
+In media and journalism tools, provenance is everything. Linking your personal LinkedIn, X, or past media background shows real humans with reputational skin in the game. It proves the platform isn't an anonymous content mill.
+Clear ICP segments (Point 4)
+
+Re-affirming who Suru serves (hyperlocal reporters, niche beat journalists, newsletter writers stepping out from Substack/Medium, civic observers) reinforces our recent decision to broaden beyond strictly local news.
