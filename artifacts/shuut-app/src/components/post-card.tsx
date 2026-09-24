@@ -26,6 +26,7 @@ import { ModerationActions } from "./moderation-actions"
 import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
 import { ToastAction } from "@/components/ui/toast"
 import { refreshFeedPages } from "@/lib/feed-refresh"
+import { preparePostPhoto, postPhotoUploadError } from "@/lib/post-photo"
 
 interface PostCardProps {
   post: Post
@@ -117,7 +118,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
       request.open("PUT", payload.uploadURL)
       request.setRequestHeader("Content-Type", file.type)
       request.upload.onprogress = (event) => event.lengthComputable && setReshuutUploadProgress(Math.round(event.loaded / event.total * 100))
-      request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error("Upload failed"))
+      request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(postPhotoUploadError(request.status, request.responseText))
       request.onerror = () => reject(new Error("Upload was interrupted"))
       request.send(file)
     })
@@ -231,16 +232,19 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     } finally { setReshuutUploadProgress(null) }
   }
 
-  const handleReshuutImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReshuutImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; event.target.value = ""
     if (!file) return
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15_000_000) {
-      toast({ title: "Invalid image", description: "Choose a JPEG, PNG, or WebP image under 15MB.", variant: "destructive" }); return
+    let prepared: File
+    try {
+      prepared = await preparePostPhoto(file)
+    } catch (error) {
+      toast({ title: "Invalid photo", description: error instanceof Error ? error.message : "Could not read this photo.", variant: "destructive" }); return
     }
     if (reshuutImagePreview) URL.revokeObjectURL(reshuutImagePreview)
-    const preview = URL.createObjectURL(file)
+    const preview = URL.createObjectURL(prepared)
     reshuutImagePreviewRef.current = preview
-    setReshuutImage(file); setReshuutImagePreview(preview); setReshuutImagePath(null)
+    setReshuutImage(prepared); setReshuutImagePreview(preview); setReshuutImagePath(null)
   }
 
   const invalidateReshuut = () => {
@@ -425,7 +429,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           )}
 
           {post.imageUrl && (
-            <img src={post.imageUrl} alt={`Photo attached to ${post.author.name}'s SHÜÜT`} className="mb-3 max-h-[28rem] w-full rounded-xl object-cover border border-border/50" loading="lazy" />
+            <img src={post.imageUrl} alt={`Photo attached to ${post.author.name}'s SHÜÜT`} className="mb-3 max-h-[28rem] w-full rounded-xl object-contain border border-border/50" loading="lazy" />
           )}
 
           {canShowReshuut && post.reshuut && (
@@ -443,7 +447,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               {post.reshuut.mode === "audio" && post.reshuut.text && post.reshuut.transcriptionStatus === "ready" && (
                 <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{post.reshuut.text}</p>
               )}
-              {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author?.name ?? post.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-cover" loading="lazy" />}
+              {post.reshuut.imageUrl && <img src={post.reshuut.imageUrl} alt={`Photo attached to ${post.reshuut.author?.name ?? post.author.name}'s reSHÜÜT`} className="mt-3 max-h-64 w-full rounded-lg object-contain" loading="lazy" />}
             </div>
           )}
 
@@ -562,9 +566,9 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
               </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {reshuutImagePreview ? (
-                  <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-20 w-20 rounded-lg object-cover" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>
+                  <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-20 w-20 rounded-lg object-contain" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>
                 ) : (
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"><ImagePlus className="h-4 w-4" /> Add photo<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleReshuutImage} /></label>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"><ImagePlus className="h-4 w-4" /> Add photo<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" className="sr-only" onChange={handleReshuutImage} /></label>
                 )}
                 {reshuutUploadProgress !== null && <span className="text-xs text-muted-foreground" role="status">Uploading… {reshuutUploadProgress}%</span>}
               </div>

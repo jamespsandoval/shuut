@@ -8,6 +8,7 @@ import { type Founder, useCreatePost, useGetProfile, useTranscribeAudio, useGetV
 import { useQueryClient } from "@tanstack/react-query"
 import { getGetFeedQueryKey } from "@workspace/api-client-react"
 import { refreshFeedPages } from "@/lib/feed-refresh"
+import { preparePostPhoto, postPhotoUploadError } from "@/lib/post-photo"
 import { useToast } from "@/hooks/use-toast"
 import { useAnalytics } from "@/lib/analytics"
 import { ToastAction } from "@/components/ui/toast"
@@ -274,17 +275,20 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
     setIsPreparing(false)
   }
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ""
     if (!file) return
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 15_000_000) {
-      setImageUploadError("Choose a JPEG, PNG, or WebP image under 15MB.")
+    let prepared: File
+    try {
+      prepared = await preparePostPhoto(file)
+    } catch (error) {
+      setImageUploadError(error instanceof Error ? error.message : "Could not read this photo.")
       return
     }
     if (imagePreview) URL.revokeObjectURL(imagePreview)
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
+    setImageFile(prepared)
+    setImagePreview(URL.createObjectURL(prepared))
     setImageObjectPath(null)
     setImageUploadError(null)
   }
@@ -306,7 +310,7 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
       request.upload.onprogress = (event) => {
         if (event.lengthComputable) setImageUploadProgress(Math.round(event.loaded / event.total * 100))
       }
-      request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error("Image upload failed"))
+      request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(postPhotoUploadError(request.status, request.responseText))
       request.onerror = () => reject(new Error("Image upload was interrupted"))
       request.send(file)
     })
@@ -486,13 +490,13 @@ export const Recorder = forwardRef<RecorderHandle, RecorderProps>(function Recor
              <div className="flex flex-wrap items-center gap-2">
                {imagePreview ? (
                  <div className="relative">
-                    <img src={imagePreview} alt="Photo attachment preview" className="h-16 w-16 rounded-xl object-cover border border-border" />
+                    <img src={imagePreview} alt="Photo attachment preview" className="h-16 w-16 rounded-xl object-contain border border-border" />
                    <button type="button" aria-label="Remove photo attachment" onClick={() => { URL.revokeObjectURL(imagePreview); setImagePreview(null); setImageFile(null); setImageObjectPath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 shadow border border-border"><X className="h-3.5 w-3.5" /></button>
                  </div>
                ) : (
                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-secondary">
                    <ImagePlus className="h-4 w-4" /> Add photo
-                   <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleImageChange} />
+                   <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" className="sr-only" onChange={handleImageChange} />
                  </label>
                )}
                {imageUploadProgress !== null && <span className="text-xs text-muted-foreground" aria-live="polite">Uploading photo… {imageUploadProgress}%</span>}

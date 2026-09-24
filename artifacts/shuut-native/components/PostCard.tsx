@@ -9,6 +9,7 @@ import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
+import { prepareNativePostPhoto, photoUploadError } from '../lib/postPhoto';
 import { useAudioRecorder, useAudioRecorderState, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { authenticatedImageSource, resolveApiUrl } from '../lib/apiUrl';
 import { useAuth } from '../hooks/useAuthStore';
@@ -69,6 +70,8 @@ export function PostCard({
   const [isUploading, setIsUploading] = useState(false);
   const [showReshuutComposer, setShowReshuutComposer] = useState(false);
   const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [postPhotoRatio, setPostPhotoRatio] = useState(4 / 3);
+  const [reshuutPhotoRatio, setReshuutPhotoRatio] = useState(4 / 3);
   const [reshuutImagePath, setReshuutImagePath] = useState<string | null>(null);
 
   const requestUploadUrl = useRequestUploadUrl();
@@ -146,29 +149,33 @@ export function PostCard({
         return;
       }
       const result = useCamera
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82, selectionLimit: 1 });
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible, quality: 0.82, selectionLimit: 1 });
       if (!result.canceled && result.assets[0]) {
-        setReshuutPhoto(result.assets[0]);
+        const prepared = await prepareNativePostPhoto(result.assets[0], 'reshuut-photo');
+        setReshuutPhoto({
+          ...result.assets[0],
+          uri: prepared.file.uri,
+          mimeType: prepared.contentType,
+          fileName: prepared.name,
+        });
         setReshuutImagePath(null);
       }
     } catch (error) {
       console.error('Could not choose reSHÜÜT photo', error);
-      Alert.alert('Photo unavailable', 'We could not open your camera or photo library. Please try again.');
+      Alert.alert('Photo unavailable', error instanceof Error ? error.message : 'We could not open your camera or photo library. Please try again.');
     }
   };
 
   const uploadReshuutPhoto = async (): Promise<string | undefined> => {
     if (!reshuutPhoto) return undefined;
     if (reshuutImagePath) return reshuutImagePath;
-    const file = new File(reshuutPhoto.uri);
-    if (!file.exists) throw new Error('Selected photo is no longer available.');
-    const contentType = reshuutPhoto.mimeType === 'image/png' ? 'image/png' : reshuutPhoto.mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg';
-    const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({ data: { name: 'reshuut-photo.jpg', size: file.size, contentType } });
+    const { file, name, contentType } = await prepareNativePostPhoto(reshuutPhoto, 'reshuut-photo');
+    const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({ data: { name, size: file.size, contentType } });
     const fullUrl = resolveApiUrl(uploadURL);
     if (!fullUrl) throw new Error('Photo upload URL was empty.');
     const uploaded = await file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': contentType } });
-    if (uploaded.status < 200 || uploaded.status >= 300) throw new Error(`Photo upload failed: ${uploaded.status}`);
+    if (uploaded.status < 200 || uploaded.status >= 300) throw photoUploadError(uploaded.status, uploaded.body);
     setReshuutImagePath(objectPath);
     return objectPath;
   };
@@ -203,7 +210,8 @@ export function PostCard({
       refetchFeed();
     } catch (error) {
       console.error('Failed to publish reSHÜÜT', error);
-      Alert.alert('Could not reSHÜÜT', 'Your reSHÜÜT could not be processed. Please try again.');
+      Alert.alert('Could not reSHÜÜT', error instanceof Error && /photo|image|JPEG|PNG|WebP/i.test(error.message)
+        ? error.message : 'Your reSHÜÜT could not be processed. Please try again.');
     } finally {
       setIsUploading(false);
     }
@@ -496,8 +504,13 @@ export function PostCard({
       {post.imageUrl && (
         <Image
           source={authenticatedImageSource(post.imageUrl, token)}
-          style={styles.postImage}
-          contentFit="cover"
+          style={[styles.postImage, { aspectRatio: postPhotoRatio }]}
+          contentFit="contain"
+          onLoad={(event) => {
+            if (event.source.width > 0 && event.source.height > 0) {
+              setPostPhotoRatio(Math.max(0.65, Math.min(2, event.source.width / event.source.height)));
+            }
+          }}
           accessibilityLabel="Photo attached to this SHÜÜT"
         />
       )}
@@ -518,8 +531,13 @@ export function PostCard({
           {post.reshuut.imageUrl && (
             <Image
               source={authenticatedImageSource(post.reshuut.imageUrl, token)}
-              style={styles.reshuutImage}
-              contentFit="cover"
+              style={[styles.reshuutImage, { aspectRatio: reshuutPhotoRatio }]}
+              contentFit="contain"
+              onLoad={(event) => {
+                if (event.source.width > 0 && event.source.height > 0) {
+                  setReshuutPhotoRatio(Math.max(0.65, Math.min(2, event.source.width / event.source.height)));
+                }
+              }}
               accessibilityLabel="Photo attached to this reSHÜÜT"
             />
           )}
@@ -546,7 +564,7 @@ export function PostCard({
           </View>
           {reshuutPhoto ? (
             <View style={styles.reshuutPhotoPreviewWrap}>
-              <Image source={{ uri: reshuutPhoto.uri }} style={styles.reshuutPhotoPreview} contentFit="cover" />
+              <Image source={{ uri: reshuutPhoto.uri }} style={styles.reshuutPhotoPreview} contentFit="contain" />
               <TouchableOpacity style={styles.reshuutPhotoRemove} onPress={() => { setReshuutPhoto(null); setReshuutImagePath(null); }} accessibilityLabel="Remove reSHÜÜT photo">
                 <X color="#fff" size={16} />
               </TouchableOpacity>
@@ -739,6 +757,7 @@ const styles = StyleSheet.create({
   postImage: {
     width: '100%',
     aspectRatio: 4 / 3,
+    maxHeight: 440,
     borderRadius: 14,
     marginBottom: 12,
   },
@@ -765,6 +784,7 @@ const styles = StyleSheet.create({
   reshuutImage: {
     width: '100%',
     aspectRatio: 4 / 3,
+    maxHeight: 360,
     borderRadius: 10,
   },
   reshuutComposer: {

@@ -20,6 +20,7 @@ import { shouldCancelRecordingForLifecycle } from '../../lib/voiceRecordingGuard
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { ImagePlus, X } from 'lucide-react-native';
+import { prepareNativePostPhoto, photoUploadError } from '../../lib/postPhoto';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -435,21 +436,27 @@ export default function RecordScreen() {
         return;
       }
       const result = useCamera
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.82 })
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 })
         : await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
         quality: 0.82,
         selectionLimit: 1,
       });
       if (!result.canceled && result.assets[0]) {
-        setSelectedPhoto(result.assets[0]);
+        const prepared = await prepareNativePostPhoto(result.assets[0], 'shuut-photo');
+        setSelectedPhoto({
+          ...result.assets[0],
+          uri: prepared.file.uri,
+          mimeType: prepared.contentType,
+          fileName: prepared.name,
+        });
         setImageObjectPath(null);
       }
     } catch (error) {
       console.error('Could not choose SHÜÜT photo', error);
-      Alert.alert('Photo unavailable', 'We could not open your photo library. Please try again.');
+      Alert.alert('Photo unavailable', error instanceof Error ? error.message : 'We could not open your photo library. Please try again.');
     }
   };
 
@@ -463,9 +470,10 @@ export default function RecordScreen() {
     setIsProcessing(true);
     try {
       await publishPost(reviewRecording.uri, reviewRecording.duration);
-    } catch {
+    } catch (error) {
       setIsProcessing(false);
-      Alert.alert('Could not publish', 'Your SHÜÜT could not be processed. Please try again.');
+      Alert.alert('Could not publish', error instanceof Error && /photo|image|JPEG|PNG|WebP/i.test(error.message)
+        ? error.message : 'Your SHÜÜT could not be processed. Please try again.');
     }
   };
 
@@ -526,17 +534,14 @@ export default function RecordScreen() {
   const uploadPhoto = async (): Promise<string | undefined> => {
     if (!selectedPhoto) return undefined;
     if (imageObjectPath) return imageObjectPath;
-    const uri = selectedPhoto.uri;
-    const file = new File(uri);
-    if (!file.exists) throw new Error('Selected photo is no longer available on this device.');
-    const contentType = selectedPhoto.mimeType === 'image/png' ? 'image/png' : selectedPhoto.mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg';
+    const { file, name, contentType } = await prepareNativePostPhoto(selectedPhoto, 'shuut-photo');
     const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
-      data: { name: `shuut-photo.${contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg'}`, size: file.size, contentType },
+      data: { name, size: file.size, contentType },
     });
     const fullUrl = resolveApiUrl(uploadURL);
     if (!fullUrl) throw new Error('Photo upload URL was empty.');
     const result = await file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': contentType } });
-    if (result.status < 200 || result.status >= 300) throw new Error(`Failed to upload photo: ${result.status}`);
+    if (result.status < 200 || result.status >= 300) throw photoUploadError(result.status, result.body);
     setImageObjectPath(objectPath);
     return objectPath;
   };
@@ -739,7 +744,7 @@ export default function RecordScreen() {
               <View style={[styles.photoSection, { borderColor: colors.border }]}>
                 {selectedPhoto ? (
                   <View style={styles.photoPreviewWrap}>
-                    <Image source={{ uri: selectedPhoto.uri }} style={styles.photoPreview} contentFit="cover" />
+                    <Image source={{ uri: selectedPhoto.uri }} style={styles.photoPreview} contentFit="contain" />
                     <TouchableOpacity
                       style={[styles.removePhotoButton, { backgroundColor: colors.card }]}
                       onPress={() => { setSelectedPhoto(null); setImageObjectPath(null); }}
