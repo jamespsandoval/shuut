@@ -74,6 +74,7 @@ export function PostCard({
   const [duration, setDuration] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [showReshuutComposer, setShowReshuutComposer] = useState(false);
+  const [showReshuutMenu, setShowReshuutMenu] = useState(false);
   const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [postPhotoRatio, setPostPhotoRatio] = useState(4 / 3);
   const [reshuutPhotoRatio, setReshuutPhotoRatio] = useState(4 / 3);
@@ -129,12 +130,19 @@ export function PostCard({
   };
 
   const handleReshuut = () => {
-    if (post.isReshuuted) {
-      reshuutPost.mutate({ postId: post.id }, { onSuccess: refetchFeed });
-      return;
+    if (reshuutPost.isPending) return;
+    pendingReshuutRevealRef.current = !showReshuutMenu;
+    setShowReshuutMenu(!showReshuutMenu);
+  };
+
+  const toggleReshuutNow = async () => {
+    setShowReshuutMenu(false);
+    try {
+      await reshuutPost.mutateAsync({ postId: post.id });
+      refetchFeed();
+    } catch (error) {
+      Alert.alert('Could not reSHÜÜT', error instanceof Error ? error.message : 'Please try again.');
     }
-    pendingReshuutRevealRef.current = !showReshuutComposer;
-    setShowReshuutComposer(!showReshuutComposer);
   };
 
   const revealReshuutPanel = () => {
@@ -456,6 +464,11 @@ export function PostCard({
         <View style={styles.reshuutHeader}>
           <Repeat2 color={colors.mutedForeground} size={14} />
           <Text style={[styles.reshuutText, { color: colors.mutedForeground }]}>{post.reshuutedBy} RESHÜÜTED</Text>
+          {!post.reshuut && (
+            <TouchableOpacity onPress={() => router.push(post.canDelete ? '/(main)/profile' : `/profile/${post.author.handle}`)} accessibilityRole="link" accessibilityLabel={`Tagged publisher @${post.author.handle}`}>
+              <Text style={[styles.reshuutPublisherHandle, { color: colors.primary }]}>Tagged: @{post.author.handle}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -589,6 +602,28 @@ export function PostCard({
         </View>
       )}
 
+      {showReshuutMenu && (
+        <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutMenu, { borderColor: colors.border, backgroundColor: colors.background }]}>
+          {post.isReshuuted ? (
+            <TouchableOpacity style={styles.reshuutMenuOption} onPress={() => void toggleReshuutNow()} accessibilityRole="button" accessibilityLabel="Remove reSHÜÜT">
+              <X color={colors.mutedForeground} size={19} />
+              <Text style={[styles.reshuutMenuText, { color: colors.foreground }]}>Remove reSHÜÜT</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.reshuutMenuOption} onPress={() => void toggleReshuutNow()} accessibilityRole="button" accessibilityLabel="reSHÜÜT Now">
+                <Repeat2 color={colors.primary} size={19} />
+                <Text style={[styles.reshuutMenuText, { color: colors.foreground }]}>reSHÜÜT Now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.reshuutMenuOption} onPress={() => { setShowReshuutMenu(false); pendingReshuutRevealRef.current = true; setShowReshuutComposer(true); }} accessibilityRole="button" accessibilityLabel="Add Voice Note to reSHÜÜT">
+                <Mic color={colors.primary} size={19} />
+                <Text style={[styles.reshuutMenuText, { color: colors.foreground }]}>Add Voice Note</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
+
       {showReshuutComposer && !post.isReshuuted && (
         <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutComposerTitle, { color: colors.foreground }]}>Add to your reSHÜÜT</Text>
@@ -655,7 +690,7 @@ export function PostCard({
         <TouchableOpacity style={styles.actionBtn} onPress={handleReply} accessibilityRole="button" accessibilityLabel="Reply with a voice note">
           <Mic color={colors.mutedForeground} size={18} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleReshuut}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleReshuut} accessibilityRole="button" accessibilityLabel="reSHÜÜT options" disabled={reshuutPost.isPending}>
           <Repeat2 color={post.isReshuuted ? '#22C55E' : colors.mutedForeground} size={18} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
@@ -758,6 +793,7 @@ const styles = StyleSheet.create({
   },
   reshuutHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     marginBottom: 12,
     gap: 6,
@@ -843,6 +879,23 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
     gap: 6,
+  },
+  reshuutMenu: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 8,
+  },
+  reshuutMenuOption: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+  },
+  reshuutMenuText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
   },
   reshuutComposerTitle: {
     fontFamily: 'Inter_700Bold',

@@ -27,6 +27,7 @@ import { VoiceAiConsentModal } from "./voice-ai-consent-modal"
 import { ToastAction } from "@/components/ui/toast"
 import { refreshFeedPages } from "@/lib/feed-refresh"
 import { preparePostPhoto, postPhotoUploadError } from "@/lib/post-photo"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 interface PostCardProps {
   post: Post
@@ -163,15 +164,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     return () => window.cancelAnimationFrame(frame)
   }, [showReshuutComposer])
 
-  const handleReshuut = () => {
-    if (post.isReshuuted && !post.reshuut) {
-      reshuutPost.mutate({ postId: post.id }, { onSuccess: () => queryClient.invalidateQueries() })
-      return
-    }
-    pendingReshuutRevealRef.current = !showReshuutComposer
-    setShowReshuutComposer(!showReshuutComposer)
-  }
-
   const handleReply = () => {
     if (autoStartReply) return
     setAutoStartReply(true)
@@ -275,7 +267,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     setReshuutImage(prepared); setReshuutImagePreview(preview); setReshuutImagePath(null)
   }
 
-  const invalidateReshuut = () => {
+  const toggleReshuutNow = () => {
     reshuutPost.mutate(
       { postId: post.id },
       {
@@ -285,7 +277,8 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           queryClient.invalidateQueries({ queryKey: getGetPostQueryKey(post.id) })
           queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey(post.author.handle) })
           queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey("me") })
-        }
+        },
+        onError: (error) => toast({ title: "Could not reSHÜÜT", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }),
       }
     )
   }
@@ -380,6 +373,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
         <div className="flex items-center gap-2 text-xs text-muted-foreground font-semibold mb-3 px-1 uppercase tracking-wider">
           <Repeat2 className="w-3.5 h-3.5" />
           <span>{post.reshuutedBy} reshüüted</span>
+          {!post.reshuut && <span className="ml-auto normal-case tracking-normal">Publisher tagged: <Link href={post.canDelete ? "/u/me" : `/u/${post.author.handle}`} className="text-primary hover:underline">@{post.author.handle}</Link></span>}
         </div>
       )}
 
@@ -529,16 +523,32 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
             <div className="flex-1 min-w-4" />
 
-            <button
-              onClick={handleReshuut}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95 text-muted-foreground hover:text-foreground shrink-0",
-                post.isReshuuted && "text-green-500 font-medium"
-              )}
-            >
-              <Repeat2 className="w-[18px] h-[18px]" />
-              <span className="hidden sm:inline">reSHÜÜT</span>
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={reshuutPost.isPending}
+                  aria-label="reSHÜÜT options"
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm transition-all hover:bg-secondary active:scale-95 text-muted-foreground hover:text-foreground shrink-0",
+                    post.isReshuuted && "text-green-500 font-medium"
+                  )}
+                >
+                  <Repeat2 className="w-[18px] h-[18px]" />
+                  <span className="hidden sm:inline">reSHÜÜT</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {post.isReshuuted ? (
+                  <DropdownMenuItem onSelect={toggleReshuutNow}><X className="mr-2 h-4 w-4" />Remove reSHÜÜT</DropdownMenuItem>
+                ) : (
+                  <>
+                    <DropdownMenuItem onSelect={toggleReshuutNow}><Repeat2 className="mr-2 h-4 w-4" />reSHÜÜT Now</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => { pendingReshuutRevealRef.current = true; setShowReshuutComposer(true) }}><Mic className="mr-2 h-4 w-4" />Add Voice Note</DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <button
               onClick={handleShare}
@@ -596,7 +606,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 {reshuutUploadProgress !== null && <span className="text-xs text-muted-foreground" role="status">Uploading… {reshuutUploadProgress}%</span>}
               </div>
               <div className="mt-2 flex flex-wrap justify-end gap-2">
-                {post.isReshuuted && <Button type="button" variant="ghost" onClick={() => { invalidateReshuut(); setShowReshuutComposer(false); clearReshuutComposer() }}>Remove reSHÜÜT</Button>}
                 <Button type="button" variant="ghost" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }}>Cancel</Button>
                 <Button type="button" onClick={() => void submitReshuut()} disabled={reshuutPost.isPending || reshuutUploadProgress !== null || !reshuutAudioPath}>Publish reSHÜÜT</Button>
               </div>
