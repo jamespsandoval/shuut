@@ -10,8 +10,6 @@ const MAX_MESSAGE_LENGTH = 1000;
 
 export default function Contact() {
   usePublicPageMetadata("contact");
-  const isNativeApp = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('native') === '1';
   const sendMessage = useSendContactMessage();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -62,17 +60,9 @@ export default function Contact() {
   return (
     <PublicLayout>
       <div className="mb-9">
-        {!isNativeApp && (
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 mb-3">
-            Get in touch
-          </p>
-        )}
         <h1 className="text-4xl font-extrabold tracking-tight text-gray-950 mb-3">
           Contact SHÜÜT
         </h1>
-        <p className="text-[15px] text-gray-600">
-          Questions, press, partnerships, or feedback — drop us a note and a human will reply.
-        </p>
       </div>
 
       <form
