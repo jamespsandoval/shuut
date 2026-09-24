@@ -532,6 +532,64 @@ async function distributablePosts(rows: PostRow[]) {
   return result;
 }
 
+// Legacy endpoints return complete histories. Decide original-post eligibility
+// in SQL instead of checking moderation, author sanctions, and blocks per post.
+export function visibleOriginalPostsQuery(options: {
+  viewerFounderId?: number | null;
+  authorFounderId?: number;
+  followingOnly?: boolean;
+} = {}) {
+  const latestSanction = db.select({ type: accountSanctionsTable.type })
+    .from(accountSanctionsTable)
+    .where(and(
+      eq(accountSanctionsTable.userId, foundersTable.userId),
+      eq(accountSanctionsTable.status, "active"),
+      or(isNull(accountSanctionsTable.expiresAt), gt(accountSanctionsTable.expiresAt, new Date())),
+    ))
+    .orderBy(desc(accountSanctionsTable.createdAt))
+    .limit(1);
+  const blocked = options.viewerFounderId
+    ? db.select({ id: accountBlocksTable.id }).from(accountBlocksTable).where(or(
+      and(eq(accountBlocksTable.blockerFounderId, options.viewerFounderId), eq(accountBlocksTable.blockedFounderId, postsTable.authorId)),
+      and(eq(accountBlocksTable.blockedFounderId, options.viewerFounderId), eq(accountBlocksTable.blockerFounderId, postsTable.authorId)),
+    ))
+    : null;
+  const following = options.viewerFounderId
+    ? db.select({ id: accountFollowsTable.id }).from(accountFollowsTable).where(and(
+      eq(accountFollowsTable.followerFounderId, options.viewerFounderId),
+      eq(accountFollowsTable.followedFounderId, postsTable.authorId),
+    ))
+    : null;
+  return db.select({ post: postsTable }).from(postsTable)
+    .innerJoin(foundersTable, eq(foundersTable.id, postsTable.authorId))
+    .leftJoin(usersTable, eq(usersTable.id, foundersTable.userId))
+    .where(and(
+      eq(postsTable.deletionStatus, "active"),
+      eq(postsTable.transcriptionStatus, "ready"),
+      options.authorFounderId === undefined ? undefined : eq(postsTable.authorId, options.authorFounderId),
+      or(
+        and(
+          inArray(postsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
+          or(isNull(foundersTable.userId), eq(usersTable.deletionStatus, "active")),
+          sql<boolean>`coalesce((${latestSanction}) not in ('ban', 'suspend'), true)`,
+        ),
+        options.viewerFounderId
+          ? and(
+            eq(postsTable.authorId, options.viewerFounderId),
+            notInArray(postsTable.moderationStatus, ["removed", "quarantined"]),
+          )
+          : undefined,
+      ),
+      blocked ? notExists(blocked) : undefined,
+      options.followingOnly ? following ? exists(following) : sql`false` : undefined,
+    ))
+    .orderBy(desc(postsTable.createdAt));
+}
+
+async function visibleOriginalPosts(options: Parameters<typeof visibleOriginalPostsQuery>[0] = {}): Promise<PostRow[]> {
+  return (await visibleOriginalPostsQuery(options)).map(({ post }) => post);
+}
+
 async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
   if (!rows.length) return [];
   const founders = await activeFounders(await db
@@ -743,35 +801,10 @@ router.get("/feed", async (req, res): Promise<void> => {
   }
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
-  const all = await db.select().from(postsTable).orderBy(desc(postsTable.createdAt));
-  const rowsVisibleToModeration: PostRow[] = [];
-  for (const post of all) {
-    const ownPendingPost =
-      viewer?.id === post.authorId &&
-      post.transcriptionStatus === "ready" &&
-      post.deletionStatus === "active" &&
-      !["removed", "quarantined"].includes(post.moderationStatus);
-    if (ownPendingPost || await canDistributePost(post.id)) {
-      rowsVisibleToModeration.push(post);
-    }
-  }
-  let rows = rowsVisibleToModeration;
-  if (viewer) {
-    const visible: PostRow[] = [];
-    for (const post of rows) if (await visibleToViewer(viewer.id, post.authorId)) visible.push(post);
-    rows = visible;
-  }
-  if (params.data.view === "following") {
-    if (!viewer) {
-      rows = [];
-    } else {
-      const followed = await db.select({ id: accountFollowsTable.followedFounderId })
-        .from(accountFollowsTable)
-        .where(eq(accountFollowsTable.followerFounderId, viewer.id));
-      const followedIds = new Set(followed.map((row) => row.id));
-      rows = rows.filter((post) => followedIds.has(post.authorId));
-    }
-  }
+  const rows = await visibleOriginalPosts({
+    viewerFounderId: viewer?.id,
+    followingOnly: params.data.view === "following",
+  });
   res.setHeader("Cache-Control", "private, no-store");
   const followingRows = viewer
     ? await db.select({ id: accountFollowsTable.followedFounderId }).from(accountFollowsTable)
@@ -1425,18 +1458,12 @@ router.get("/profiles/:handle", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Profile not found" });
     return;
   }
-  const allRows = (await db
-    .select()
-    .from(postsTable)
-    .where(eq(postsTable.authorId, founder.id))
-    .orderBy(desc(postsTable.createdAt)));
   const userId = getAuthenticatedUserId(req);
   const viewer = await currentFounder(userId ?? "");
-  const ownProfile = viewer?.id === founder.id;
-  const rows = ownProfile
-    ? allRows.filter((post) => post.transcriptionStatus === "ready" && post.deletionStatus === "active" &&
-        !["removed", "quarantined"].includes(post.moderationStatus))
-    : await distributablePosts(allRows);
+  const rows = await visibleOriginalPosts({
+    viewerFounderId: viewer?.id,
+    authorFounderId: founder.id,
+  });
   const [{ followerCount }] = await db.select({ followerCount: sql<number>`count(*)` })
     .from(accountFollowsTable).where(eq(accountFollowsTable.followedFounderId, founder.id));
   const [{ followingCount }] = await db.select({ followingCount: sql<number>`count(*)` })

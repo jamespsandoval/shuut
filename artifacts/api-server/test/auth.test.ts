@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import app from "../src/app";
-import { retryDueCleanupJobs, visibleReshuutPageQuery, visibleReshuutSourcesQuery } from "../src/routes/shuut";
+import { retryDueCleanupJobs, visibleOriginalPostsQuery, visibleReshuutPageQuery, visibleReshuutSourcesQuery } from "../src/routes/shuut";
 import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
 import { ObjectStorageService } from "../src/lib/objectStorage";
 import { webauthnVerifier } from "../src/lib/webauthn";
@@ -21,6 +21,7 @@ import {
   accountBlocksTable,
   accountFollowsTable,
   accountReportsTable,
+  accountSanctionsTable,
   securityRateLimitsTable,
   notificationsTable,
   postMentionsTable,
@@ -1134,6 +1135,87 @@ test("feed pages stay bounded, ordered, and reject invalid cursors", async () =>
     assert.equal((await request(`/api/feed/page?view=following&cursor=${encodeURIComponent(page.nextCursor)}`, { session: browser })).status, 400);
   }
   assert.equal((await request("/api/feed/page?cursor=not-a-cursor", { session: browser })).status, 400);
+});
+
+test("legacy feed and profiles select large original histories in SQL without losing visibility or order", async (t) => {
+  const fixture = await securityFixture("original-history");
+  const [blockedAuthor] = await db.insert(foundersTable).values({
+    name: "Blocked history author", handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-10)}history`,
+    bio: "", avatarColor: "#333333",
+  }).returning();
+  t.after(async () => {
+    await db.delete(accountBlocksTable).where(or(
+      eq(accountBlocksTable.blockerFounderId, blockedAuthor.id),
+      eq(accountBlocksTable.blockedFounderId, blockedAuthor.id),
+    ));
+    await db.delete(postsTable).where(eq(postsTable.authorId, blockedAuthor.id));
+    await db.delete(foundersTable).where(eq(foundersTable.id, blockedAuthor.id));
+  });
+  t.after(async () => {
+    await db.delete(accountSanctionsTable).where(eq(accountSanctionsTable.userId, fixture.ownerUser.id));
+    await db.delete(postsTable).where(eq(postsTable.authorId, fixture.owner.id));
+    await db.delete(postsTable).where(eq(postsTable.authorId, fixture.viewer.id));
+  });
+  t.after(() => fixture.cleanup());
+
+  const history = await db.insert(postsTable).values(Array.from({ length: 90 }, (_, i) => ({
+    authorId: fixture.owner.id, transcript: `Original history ${i}`,
+    durationSeconds: 2, moderationStatus: "approved",
+    createdAt: new Date(Date.UTC(2092, 0, 1, 0, 0, i)),
+  }))).returning();
+  const [pending, removed, processing, deleted, viewerPost, blockedPost] = await db.insert(postsTable).values([
+    { authorId: fixture.owner.id, transcript: "Own pending history", durationSeconds: 2, moderationStatus: "pending", createdAt: new Date("2093-01-01") },
+    { authorId: fixture.owner.id, transcript: "Removed history", durationSeconds: 2, moderationStatus: "removed", createdAt: new Date("2093-01-02") },
+    { authorId: fixture.owner.id, transcript: "Unfinished history", durationSeconds: 2, transcriptionStatus: "processing", createdAt: new Date("2093-01-03") },
+    { authorId: fixture.owner.id, transcript: "Deleted history", durationSeconds: 2, deletionStatus: "deleted", createdAt: new Date("2093-01-04") },
+    { authorId: fixture.viewer.id, transcript: "Unfollowed history", durationSeconds: 2, moderationStatus: "approved", createdAt: new Date("2093-01-05") },
+    { authorId: blockedAuthor.id, transcript: "Blocked history", durationSeconds: 2, moderationStatus: "approved", createdAt: new Date("2093-01-06") },
+  ]).returning();
+  await db.insert(accountFollowsTable).values({ followerFounderId: fixture.viewer.id, followedFounderId: fixture.owner.id });
+  // The block goes in the opposite direction to exercise both-way visibility.
+  await db.insert(accountBlocksTable).values({ blockerFounderId: blockedAuthor.id, blockedFounderId: fixture.viewer.id });
+
+  const query = visibleOriginalPostsQuery({ viewerFounderId: fixture.viewer.id, followingOnly: true }).toSQL();
+  assert.match(query.sql, /not exists.*shuut_account_blocks/i);
+  assert.match(query.sql, /exists.*shuut_account_follows/i);
+  assert.match(query.sql, /shuut_account_sanctions/i);
+  assert.match(query.sql, /order by "shuut_posts"\."created_at" desc$/i);
+  assert.equal((query.sql.match(/ limit /gi) ?? []).length, 1, "Only the latest-sanction lookup is limited");
+
+  const keys = (items: FeedTestItem[]) => items.map((item) => item.feedItemKey);
+  const ownerHistoryKeys = [pending, ...history.slice().reverse(), fixture.post].map((post) => `post:${post.id}`);
+  const ownProfile = await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.ownerSession });
+  assert.equal(ownProfile.status, 200);
+  const own = await ownProfile.json() as { posts: FeedTestItem[]; postCount: number };
+  assert.deepEqual(keys(own.posts), ownerHistoryKeys);
+  assert.equal(own.postCount, ownerHistoryKeys.length);
+
+  const following = await request("/api/feed?view=following", { session: fixture.viewerSession });
+  assert.equal(following.status, 200);
+  assert.deepEqual(keys(await following.json() as FeedTestItem[]), ownerHistoryKeys);
+  const publicFeed = await request("/api/feed?view=everyone", { session: fixture.viewerSession });
+  assert.equal(publicFeed.status, 200);
+  const publicKeys = keys(await publicFeed.json() as FeedTestItem[]);
+  assert.ok(publicKeys.includes(`post:${viewerPost.id}`));
+  assert.ok(!publicKeys.includes(`post:${blockedPost.id}`));
+  for (const post of [removed, processing, deleted]) assert.ok(!publicKeys.includes(`post:${post.id}`));
+  assert.deepEqual((await visibleOriginalPostsQuery({ followingOnly: true })).map(({ post }) => post.id), []);
+
+  // A later non-restrictive active sanction overrides an earlier ban.
+  await db.insert(accountSanctionsTable).values({
+    userId: fixture.ownerUser.id, type: "ban", createdAt: new Date("2090-01-01"),
+  });
+  const bannedFeed = await request("/api/feed?view=following", { session: fixture.viewerSession });
+  assert.deepEqual(keys(await bannedFeed.json() as FeedTestItem[]), []);
+  assert.equal((await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession })).status, 404);
+  const stillOwn = await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.ownerSession });
+  assert.deepEqual(keys((await stillOwn.json() as { posts: FeedTestItem[] }).posts), ownerHistoryKeys);
+  await db.insert(accountSanctionsTable).values({
+    userId: fixture.ownerUser.id, type: "warning", createdAt: new Date("2091-01-01"),
+  });
+  const restored = await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession });
+  assert.equal(restored.status, 200);
+  assert.deepEqual(keys((await restored.json() as { posts: FeedTestItem[] }).posts), ownerHistoryKeys);
 });
 
 test("other viewers get distinct reSHÜÜT feed/profile entries with cursor-stable keys", async (t) => {
