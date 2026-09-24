@@ -359,12 +359,31 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     }
   }
 
+  const openPostFromCard = (event: React.MouseEvent<HTMLElement>) => {
+    if (isDetail || isEditing || event.defaultPrevented) return
+    const target = event.target as Element
+    if (target.closest("a, button, input, textarea, select, [role='button'], [data-post-navigation-ignore]")) return
+    const selection = window.getSelection()
+    if (selection?.toString() && event.currentTarget.contains(selection.anchorNode)) return
+    setLocation(`/p/${post.id}`)
+  }
+
   return (
     <>
     <article
       id={`post-${post.id}`}
+      onClick={openPostFromCard}
+      onKeyDown={(event) => {
+        if (!isDetail && !isEditing && event.key === "Enter" && event.target === event.currentTarget) {
+          setLocation(`/p/${post.id}`)
+        }
+      }}
+      role={isDetail ? undefined : "link"}
+      tabIndex={isDetail ? undefined : 0}
+      aria-label={isDetail ? undefined : `View full SHÜÜT by ${post.author.name}`}
       className={cn(
         "bg-card border border-border rounded-xl p-4 transition-colors hover:bg-card/70 scroll-m-20",
+        !isDetail && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         isDetail ? "pb-6" : "mx-3 my-3",
         isFocused && "ring-2 ring-primary/20 bg-card/80 shadow-sm"
       )}
@@ -435,17 +454,12 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 )}>
                   {post.transcript}
                 </p>
-                {!isDetail && !isFocused && (
-                  <Link href={`/u/${post.author.handle}?shuut=${post.id}`} className="mt-1 inline-block text-sm font-medium text-primary hover:underline">
-                    View full SHÜÜT
-                  </Link>
-                )}
               </>
             )}
           </div>
 
           {post.audioUrl && (
-            <div className="mb-2">
+            <div className="mb-2" data-post-navigation-ignore>
               <AudioPlayer audioUrl={post.audioUrl} durationSeconds={post.durationSeconds} compact />
             </div>
           )}
@@ -455,7 +469,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           )}
 
           {canShowReshuut && post.reshuut && (
-            <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+            <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3" data-post-navigation-ignore>
               {post.reshuut.mode === "text" && post.reshuut.text && <p className="whitespace-pre-wrap text-sm">{post.reshuut.text}</p>}
               {post.reshuut.mode === "audio" && post.reshuut.audioUrl && (
                 <AudioPlayer audioUrl={post.reshuut.audioUrl} durationSeconds={1} compact />
@@ -483,7 +497,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           )}
 
           {/* Action Bar */}
-          <div className="flex items-center gap-1.5 sm:gap-4 mt-1 pt-2 border-t border-border/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-1">
+          <div className="flex items-center gap-1.5 sm:gap-4 mt-1 pt-2 border-t border-border/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-1" data-post-navigation-ignore>
             {/* Reactions */}
             <div className="flex items-center gap-1 shrink-0">
               {REACTIONS.map(({ type, emoji }) => {
@@ -580,7 +594,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           </div>
 
           {showReshuutComposer && (
-            <div ref={reshuutPanelRef} className="mt-3 rounded-xl border border-border/60 bg-secondary/10 p-3" aria-label="ReSHÜÜT composer">
+            <div ref={reshuutPanelRef} className="mt-3 rounded-xl border border-border/60 bg-secondary/10 p-3" aria-label="ReSHÜÜT composer" data-post-navigation-ignore>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold">Add to your reSHÜÜT</p>
                 <button type="button" aria-label="Close reSHÜÜT composer" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }} className="rounded-full p-1 hover:bg-secondary"><X className="h-4 w-4" /></button>
@@ -606,11 +620,13 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
           )}
 
           {(showComments) && (
-            <PostComments
-              postId={post.id}
-              autoStartRecording={autoStartReply}
-              onComposerClose={() => setAutoStartReply(false)}
-            />
+            <div data-post-navigation-ignore>
+              <PostComments
+                postId={post.id}
+                autoStartRecording={autoStartReply}
+                onComposerClose={() => setAutoStartReply(false)}
+              />
+            </div>
           )}
         </div>
       </div>

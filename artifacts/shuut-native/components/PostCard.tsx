@@ -459,7 +459,11 @@ export function PostCard({
   };
 
   const InnerCard = (
-    <View style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+    <View
+      style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+      onStartShouldSetResponder={(event) => !isDetail && !isEditing && event.target === event.currentTarget}
+      onResponderRelease={() => router.push(`/post/${post.id}`)}
+    >
       {post.isReshuuted && post.reshuutedBy && (
         <View style={styles.reshuutHeader}>
           <Repeat2 color={colors.mutedForeground} size={14} />
@@ -492,7 +496,7 @@ export function PostCard({
             <Text style={[styles.authorHandle, { color: colors.mutedForeground }]}>@{post.author.handle}</Text>
           </View>
         </TouchableOpacity>
-        <Text style={[styles.time, { color: colors.mutedForeground }]}>
+        <Text style={[styles.time, { color: colors.mutedForeground }]} onPress={isDetail ? undefined : () => router.push(`/post/${post.id}`)}>
           {formatApproximateTimeAgo(post.createdAt)}
         </Text>
         <SafetyActionSheet targetType="post" targetId={post.id} authorHandle={post.author.handle} self={post.canDelete || post.author.handle === viewerProfile?.founder?.handle} onBlocked={() => router.back()} />
@@ -533,34 +537,38 @@ export function PostCard({
         </View>
       ) : (
         <>
-          <Text selectable style={[styles.transcript, { color: colors.foreground }]} numberOfLines={isDetail ? undefined : 3}>
+          <Text
+            selectable
+            style={[styles.transcript, { color: colors.foreground }]}
+            numberOfLines={isDetail ? undefined : 3}
+            onPress={isDetail ? undefined : () => router.push(`/post/${post.id}`)}
+            accessibilityRole={isDetail ? undefined : 'link'}
+            accessibilityLabel={isDetail ? undefined : `View full SHÜÜT by ${post.author.name}`}
+          >
             {post.transcript}
           </Text>
-          {!isDetail && (
-            <TouchableOpacity
-              onPress={() => router.push(`/post/${post.id}`)}
-              accessibilityRole="link"
-              accessibilityLabel="View full SHÜÜT"
-              style={{ alignSelf: 'flex-start', marginTop: 4, marginBottom: 12 }}
-            >
-              <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>View full SHÜÜT</Text>
-            </TouchableOpacity>
-          )}
         </>
       )}
 
       {post.imageUrl && (
-        <Image
-          source={authenticatedImageSource(post.imageUrl, token)}
-          style={[styles.postImage, { aspectRatio: postPhotoRatio }]}
-          contentFit="contain"
-          onLoad={(event) => {
-            if (event.source.width > 0 && event.source.height > 0) {
-              setPostPhotoRatio(Math.max(0.65, Math.min(2, event.source.width / event.source.height)));
-            }
-          }}
-          accessibilityLabel="Photo attached to this SHÜÜT"
-        />
+        <TouchableOpacity
+          onPress={isDetail ? undefined : () => router.push(`/post/${post.id}`)}
+          disabled={isDetail}
+          accessibilityRole={isDetail ? undefined : 'link'}
+          accessibilityLabel={isDetail ? 'Photo attached to this SHÜÜT' : `View full SHÜÜT by ${post.author.name}`}
+        >
+          <Image
+            source={authenticatedImageSource(post.imageUrl, token)}
+            style={[styles.postImage, { aspectRatio: postPhotoRatio }]}
+            contentFit="contain"
+            onLoad={(event) => {
+              if (event.source.width > 0 && event.source.height > 0) {
+                setPostPhotoRatio(Math.max(0.65, Math.min(2, event.source.width / event.source.height)));
+              }
+            }}
+            accessibilityLabel="Photo attached to this SHÜÜT"
+          />
+        </TouchableOpacity>
       )}
       <AuthenticatedAudioPlayer url={post.audioUrl} durationSeconds={post.durationSeconds} />
 
