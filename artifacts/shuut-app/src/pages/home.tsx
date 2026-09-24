@@ -121,17 +121,25 @@ export default function Home() {
     })
   }, [])
 
-  const handleFeedClick = useCallback(() => {
-    setView("everyone")
-    window.scrollTo({ top: 0, behavior: "auto" })
-  }, [])
+  const selectView = useCallback((nextView: GetFeedView) => {
+    window.scrollTo({ top: 0, behavior: "instant" })
+    // Clear cached pages before switching so the newly selected tab starts
+    // with a fresh first page, not a prior scroll position or older posts.
+    void queryClient.resetQueries({
+      queryKey: getGetFeedPageQueryKey({ view: nextView }),
+      exact: true,
+    })
+    setView(nextView)
+  }, [queryClient])
+
+  const handleFeedClick = useCallback(() => selectView("everyone"), [selectView])
 
   return (
     <Layout onFeedClick={handleFeedClick}>
       <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border/50">
         <div className="flex border-b border-border/30">
           <button 
-            onClick={() => setView("everyone")}
+            onClick={() => selectView("everyone")}
             className="flex-1 py-4 text-sm font-bold relative hover:bg-secondary/50 transition-colors"
           >
             <span className={cn("transition-colors", view === "everyone" ? "text-foreground" : "text-muted-foreground")}>
@@ -142,7 +150,7 @@ export default function Home() {
             )}
           </button>
           <button 
-            onClick={() => setView("following")}
+            onClick={() => selectView("following")}
             className="flex-1 py-4 text-sm font-bold relative hover:bg-secondary/50 transition-colors"
           >
             <span className={cn("transition-colors", view === "following" ? "text-foreground" : "text-muted-foreground")}>
