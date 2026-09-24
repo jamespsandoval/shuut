@@ -9,12 +9,8 @@ export default function About() {
     <PublicLayout>
       <article className="pb-6 text-gray-700">
         <header className="border-b border-gray-200 pb-10">
-          <p className="mb-4 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">In their own words</p>
           <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-gray-950 sm:text-5xl">About SHÜÜT</h1>
           <p className="text-lg font-medium leading-relaxed text-gray-900 sm:text-xl">SHÜÜT is a voice-note-first social platform where people share short verbal messages and media.</p>
-          <p className="mt-4 text-base leading-relaxed">
-            Read a thought when you have a moment. Press play when you want to hear the person behind it.
-          </p>
         </header>
 
         <section aria-labelledby="what-shuut-does" className="border-b border-gray-200 py-10">
