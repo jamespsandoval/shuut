@@ -495,8 +495,6 @@ export function PostCard({
   const InnerCard = (
     <View
       style={[styles.postCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
-      onStartShouldSetResponder={(event) => !isDetail && !isEditing && event.target === event.currentTarget}
-      onResponderRelease={() => router.push(`/post/${post.id}`)}
     >
       {post.isReshuuted && post.reshuutedBy && (
         <View style={styles.reshuutHeader}>
