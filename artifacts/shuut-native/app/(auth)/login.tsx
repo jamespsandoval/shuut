@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStartMobileAuth } from '@workspace/api-client-react';
 import { Image } from 'expo-image';
@@ -19,6 +19,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const startAuth = useStartMobileAuth();
   const colors = useColors();
+  const { height: windowHeight } = useWindowDimensions();
 
   React.useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -96,7 +97,12 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
-        <View style={styles.header}>
+        <ScrollView
+          style={styles.mainScroll}
+          contentContainerStyle={styles.mainContent}
+          keyboardShouldPersistTaps="handled"
+        >
+        <View style={[styles.header, windowHeight < 760 && styles.compactHeader]}>
           <Image
             source={require('../../assets/brand/shuut-wordmark.png')}
             style={styles.logo}
@@ -218,7 +224,7 @@ export default function LoginScreen() {
             <Text style={{ color: colors.primary }} onPress={() => router.push({ pathname: '/public/community' as never, params: { returnTo: '/(auth)/login' } })}>Community Guidelines</Text>.
           </Text>
         </View>
-        <View style={{ flex: 1 }} />
+        </ScrollView>
         <LegalFooter />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -232,14 +238,25 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mainScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  mainContent: {
+    flexGrow: 1,
     alignItems: 'center',
   },
   header: {
     width: '100%',
     alignItems: 'center',
-    marginTop: '25%',
+    marginTop: '31%',
     marginBottom: 96,
+  },
+  compactHeader: {
+    marginTop: 48,
+    marginBottom: 40,
   },
   logo: {
     width: 200,
