@@ -639,6 +639,44 @@ test("reports enforce auth and consent, validate all targets, deduplicate, and r
   }
 });
 
+test("follow suggestions show eligible accounts and react to follows and blocks", async () => {
+  const fixture = await securityFixture("suggestions");
+  try {
+    assert.equal((await request("/api/profiles/suggestions")).status, 401);
+    const suggestions = async () => {
+      const response = await request("/api/profiles/suggestions", { session: fixture.viewerSession });
+      assert.equal(response.status, 200);
+      return await response.json() as Array<{ id: number; handle: string; isFollowing: boolean }>;
+    };
+    const initial = await suggestions();
+    assert.ok(initial.length <= 3);
+    assert.ok(initial.some((candidate) => candidate.id === fixture.owner.id));
+    assert.ok(!initial.some((candidate) => candidate.id === fixture.viewer.id));
+    assert.ok(initial.every((candidate) => !candidate.isFollowing));
+
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/follow`, {
+      method: "PUT", session: fixture.viewerSession,
+    })).status, 200);
+    assert.ok(!(await suggestions()).some((candidate) => candidate.id === fixture.owner.id));
+
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/follow`, {
+      method: "PUT", session: fixture.viewerSession,
+    })).status, 200);
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/block`, {
+      method: "PUT", session: fixture.viewerSession,
+    })).status, 200);
+    assert.ok(!(await suggestions()).some((candidate) => candidate.id === fixture.owner.id));
+
+    assert.equal((await request(`/api/profiles/${fixture.owner.handle}/block`, {
+      method: "DELETE", session: fixture.viewerSession,
+    })).status, 200);
+    await db.update(usersTable).set({ deletionStatus: "deleting" }).where(eq(usersTable.id, fixture.owner.userId!));
+    assert.ok(!(await suggestions()).some((candidate) => candidate.id === fixture.owner.id));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("blocks are mutual, idempotent, remove follows, hide content and writes, and unblock does not restore follows", async () => {
   const fixture = await securityFixture("blocks");
   try {

@@ -1116,6 +1116,21 @@ export const SearchProfilesResponseItem = zod.object({
 export const SearchProfilesResponse = zod.array(SearchProfilesResponseItem).max(8)
 
 
+export const GetFollowSuggestionsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+})
+export const GetFollowSuggestionsResponse = zod.array(GetFollowSuggestionsResponseItem).max(3)
+
+
 export const GetPostParams = zod.object({
   "postId": zod.coerce.number().int()
 })

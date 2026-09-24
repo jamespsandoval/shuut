@@ -3668,6 +3668,77 @@ export function useSearchProfiles<TData = Awaited<ReturnType<typeof searchProfil
 
 
 
+export const getGetFollowSuggestionsUrl = () => {
+
+
+
+
+  return `/api/profiles/suggestions`
+}
+
+export const getFollowSuggestions = async ( options?: Parameters<typeof customFetch>[1]): Promise<Founder[]> => {
+
+  return customFetch<Founder[]>(getGetFollowSuggestionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFollowSuggestionsQueryKey = () => {
+    return [
+    `/api/profiles/suggestions`
+    ] as const;
+    }
+
+
+export const getGetFollowSuggestionsQueryOptions = <TData = Awaited<ReturnType<typeof getFollowSuggestions>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFollowSuggestions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFollowSuggestionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFollowSuggestions>>> = ({ signal }) => getFollowSuggestions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFollowSuggestions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFollowSuggestionsQueryResult = NonNullable<Awaited<ReturnType<typeof getFollowSuggestions>>>
+export type GetFollowSuggestionsQueryError = ErrorType<void>
+
+
+
+export function useGetFollowSuggestions<TData = Awaited<ReturnType<typeof getFollowSuggestions>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFollowSuggestions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFollowSuggestionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetPostUrl = (postId: number,) => {
 
 

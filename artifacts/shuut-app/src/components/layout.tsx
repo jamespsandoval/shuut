@@ -10,6 +10,7 @@ import { Button } from "./ui/button"
 import { useAuth } from "@/hooks/use-auth"
 import { useLogout } from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
+import { FeedRightRail } from "./feed-right-rail"
 
 export function Layout({ children, onFeedClick }: { children: ReactNode; onFeedClick?: () => void }) {
   const [location, setLocation] = useLocation()
@@ -135,6 +136,8 @@ export function Layout({ children, onFeedClick }: { children: ReactNode; onFeedC
       <main className="flex-1 w-full max-w-[600px] min-h-[100dvh] pb-24 md:pb-0 mx-auto md:mx-0 relative border-x border-border/20 bg-card/30">
         {children}
       </main>
+
+      {isFeedRoute && <FeedRightRail />}
 
       {!isFeedRoute && (
         <button

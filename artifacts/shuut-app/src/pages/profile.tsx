@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link, useLocation, useSearch } from "wouter"
-import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, getGetFeedQueryKey } from "@workspace/api-client-react"
+import { useGetProfile, useToggleFollow, useAskFounder, useUpdateProfile, getGetProfileQueryKey, getGetFeedQueryKey, getGetFollowSuggestionsQueryKey } from "@workspace/api-client-react"
 import { refreshFeedPages } from "@/lib/feed-refresh"
 import { useQueryClient } from "@tanstack/react-query"
 import { Layout } from "@/components/layout"
@@ -360,6 +360,7 @@ export default function Profile() {
             }
           })
           void queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
+          void queryClient.invalidateQueries({ queryKey: getGetFollowSuggestionsQueryKey() })
           void refreshFeedPages(queryClient)
         }
       }

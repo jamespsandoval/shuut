@@ -49,6 +49,7 @@ import {
   GetNotificationsResponse,
   SearchProfilesQueryParams,
   SearchProfilesResponse,
+  GetFollowSuggestionsResponse,
   CreateReportBody,
   CreateReportResponse,
   BlockAccountParams,
@@ -859,6 +860,54 @@ router.get("/profiles/search", async (req, res): Promise<void> => {
     : new Set<number>();
   res.json(SearchProfilesResponse.parse(visible.map((founder) =>
     founderJson(founder, followedSearchIds.has(founder.id)))));
+});
+
+router.get("/profiles/suggestions", async (req, res): Promise<void> => {
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+
+  const followed = db.select({ id: accountFollowsTable.id })
+    .from(accountFollowsTable)
+    .where(and(
+      eq(accountFollowsTable.followerFounderId, viewer.founder.id),
+      eq(accountFollowsTable.followedFounderId, foundersTable.id),
+    ));
+  const blocked = db.select({ id: accountBlocksTable.id })
+    .from(accountBlocksTable)
+    .where(or(
+      and(eq(accountBlocksTable.blockerFounderId, viewer.founder.id), eq(accountBlocksTable.blockedFounderId, foundersTable.id)),
+      and(eq(accountBlocksTable.blockedFounderId, viewer.founder.id), eq(accountBlocksTable.blockerFounderId, foundersTable.id)),
+    ));
+  // Prefer people who recently published a distributable SHÜÜT, but still
+  // allow eligible people without a post when there are fewer than three.
+  const lastPublicPost = sql<Date | null>`(
+    select max(p.created_at) from shuut_posts p
+    where p.author_id = ${foundersTable.id}
+      and p.deletion_status = 'active'
+      and p.transcription_status = 'ready'
+      and p.moderation_status in ('approved', 'unreviewed', 'pending', 'processing', 'failed')
+  )`;
+  const candidates = await db.select({ founder: foundersTable })
+    .from(foundersTable)
+    .innerJoin(usersTable, eq(usersTable.id, foundersTable.userId))
+    .where(and(
+      ne(foundersTable.id, viewer.founder.id),
+      eq(usersTable.deletionStatus, "active"),
+      notExists(followed),
+      notExists(blocked),
+    ))
+    .orderBy(sql`${lastPublicPost} desc nulls last`, asc(foundersTable.id))
+    .limit(60);
+
+  const suggestions = [];
+  for (const { founder } of candidates) {
+    if (!(await isFounderDistributable(founder.id)) ||
+        !(await visibleToViewer(viewer.founder.id, founder.id))) continue;
+    suggestions.push(founderJson(founder, false));
+    if (suggestions.length === 3) break;
+  }
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(GetFollowSuggestionsResponse.parse(suggestions));
 });
 
 router.post("/reports", async (req, res): Promise<void> => {

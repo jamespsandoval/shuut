@@ -601,6 +601,17 @@ paths:
           content:
             application/json:
               schema: { type: array, maxItems: 8, items: { $ref: '#/components/schemas/Founder' } }
+  /profiles/suggestions:
+    get:
+      operationId: getFollowSuggestions
+      tags: [profiles]
+      responses:
+        '200':
+          description: Up to three eligible accounts to follow
+          content:
+            application/json:
+              schema: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/Founder' } }
+        '401': { description: Unauthorized }
   /posts/{postId}:
     get:
       operationId: getPost
