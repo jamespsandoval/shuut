@@ -41,6 +41,8 @@ const REACTIONS: { type: ReactionInputEmojiType; emoji: string }[] = [
   { type: "thumbsDown", emoji: "👎" },
 ]
 
+const POST_INTERACTIVE_SELECTOR = "a, button, input, textarea, select, [role='button'], [data-post-navigation-ignore]"
+
 export function PostCard({ post, isDetail = false, isFocused = false }: PostCardProps) {
   const queryClient = useQueryClient()
   const setReaction = useSetReaction()
@@ -57,6 +59,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   const [showComments, setShowComments] = useState(isDetail || isFocused)
   const [autoStartReply, setAutoStartReply] = useState(false)
   const [showReshuutComposer, setShowReshuutComposer] = useState(false)
+  const pointerStartedInControlRef = useRef(false)
   const reshuutPanelRef = useRef<HTMLDivElement>(null)
   const pendingReshuutRevealRef = useRef(false)
   const [reshuutImage, setReshuutImage] = useState<File | null>(null)
@@ -370,9 +373,13 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
   }
 
   const openPostFromCard = (event: React.MouseEvent<HTMLElement>) => {
-    if (isDetail || isEditing || event.defaultPrevented) return
+    const pointerStartedInControl = pointerStartedInControlRef.current
+    pointerStartedInControlRef.current = false
+    // Portalled menus bubble through the React tree even though they are outside this article.
+    // A menu opening on pointer-down can also retarget the subsequent click to the card.
+    if (isDetail || isEditing || event.defaultPrevented || pointerStartedInControl || !event.currentTarget.contains(event.target as Node)) return
     const target = event.target as Element
-    if (target.closest("a, button, input, textarea, select, [role='button'], [data-post-navigation-ignore]")) return
+    if (target.closest(POST_INTERACTIVE_SELECTOR)) return
     const selection = window.getSelection()
     if (selection?.toString() && event.currentTarget.contains(selection.anchorNode)) return
     setLocation(`/p/${post.id}`)
@@ -383,6 +390,10 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     <article
       id={`post-${post.id}`}
       onClick={openPostFromCard}
+      onPointerDownCapture={(event) => {
+        pointerStartedInControlRef.current = Boolean((event.target as Element).closest(POST_INTERACTIVE_SELECTOR))
+      }}
+      onPointerCancel={() => { pointerStartedInControlRef.current = false }}
       onKeyDown={(event) => {
         if (!isDetail && !isEditing && event.key === "Enter" && event.target === event.currentTarget) {
           setLocation(`/p/${post.id}`)
