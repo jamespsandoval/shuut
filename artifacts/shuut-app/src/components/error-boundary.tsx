@@ -94,7 +94,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
       setReportSent(true);
     } catch {
       setReportError(
-        'We could not send your report. Please email james@shuut.me instead.',
+        'We could not send your report. Please try again later.',
       );
     } finally {
       setIsReporting(false);

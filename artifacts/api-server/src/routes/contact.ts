@@ -10,6 +10,7 @@ const router: IRouter = Router();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_MESSAGES_PER_WINDOW = 5;
 const attempts = new Map<string, number[]>();
+const CONTACT_RECIPIENT = "james@shuut.me";
 
 router.post("/", async (req, res): Promise<void> => {
   const body = SendContactMessageBody.safeParse(req.body);
@@ -62,7 +63,7 @@ router.post("/", async (req, res): Promise<void> => {
     });
 
     await sendPostmarkEmail({
-      to: isIssueReport ? "james@shuut.me" : "admin@shuut.me",
+      to: CONTACT_RECIPIENT,
       replyTo: body.data.email,
       subject,
       textBody,

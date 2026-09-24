@@ -30,7 +30,16 @@ export async function sendPostmarkEmail(input: {
   });
 
   if (!response.ok) {
-    throw new Error(`Postmark rejected email with status ${response.status}`);
+    const details: unknown = await response.json().catch(() => null);
+    const result = details && typeof details === "object"
+      ? details as { ErrorCode?: unknown; Message?: unknown }
+      : null;
+    const code = typeof result?.ErrorCode === "number" ? ` (code ${result.ErrorCode})` : "";
+    // Preserve useful provider diagnostics without recording any addresses in logs.
+    const message = typeof result?.Message === "string"
+      ? result.Message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[email]").slice(0, 300)
+      : "";
+    throw new Error(`Postmark rejected email with status ${response.status}${code}${message ? `: ${message}` : ""}`);
   }
 }
 
