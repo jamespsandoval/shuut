@@ -77,6 +77,9 @@ export function PostCard({
   const [isPublishingReshuut, setIsPublishingReshuut] = useState(false);
   const [showReshuutComposer, setShowReshuutComposer] = useState(false);
   const [showReshuutDiscardConfirm, setShowReshuutDiscardConfirm] = useState(false);
+  const [showReshuutPhotoChoices, setShowReshuutPhotoChoices] = useState(false);
+  const [reshuutPhotoError, setReshuutPhotoError] = useState<string | null>(null);
+  const [reshuutPhotoNeedsSettings, setReshuutPhotoNeedsSettings] = useState(false);
   const [showReshuutMenu, setShowReshuutMenu] = useState(false);
   const [reshuutPhoto, setReshuutPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isPreparingReshuutPhoto, setIsPreparingReshuutPhoto] = useState(false);
@@ -183,6 +186,9 @@ export function PostCard({
     setIsPreparingReshuutPhoto(false);
     void discardRecording(false);
     setShowReshuutDiscardConfirm(false);
+    setShowReshuutPhotoChoices(false);
+    setReshuutPhotoError(null);
+    setReshuutPhotoNeedsSettings(false);
     setShowReshuutComposer(false);
     setReshuutPhoto(null);
     setReshuutImagePath(null);
@@ -200,47 +206,64 @@ export function PostCard({
       return;
     }
     pendingReshuutRevealRef.current = true;
+    setShowReshuutPhotoChoices(false);
     setShowReshuutDiscardConfirm(true);
   };
 
   const chooseReshuutPhoto = () => {
-    Alert.alert('Attach a photo', 'Choose where to get your reSHÜÜT photo.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Take photo', onPress: () => void captureReshuutPhoto(true) },
-      { text: 'Photo library', onPress: () => void captureReshuutPhoto(false) },
-    ]);
+    pendingReshuutRevealRef.current = true;
+    setReshuutPhotoError(null);
+    setReshuutPhotoNeedsSettings(false);
+    setShowReshuutDiscardConfirm(false);
+    setShowReshuutPhotoChoices((visible) => !visible);
   };
 
   const captureReshuutPhoto = async (useCamera: boolean) => {
+    if (isPreparingReshuutPhoto || isPublishingReshuut) return;
     const generation = ++photoPickGenerationRef.current;
+    setIsPreparingReshuutPhoto(true);
+    setReshuutPhotoError(null);
+    setReshuutPhotoNeedsSettings(false);
     try {
-      const permission = useCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(useCamera ? 'Camera access needed' : 'Photo access needed', permission.canAskAgain ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach a photo.` : `Enable ${useCamera ? 'camera' : 'photo'} access in Settings.`, permission.canAskAgain ? [{ text: 'Not now', style: 'cancel' }] : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }]);
-        return;
+      // Web pickers need to open in the original tap gesture; the browser handles permission.
+      if (Platform.OS !== 'web') {
+        const permission = useCamera
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (generation !== photoPickGenerationRef.current) return;
+        if (!permission.granted) {
+          setReshuutPhotoError(permission.canAskAgain
+            ? `Allow ${useCamera ? 'camera' : 'photo library'} access to attach a photo.`
+            : `Enable ${useCamera ? 'camera' : 'photo library'} access in Settings to attach a photo.`);
+          setReshuutPhotoNeedsSettings(!permission.canAskAgain);
+          return;
+        }
       }
       const result = useCamera
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible, quality: 0.82, selectionLimit: 1 });
-      if (!result.canceled && result.assets[0]) {
-        setIsPreparingReshuutPhoto(true);
-        const prepared = await prepareNativePostPhoto(result.assets[0], 'reshuut-photo');
-        if (generation !== photoPickGenerationRef.current) return;
-        pendingReshuutRevealRef.current = true;
-        setReshuutPhoto({
-          ...result.assets[0],
-          uri: prepared.file.uri,
-          mimeType: prepared.contentType,
-          fileName: prepared.name,
-        });
-        setReshuutImagePath(null);
+      if (generation !== photoPickGenerationRef.current) return;
+      if (result.canceled) {
+        setShowReshuutPhotoChoices(false);
+        return;
       }
+      const asset = result.assets[0];
+      if (!asset) throw new Error('No photo was returned. Please try again.');
+      const prepared = await prepareNativePostPhoto(asset, 'reshuut-photo');
+      if (generation !== photoPickGenerationRef.current) return;
+      pendingReshuutRevealRef.current = true;
+      setReshuutPhoto({
+        ...asset,
+        uri: prepared.file.uri,
+        mimeType: prepared.contentType,
+        fileName: prepared.name,
+      });
+      setReshuutImagePath(null);
+      setShowReshuutPhotoChoices(false);
     } catch (error) {
       if (generation !== photoPickGenerationRef.current) return;
       console.error('Could not choose reSHÜÜT photo', error);
-      Alert.alert('Photo unavailable', error instanceof Error ? error.message : 'We could not open your camera or photo library. Please try again.');
+      setReshuutPhotoError(error instanceof Error ? error.message : 'We could not open your camera or photo library. Please try again.');
     } finally {
       if (generation === photoPickGenerationRef.current) setIsPreparingReshuutPhoto(false);
     }
@@ -284,6 +307,9 @@ export function PostCard({
       });
       setShowReshuutComposer(false);
       setShowReshuutDiscardConfirm(false);
+      setShowReshuutPhotoChoices(false);
+      setReshuutPhotoError(null);
+      setReshuutPhotoNeedsSettings(false);
       photoPickGenerationRef.current += 1;
       setReshuutPhoto(null);
       setReshuutImagePath(null);
@@ -669,7 +695,7 @@ export function PostCard({
           {isPreparingReshuutPhoto && (
             <View style={styles.reshuutPhotoStatus}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.reshuutModeText, { color: colors.mutedForeground }]}>Preparing photo…</Text>
+              <Text style={[styles.reshuutModeText, { color: colors.mutedForeground }]}>Opening or preparing photo…</Text>
             </View>
           )}
           {reshuutPhoto && (
@@ -710,6 +736,32 @@ export function PostCard({
             <ImagePlus color={colors.primary} size={18} />
             <Text style={[styles.reshuutModeText, { color: colors.primary }]}>{reshuutPhoto ? 'Change photo' : 'Add photo'}</Text>
           </TouchableOpacity>
+          {showReshuutPhotoChoices && (
+            <View style={[styles.reshuutPhotoChoices, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
+              <View style={styles.reshuutPhotoChoicesHeader}>
+                <Text style={[styles.reshuutModeText, { color: colors.foreground }]}>Choose a photo source</Text>
+                <TouchableOpacity style={styles.reshuutPhotoClose} onPress={() => { setShowReshuutPhotoChoices(false); setReshuutPhotoError(null); }} accessibilityRole="button" accessibilityLabel="Close photo choices" disabled={isPreparingReshuutPhoto}>
+                  <X color={colors.mutedForeground} size={18} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.reshuutPhotoChoice} onPress={() => void captureReshuutPhoto(false)} disabled={isPreparingReshuutPhoto} accessibilityRole="button" accessibilityLabel="Choose photo from library">
+                <Text style={[styles.reshuutModeText, { color: colors.primary }]}>Photo library</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.reshuutPhotoChoice} onPress={() => void captureReshuutPhoto(true)} disabled={isPreparingReshuutPhoto} accessibilityRole="button" accessibilityLabel="Take reSHÜÜT photo">
+                <Text style={[styles.reshuutModeText, { color: colors.primary }]}>Take photo</Text>
+              </TouchableOpacity>
+              {reshuutPhotoError && (
+                <View>
+                  <Text accessibilityRole="alert" style={[styles.reshuutPhotoError, { color: colors.destructive }]}>{reshuutPhotoError}</Text>
+                  {reshuutPhotoNeedsSettings && (
+                    <TouchableOpacity style={styles.reshuutPhotoChoice} onPress={() => void Linking.openSettings()} accessibilityRole="button" accessibilityLabel="Open photo permissions in Settings">
+                      <Text style={[styles.reshuutModeText, { color: colors.primary }]}>Open Settings</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
           {showReshuutDiscardConfirm ? (
             <View style={[styles.reshuutDiscardPrompt, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
               <Text style={[styles.reshuutDiscardMessage, { color: colors.foreground }]}>Discard this reSHÜÜT draft? Your voice note and selected photo will be lost.</Text>
@@ -1025,7 +1077,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minHeight: 34,
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+  },
+  reshuutPhotoChoices: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+  },
+  reshuutPhotoChoicesHeader: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 12,
+  },
+  reshuutPhotoClose: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reshuutPhotoChoice: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  reshuutPhotoError: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    paddingHorizontal: 12,
   },
   reshuutComposerActions: {
     flexDirection: 'row',
