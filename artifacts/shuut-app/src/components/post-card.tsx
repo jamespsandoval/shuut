@@ -586,9 +586,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 <button type="button" aria-label="Close reSHÜÜT composer" onClick={() => { setShowReshuutComposer(false); clearReshuutComposer() }} className="rounded-full p-1 hover:bg-secondary"><X className="h-4 w-4" /></button>
               </div>
               <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-muted-foreground">Tagging publisher</span>
                 <span className="rounded-full bg-primary/10 px-2 py-1 font-semibold text-primary">@{post.author.handle}</span>
-                <span className="text-muted-foreground">{post.canDelete ? "Your SHÜÜT" : "Notified on publish"}</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant={reshuutRecording ? "destructive" : "outline"} onClick={() => void startReshuutRecording()} aria-label={reshuutRecording ? "Stop reSHÜÜT recording" : "Record reSHÜÜT voice note"}>
@@ -597,7 +595,6 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 </Button>
                 {reshuutAudioPreview && <audio controls src={reshuutAudioPreview} className="h-9 max-w-full" />}
                 {!reshuutImagePreview && <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"><ImagePlus className="h-4 w-4" /> Add photo<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" className="sr-only" onChange={handleReshuutImage} /></label>}
-                <span className="text-xs text-muted-foreground">Always transcribed</span>
                 {reshuutImagePreview && <div className="relative"><img src={reshuutImagePreview} alt="reSHÜÜT photo preview" className="h-16 w-16 rounded-lg object-contain" /><button type="button" aria-label="Remove reSHÜÜT photo" onClick={() => { URL.revokeObjectURL(reshuutImagePreview); setReshuutImagePreview(null); setReshuutImage(null); setReshuutImagePath(null) }} className="absolute -right-2 -top-2 rounded-full bg-background p-1 border border-border"><X className="h-3 w-3" /></button></div>}
                 {reshuutUploadProgress !== null && <span className="text-xs text-muted-foreground" role="status">Uploading… {reshuutUploadProgress}%</span>}
               </div>

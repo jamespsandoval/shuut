@@ -617,11 +617,9 @@ export function PostCard({
         <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutComposerTitle, { color: colors.foreground }]}>Add to your reSHÜÜT</Text>
           <View style={styles.reshuutPublisherRow}>
-            <Text style={[styles.reshuutPublisherCaption, { color: colors.mutedForeground }]}>Tagging publisher</Text>
             <View style={[styles.reshuutPublisherPill, { backgroundColor: colors.secondary }]}>
               <Text style={[styles.reshuutPublisherHandle, { color: colors.primary }]}>@{post.author.handle}</Text>
             </View>
-            <Text style={[styles.reshuutPublisherCaption, { color: colors.mutedForeground }]}>{post.canDelete ? 'Your SHÜÜT' : 'Notified on publish'}</Text>
           </View>
           <View style={styles.reshuutVoiceRow}>
             {recordedUri ? (
