@@ -4,7 +4,7 @@ import { Bell, Home, Mic, User, MoreHorizontal, Settings } from "lucide-react"
 import shuutLogoDark from "@/assets/shuut-uu-icon-dark.png"
 import shuutLogoLight from "@/assets/shuut-uu-icon-light.png"
 import { useTheme } from "./theme-provider"
-import { getGetProfileQueryKey, useGetProfile } from "@workspace/api-client-react"
+import { getGetFeedPageQueryKey, getGetProfileQueryKey, useGetProfile } from "@workspace/api-client-react"
 import * as Dialog from "@radix-ui/react-dialog"
 import { Button } from "./ui/button"
 import { useAuth } from "@/hooks/use-auth"
@@ -45,12 +45,27 @@ export function Layout({ children, onFeedClick }: { children: ReactNode; onFeedC
     })
   }
 
+  const handleFeedNavigation = () => {
+    if (onFeedClick) {
+      onFeedClick()
+      return
+    }
+
+    // When returning from another page, discard old paginated feed results.
+    // The home route will fetch a fresh first page when it mounts.
+    window.scrollTo({ top: 0, behavior: "instant" })
+    void queryClient.resetQueries({
+      queryKey: getGetFeedPageQueryKey({ view: "everyone" }),
+      exact: true,
+    })
+  }
+
   return (
     <div className="min-h-[100dvh] flex flex-col md:flex-row bg-background w-full max-w-7xl mx-auto border-x border-border/40 shadow-sm relative">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-[280px] sticky top-0 h-[100dvh] border-r border-border/40 p-6 shrink-0 z-10">
         <div className="mb-4">
-          <Link href="/" className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
+          <Link href="/" onClick={handleFeedNavigation} className="block w-fit rounded-full hover-elevate transition-transform hover:scale-105 active:scale-95">
             <img 
               src={theme === 'dark' ? shuutLogoDark : shuutLogoLight} 
               alt="SHÜÜT" 
@@ -66,7 +81,7 @@ export function Layout({ children, onFeedClick }: { children: ReactNode; onFeedC
               <Link 
                 key={item.href} 
                 href={item.href}
-                onClick={item.href === "/" ? onFeedClick : undefined}
+                onClick={item.href === "/" ? handleFeedNavigation : undefined}
                 className={`flex items-center gap-4 px-4 py-3 rounded-xl text-lg font-semibold transition-all hover-elevate ${isActive ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'}`}
               >
                 <item.icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 2} />
@@ -159,7 +174,7 @@ export function Layout({ children, onFeedClick }: { children: ReactNode; onFeedC
             <Link
               key={item.href}
               href={item.href}
-              onClick={item.href === "/" ? onFeedClick : undefined}
+              onClick={item.href === "/" ? handleFeedNavigation : undefined}
               aria-label={item.label}
               className="p-3 rounded-full hover:bg-secondary/50 transition-colors"
             >
