@@ -9,7 +9,11 @@ const extensions: Record<PostPhotoType, string> = {
   'image/webp': 'webp',
 };
 
-export async function prepareNativePostPhoto(asset: ImagePickerAsset, prefix: string) {
+export async function prepareNativePostPhoto(
+  asset: ImagePickerAsset,
+  prefix: string,
+  options: { optimize?: boolean } = {},
+) {
   let file = new File(asset.uri);
   if (!file.exists) throw new Error('Selected photo is no longer available on this device.');
   if (file.size < 1 || file.size > 15_000_000) throw new Error('Choose a photo under 15MB.');
@@ -27,6 +31,7 @@ export async function prepareNativePostPhoto(asset: ImagePickerAsset, prefix: st
     return { type, brand: ascii(4, 12) };
   };
   let { type, brand } = await detectType(file);
+  let convertedHeic = false;
   if (!type && brand.startsWith('ftyp') && /^(heic|heif|heix|hevc|hevx|heim|heis|mif1|msf1)/.test(brand.slice(4))) {
     try {
       const maxEdge = Math.max(asset.width, asset.height);
@@ -43,11 +48,34 @@ export async function prepareNativePostPhoto(asset: ImagePickerAsset, prefix: st
       }
       ({ type, brand } = await detectType(file));
       if (type !== 'image/jpeg') throw new Error('Converted photo is not JPEG.');
+      convertedHeic = true;
     } catch {
       throw new Error('This iPhone photo could not be converted to JPEG. Export it as JPEG from Photos and try again.');
     }
   }
   if (!type) throw new Error('Choose a JPEG, PNG, or WebP photo.');
+  if (options.optimize && !convertedHeic && (type === 'image/jpeg' || type === 'image/png')) {
+    const maxEdge = Math.max(asset.width, asset.height);
+    if (maxEdge > 2048 || (type === 'image/jpeg' && file.size > 750_000)) {
+      try {
+        const actions: ImageManipulator.Action[] = maxEdge > 2048
+          ? [{ resize: asset.width >= asset.height ? { width: 2048 } : { height: 2048 } }]
+          : [];
+        const optimized = await ImageManipulator.manipulateAsync(file.uri, actions, {
+          format: type === 'image/png' ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
+          compress: 0.82,
+        });
+        const candidate = new File(optimized.uri);
+        if (candidate.exists && candidate.size > 0 && candidate.size < file.size &&
+          (await detectType(candidate)).type === type) {
+          file = candidate;
+        }
+      } catch (error) {
+        // Keep the valid original if optional optimization is unavailable.
+        console.warn('Could not optimize photo before upload', error);
+      }
+    }
+  }
   return { file, contentType: type, name: `${prefix}.${extensions[type]}` };
 }
 

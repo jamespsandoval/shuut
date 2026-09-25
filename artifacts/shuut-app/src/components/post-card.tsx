@@ -213,7 +213,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     if (reshuutRecordingRef.current) return
     reshuutDiscardRef.current = false
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    const recorder = new MediaRecorder(stream)
+    const recorder = new MediaRecorder(stream, { audioBitsPerSecond: 48_000 })
     reshuutRecorderRef.current = recorder
     reshuutChunksRef.current = []
     recorder.ondataavailable = (event) => { if (event.data.size) reshuutChunksRef.current.push(event.data) }
@@ -270,7 +270,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
     if (!file) return
     let prepared: File
     try {
-      prepared = await preparePostPhoto(file)
+      prepared = await preparePostPhoto(file, { optimize: true })
     } catch (error) {
       toast({ title: "Invalid photo", description: error instanceof Error ? error.message : "Could not read this photo.", variant: "destructive" }); return
     }

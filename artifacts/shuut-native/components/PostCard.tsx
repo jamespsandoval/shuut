@@ -249,7 +249,7 @@ export function PostCard({
       }
       const asset = result.assets[0];
       if (!asset) throw new Error('No photo was returned. Please try again.');
-      const prepared = await prepareNativePostPhoto(asset, 'reshuut-photo');
+      const prepared = await prepareNativePostPhoto(asset, 'reshuut-photo', { optimize: true });
       if (generation !== photoPickGenerationRef.current) return;
       pendingReshuutRevealRef.current = true;
       setReshuutPhoto({
