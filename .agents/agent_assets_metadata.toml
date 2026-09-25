@@ -1,0 +1,72 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "wkERwBQmhi4tiU0EZcR3q"
+uri = "file://exports/app-store-6.5-inch/01-For-You-Feed.png"
+type = "image"
+title = "SHÜÜT App Store — For You feed"
+description = "iPhone 6.5-inch screenshot, 1242 × 2688 PNG."
+logical_id = "28551ec9-78b7-4b6e-b4b0-33ee896286b4"
+content_hash = "sha256:cc38aad9e4e1cbee4d352f90b2b38b9a96fbba13bf566dcfe2152049aafbbf06"
+size = 1111690
+mtime_ms = 1790351527489
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:a648e931-5a79-4bfe-a235-130e4f3ef9f4/28551ec9-78b7-4b6e-b4b0-33ee896286b4/a5d8fbf7-859b-4807-9783-59911637c159"
+storage_version_token = "1790351559055396"
+content_type = "image/png"
+
+[[outputs]]
+id = "mpvWBRt37WNspBfX76I2-"
+uri = "file://exports/app-store-6.5-inch/02-Profile.png"
+type = "image"
+title = "SHÜÜT App Store — Profile"
+description = "iPhone 6.5-inch screenshot, 1242 × 2688 PNG."
+logical_id = "2dbec880-9e11-4ff1-98ae-29a2a678858e"
+content_hash = "sha256:722312ae17188c7dfc78aaffd49cc829dff4f047e3d07ed30b2dfb39bb833e37"
+size = 1113560
+mtime_ms = 1790351531033
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:a648e931-5a79-4bfe-a235-130e4f3ef9f4/2dbec880-9e11-4ff1-98ae-29a2a678858e/330eceff-5a29-4ad2-89ca-183826e2acd4"
+storage_version_token = "1790351559664719"
+content_type = "image/png"
+
+[[outputs]]
+id = "cXn6FMFKJKRAhOqXnAm2B"
+uri = "file://exports/app-store-6.5-inch/03-Notifications.png"
+type = "image"
+title = "SHÜÜT App Store — Notifications"
+description = "iPhone 6.5-inch screenshot, 1242 × 2688 PNG."
+logical_id = "5fd7d58e-65c5-461d-87fc-b6c27efa409d"
+content_hash = "sha256:6e24f467fc9ebc60dbd3cb57b1a7c729fb4d6aa80f4f906f9f6fb75a784a8c3f"
+size = 741059
+mtime_ms = 1790351532861
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:a648e931-5a79-4bfe-a235-130e4f3ef9f4/5fd7d58e-65c5-461d-87fc-b6c27efa409d/9e15d898-b994-4f82-b496-09e4a0ef937e"
+storage_version_token = "1790351560242749"
+content_type = "image/png"
+
+[[outputs]]
+id = "P9nPfDptY50ttl3gL58B8"
+uri = "file://exports/app-store-6.5-inch/04-Settings.png"
+type = "image"
+title = "SHÜÜT App Store — Settings"
+description = "iPhone 6.5-inch screenshot, 1242 × 2688 PNG."
+logical_id = "e5f8c42a-a264-424d-8a5c-90221c801c35"
+content_hash = "sha256:51de4f8c5b0f24fbf19705b76448d5bcd5bf5e6b9a1e9fe4b5108d270b5aa2c5"
+size = 683469
+mtime_ms = 1790351534393
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:a648e931-5a79-4bfe-a235-130e4f3ef9f4/e5f8c42a-a264-424d-8a5c-90221c801c35/0afdf81d-47cc-4eaf-8f8f-353b85545d64"
+storage_version_token = "1790351560824221"
+content_type = "image/png"
+
+[[outputs]]
+id = "1ONWzCbM8gCY5ZMP9GR0G"
+uri = "file://exports/SHUUT-App-Store-iPhone-6.5-inch.zip"
+type = "unspecified"
+title = "All four SHÜÜT App Store screenshots"
+description = "ZIP containing four iPhone 6.5-inch PNG screenshots."
+logical_id = "8bae5bff-12dc-480d-ba0c-db766984bbcf"
+content_hash = "sha256:ef238e0c49e461b416ba0734cdddbcfc5f5ca6609acb3bffa78837228344b4f1"
+size = 3595399
+mtime_ms = 1790351534537
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:a648e931-5a79-4bfe-a235-130e4f3ef9f4/8bae5bff-12dc-480d-ba0c-db766984bbcf/892d5527-50e6-42b8-b6a3-09d74e05bb30"
+storage_version_token = "1790351561429195"
+content_type = "application/octet-stream"
