@@ -156,6 +156,20 @@ paths:
         '200':
           description: Mobile bearer session
           content: { application/json: { schema: { $ref: '#/components/schemas/MobileAuthSession' } } }
+  /auth/mobile/reviewer-login:
+    post:
+      operationId: loginMobileReviewer
+      tags: [auth]
+      description: Time-limited, reviewer-only password sign-in for an existing verified account. Normal email-code sign-in remains available.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReviewerLoginInput' } } }
+      responses:
+        '200':
+          description: Mobile bearer session
+          content: { application/json: { schema: { $ref: '#/components/schemas/MobileAuthSession' } } }
+        '401': { description: Invalid or unavailable reviewer credentials }
+        '429': { description: Too many sign-in attempts }
   /auth/mobile/verify-email:
     post:
       operationId: verifyMobileEmail
@@ -1400,6 +1414,13 @@ components:
       required: [email]
       properties:
         email: { type: string, format: email, maxLength: 254 }
+    ReviewerLoginInput:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 24, maxLength: 256 }
     AuthStartResult:
       type: object
       required: [flow, message]

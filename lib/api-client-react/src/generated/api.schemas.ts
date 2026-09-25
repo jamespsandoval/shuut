@@ -512,6 +512,16 @@ export interface LoginInput {
   email: string;
 }
 
+export interface ReviewerLoginInput {
+  /** @maxLength 254 */
+  email: string;
+  /**
+     * @minLength 24
+     * @maxLength 256
+     */
+  password: string;
+}
+
 export type AuthStartResultFlow = typeof AuthStartResultFlow[keyof typeof AuthStartResultFlow];
 
 

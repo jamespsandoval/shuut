@@ -1,25 +1,31 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useStartMobileAuth } from '@workspace/api-client-react';
+import { useLoginMobileReviewer, useStartMobileAuth } from '@workspace/api-client-react';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { Mail, ArrowRight, X } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors } from '../../hooks/useColors';
 import { LegalFooter } from '../../components/LegalFooter';
+import { useAuth } from '../../hooks/useAuthStore';
 
 const RECENT_EMAILS_KEY = 'shuut.recent-emails';
+const REVIEWER_EMAIL = 'appstore@shuut.me';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
+  const [reviewerPassword, setReviewerPassword] = useState('');
   const [recentEmails, setRecentEmails] = useState<string[]>([]);
   const [showRecentEmails, setShowRecentEmails] = useState(false);
   const emailInputRef = React.useRef<TextInput>(null);
   const router = useRouter();
   const startAuth = useStartMobileAuth();
+  const reviewerLogin = useLoginMobileReviewer();
+  const { signIn } = useAuth();
   const colors = useColors();
   const { height: windowHeight } = useWindowDimensions();
+  const isReviewerEmail = email.trim().toLowerCase() === REVIEWER_EMAIL;
 
   React.useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -90,6 +96,19 @@ export default function LoginScreen() {
     );
   };
 
+  const handleReviewerLogin = async () => {
+    if (!isReviewerEmail || reviewerPassword.length < 24 || reviewerLogin.isPending) return;
+    try {
+      const session = await reviewerLogin.mutateAsync({
+        data: { email: REVIEWER_EMAIL, password: reviewerPassword },
+      });
+      setReviewerPassword('');
+      await signIn(session);
+    } catch {
+      // The mutation error is displayed below; do not log the password.
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style="dark" />
@@ -144,7 +163,10 @@ export default function LoginScreen() {
               keyboardType="email-address"
               returnKeyType="go"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(value) => {
+                setEmail(value);
+                if (value.trim().toLowerCase() !== REVIEWER_EMAIL) setReviewerPassword('');
+              }}
               onFocus={() => setShowRecentEmails(true)}
               onBlur={() => setShowRecentEmails(false)}
               onSubmitEditing={handleContinue}
@@ -183,6 +205,7 @@ export default function LoginScreen() {
                     ]}
                     onPressIn={() => {
                       setEmail(savedEmail);
+                      setReviewerPassword('');
                       setShowRecentEmails(false);
                     }}
                   >
@@ -195,6 +218,33 @@ export default function LoginScreen() {
             )}
           </View>
 
+          {isReviewerEmail && (
+            <View style={[styles.inputContainer, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              <TextInput
+                nativeID="shuut-reviewer-password"
+                style={[styles.input, { color: colors.foreground }]}
+                placeholder="Review password"
+                placeholderTextColor={colors.mutedForeground}
+                value={reviewerPassword}
+                onChangeText={setReviewerPassword}
+                secureTextEntry
+                textContentType="password"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={256}
+                returnKeyType="go"
+                onSubmitEditing={handleReviewerLogin}
+                accessibilityLabel="Review password"
+              />
+            </View>
+          )}
+
+          {isReviewerEmail && reviewerLogin.error && (
+            <Text style={[styles.error, { color: colors.destructive }]} accessibilityRole="alert">
+              Could not sign in. Check the review password or use an email code.
+            </Text>
+          )}
           {startAuth.error && (
             <Text style={[styles.error, { color: colors.destructive }]}>
               {startAuth.error.message || 'An error occurred'}
@@ -203,20 +253,30 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             style={[styles.button, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-            onPress={handleContinue}
-            disabled={startAuth.isPending || !email}
+            onPress={isReviewerEmail ? handleReviewerLogin : handleContinue}
+            disabled={startAuth.isPending || reviewerLogin.isPending || (isReviewerEmail ? reviewerPassword.length < 24 : !email)}
+            accessibilityRole="button"
+            accessibilityLabel={isReviewerEmail ? 'Sign in with review password' : 'Continue'}
           >
-            {startAuth.isPending ? (
+            {startAuth.isPending || reviewerLogin.isPending ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <View style={styles.buttonContent}>
                 <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
-                  Continue
+                  {isReviewerEmail ? 'Sign in' : 'Continue'}
                 </Text>
                 <ArrowRight color={colors.primaryForeground} size={18} />
               </View>
             )}
           </TouchableOpacity>
+          {isReviewerEmail && (
+            <TouchableOpacity onPress={handleContinue} disabled={startAuth.isPending || reviewerLogin.isPending}
+              style={styles.codeOption} accessibilityRole="button" accessibilityLabel="Use an email code instead">
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+                Use an email code instead
+              </Text>
+            </TouchableOpacity>
+          )}
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 21, marginTop: 14 }}>
             By registering for SHÜÜT, you accept our{' '}
             <Text style={{ color: colors.primary }} onPress={() => router.push({ pathname: '/public/terms' as never, params: { returnTo: '/(auth)/login' } })}>Terms of Service</Text>,{' '}
@@ -336,6 +396,11 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
+  },
+  codeOption: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   error: {
     fontFamily: 'Inter_400Regular',

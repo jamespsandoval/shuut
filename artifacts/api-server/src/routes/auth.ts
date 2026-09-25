@@ -10,6 +10,7 @@ import {
   RegisterBody,
   VerifyEmailBody,
   VerifyLoginBody,
+  LoginMobileReviewerBody,
   AcceptLegalPolicyConsentBody,
   AcceptLegalPolicyConsentResponse,
 } from "@workspace/api-zod";
@@ -25,6 +26,7 @@ import {
 } from "@workspace/db";
 import { sendPostmarkEmail } from "../lib/postmark";
 import { authCodeEmail } from "../lib/authCodeEmail";
+import { reviewerPasswordMatches } from "../lib/reviewerLogin";
 import {
   clearSessionCookie,
   DEVICE_COOKIE,
@@ -528,6 +530,37 @@ router.post("/mobile/login/verify", async (req, res): Promise<void> => {
   }
   const token = await createSession(req, res, user.id, "mobile");
   await auditSecurityEvent(req, "mobile_email_login", user.id);
+  res.json(await mobileSessionJson(user, token));
+});
+
+router.post("/mobile/reviewer-login", async (req, res): Promise<void> => {
+  const body = LoginMobileReviewerBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Enter a valid email and password." });
+    return;
+  }
+  const email = normalizedEmail(body.data.email);
+  // This route never creates or verifies an account. The normal email-code
+  // flow must establish ownership and complete onboarding first.
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  const valid = reviewerPasswordMatches(email, body.data.password);
+  if (!valid || !user?.emailVerifiedAt || user.deletionStatus !== "active") {
+    await auditSecurityEvent(req, "reviewer_login_failed", user?.id ?? null);
+    res.status(401).json({ error: "Unable to sign in with those credentials." });
+    return;
+  }
+  const [profile] = await db.select({ id: foundersTable.id }).from(foundersTable)
+    .where(eq(foundersTable.userId, user.id)).limit(1);
+  if (!profile) {
+    res.status(401).json({ error: "Unable to sign in with those credentials." });
+    return;
+  }
+  if (!reviewerPasswordMatches(email, body.data.password)) {
+    res.status(401).json({ error: "Unable to sign in with those credentials." });
+    return;
+  }
+  const token = await createSession(req, res, user.id, "mobile");
+  await auditSecurityEvent(req, "reviewer_password_login", user.id);
   res.json(await mobileSessionJson(user, token));
 });
 

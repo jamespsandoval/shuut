@@ -87,6 +87,7 @@ import type {
   ReportResult,
   ReshuutInput,
   ReshuutShareLink,
+  ReviewerLoginInput,
   SafeError,
   SanctionInput,
   SearchProfilesParams,
@@ -1084,6 +1085,91 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getVerifyMobileLoginMutationOptions(options));
+    }
+
+export const getLoginMobileReviewerUrl = () => {
+
+
+
+
+  return `/api/auth/mobile/reviewer-login`
+}
+
+/**
+ * Time-limited, reviewer-only password sign-in for an existing verified account. Normal email-code sign-in remains available.
+ */
+export const loginMobileReviewer = async (reviewerLoginInput: ReviewerLoginInput, options?: Parameters<typeof customFetch>[1]): Promise<MobileAuthSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MobileAuthSession>(getLoginMobileReviewerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reviewerLoginInput)
+  }
+);}
+
+
+
+
+
+export const getLoginMobileReviewerMutationKey = () => ['loginMobileReviewer'] as const;
+
+export const getLoginMobileReviewerMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginMobileReviewer>>, TError,LoginMobileReviewerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginMobileReviewer>>, TError,LoginMobileReviewerMutationVariables, TContext> => {
+
+const mutationKey = getLoginMobileReviewerMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginMobileReviewer>>, LoginMobileReviewerMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginMobileReviewer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginMobileReviewerMutationResult = NonNullable<Awaited<ReturnType<typeof loginMobileReviewer>>>
+    export type LoginMobileReviewerMutationBody = BodyType<ReviewerLoginInput>
+    export type LoginMobileReviewerMutationError = ErrorType<void>
+    export type LoginMobileReviewerMutationVariables = {data: BodyType<ReviewerLoginInput>}
+
+    export const useLoginMobileReviewer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginMobileReviewer>>, TError,LoginMobileReviewerMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginMobileReviewer>>,
+        TError,
+        LoginMobileReviewerMutationVariables,
+        TContext
+      > => {
+      return useMutation(getLoginMobileReviewerMutationOptions(options));
     }
 
 export const getVerifyMobileEmailUrl = () => {

@@ -135,6 +135,7 @@ export * from './reshuutModerationStatus';
 export * from './reshuutShareLink';
 export * from './reshuutTranscriptionStatus';
 export * from './reshuutViewerReaction';
+export * from './reviewerLoginInput';
 export * from './safeError';
 export * from './sanctionInput';
 export * from './sanctionInputType';

@@ -268,6 +268,54 @@ export const VerifyMobileLoginResponse = zod.object({
 
 
 /**
+ * Time-limited, reviewer-only password sign-in for an existing verified account. Normal email-code sign-in remains available.
+ */
+export const loginMobileReviewerBodyEmailMax = 254;
+
+export const loginMobileReviewerBodyPasswordMin = 24;
+export const loginMobileReviewerBodyPasswordMax = 256;
+
+
+
+export const LoginMobileReviewerBody = zod.object({
+  "email": zod.string().email().max(loginMobileReviewerBodyEmailMax),
+  "password": zod.string().min(loginMobileReviewerBodyPasswordMin).max(loginMobileReviewerBodyPasswordMax)
+})
+
+export const LoginMobileReviewerResponse = zod.object({
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().email(),
+  "emailVerified": zod.boolean(),
+  "onboardingComplete": zod.boolean(),
+  "eligibilityStatus": zod.enum(['undecided', 'eligible', 'waitlisted']),
+  "passkeyEnrolled": zod.boolean(),
+  "passkeyVerified": zod.boolean(),
+  "legalPolicyConsent": zod.object({
+  "required": zod.boolean(),
+  "terms": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+}),
+  "communityGuidelines": zod.object({
+  "currentVersion": zod.string(),
+  "acceptedVersion": zod.string().nullable(),
+  "acceptedAt": zod.coerce.date().nullable(),
+  "current": zod.boolean()
+})
+})
+})
+}).and(zod.object({
+  "accessToken": zod.string().describe('Opaque bearer token; store in native secure storage.'),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "passkeyRequired": zod.boolean()
+}))
+
+
+/**
  * Verifies a registration email and returns a bearer session without cookies.
  */
 export const verifyMobileEmailBodyEmailMax = 254;

@@ -25,3 +25,8 @@ packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf
 
 [objectStorage]
 defaultBucketID = "replit-objstore-1102ce56-bef3-415a-bd3e-24f55d7aa33c"
+
+[userenv]
+
+[userenv.production]
+APP_REVIEW_LOGIN_EXPIRES_AT = "2026-10-25T16:41:24Z"

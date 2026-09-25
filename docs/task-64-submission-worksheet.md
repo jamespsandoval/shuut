@@ -79,7 +79,7 @@ verification cell above remains **unchecked** until manually evidenced.
 
 - ☐ App Store name availability, metadata, screenshots, rating, and privacy
   answers completed in ASC.
-- ☐ Reviewer email and inbox access entered only in ASC secure fields; follow the [App Review email sign-in handoff](app-review-email-sign-in.md) and verify it on the selected build.
+- ☐ Reviewer account and password entered only in ASC secure fields; follow the [App Review sign-in handoff](app-review-email-sign-in.md) and verify it on the selected build.
 - ☐ TestFlight build installed on a physical iPhone; no development bypass.
 - ☐ Production API, auth, email OTP, microphone permission, and legal URLs pass.
 - ☐ Vendor contracts/retention/deletion and international processing reviewed.
