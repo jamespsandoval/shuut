@@ -31,3 +31,4 @@
 - [Selectable post text](selectable-post-text.md) — keep transcript selection separate from post navigation so web and native users can copy text.
 - [Automatic limited analytics](automatic-analytics.md) — cookieless PostHog baseline; review expansions and beware bot-filtered browser checks.
 - [Static public-page entries](static-public-page-entries.md) — direct public HTML needs SPA metadata restoration and a stylesheet before first paint.
+- [Stale lazy chunks](stale-lazy-chunks.md) — missing production JS assets may return HTML; open tabs can fail on lazy route navigation after publishing.

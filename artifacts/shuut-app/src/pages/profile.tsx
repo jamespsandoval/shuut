@@ -422,7 +422,7 @@ export default function Profile() {
           </h1>
           {profile && (
             <p className="text-xs text-muted-foreground">
-              {profile.postCount} {profile.postCount === 1 ? 'SHÜÜT' : 'SHÜÜTs'}
+              {profile.postCount} {profile.postCount === 1 ? 'post' : 'posts'}
             </p>
           )}
         </div>
@@ -614,7 +614,7 @@ export default function Profile() {
           {/* Posts */}
           <div className="mt-2">
             <h3 className="px-6 py-4 font-bold text-lg border-b border-border/30">
-              SHÜÜTs
+              SHÜÜTs &amp; reSHÜÜTs
             </h3>
             {profile.posts.length === 0 ? (
               <div className="p-12 text-center text-muted-foreground">
