@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, useLocation } from "wouter"
-import { Play, Repeat2, Share, Trash2, Pencil, Loader2, Mic, ImagePlus, X, Square } from "lucide-react"
+import { Play, Repeat2, Share, Trash2, MoreHorizontal, Loader2, Mic, ImagePlus, X, Square } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import type { Post, ReactionInputEmojiType } from "@workspace/api-client-react"
 import { 
@@ -56,7 +56,9 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
   
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.transcript)
-  const [canStillEdit, setCanStillEdit] = useState(post.canEdit)
+  const editDeadline = post.editableUntil ? new Date(post.editableUntil).getTime() : 0
+  const isEditAllowedNow = () => post.canEdit && Number.isFinite(editDeadline) && Date.now() < editDeadline
+  const [canStillEdit, setCanStillEdit] = useState(isEditAllowedNow)
   const [showComments, setShowComments] = useState(isDetail || isFocused)
   const [autoStartReply, setAutoStartReply] = useState(false)
   const [showReshuutComposer, setShowReshuutComposer] = useState(false)
@@ -86,15 +88,14 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
   }, [isDetail, isFocused])
 
   useEffect(() => {
-    setCanStillEdit(post.canEdit)
-    if (!post.editableUntil || !post.canEdit) return
-    const remaining = new Date(post.editableUntil).getTime() - Date.now()
+    setCanStillEdit(isEditAllowedNow())
+    if (!post.canEdit || !Number.isFinite(editDeadline)) return
+    const remaining = editDeadline - Date.now()
     const timeout = window.setTimeout(() => {
       setCanStillEdit(false)
-      setIsEditing(false)
     }, Math.max(0, remaining))
     return () => window.clearTimeout(timeout)
-  }, [post.canEdit, post.editableUntil])
+  }, [post.canEdit, editDeadline])
 
   const handleReaction = (type: ReactionInputEmojiType) => {
     setReaction.mutate(
@@ -323,6 +324,10 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
   }
 
   const handleEdit = () => {
+    if (!isEditAllowedNow()) {
+      setCanStillEdit(false)
+      return
+    }
     if (!editText.trim() || !canStillEdit) return
     updatePost.mutate(
       { postId: post.id, data: { transcript: editText.trim() } },
@@ -331,9 +336,13 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
           setIsEditing(false)
           queryClient.invalidateQueries({ queryKey: getGetFeedQueryKey() })
           void refreshFeedPages(queryClient)
+          queryClient.invalidateQueries({ queryKey: getGetPostQueryKey(post.id) })
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey(post.author.handle) })
+          queryClient.invalidateQueries({ queryKey: getGetProfileQueryKey("me") })
           toast({ title: "SHÜÜT updated" })
         },
         onError: (error) => {
+          if (!isEditAllowedNow() || (error instanceof Error && /30-minute editing window/.test(error.message))) setCanStillEdit(false)
           toast({
             title: "Could not update SHÜÜT",
             description: error instanceof Error ? error.message : "The editing window may have closed.",
@@ -468,10 +477,30 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
               <div className="truncate text-[13px] text-muted-foreground leading-tight">@{post.author.handle}</div>
             </div>
           </Link>
-          <div className="flex items-center gap-1 shrink-0 self-start">
-            <Link href={`/p/${post.id}`} className="text-[13px] text-muted-foreground hover:underline whitespace-nowrap pt-1">
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-            </Link>
+          <div className="flex items-start gap-1 shrink-0 self-start">
+            <div className="flex flex-col items-end">
+              <Link href={`/p/${post.id}`} className="text-[13px] text-muted-foreground hover:underline whitespace-nowrap pt-1">
+                {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+              </Link>
+              {canShowPostDeleteAction(post) && canStillEdit && isEditAllowedNow() && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" aria-label="More SHÜÜT actions" title="More SHÜÜT actions"
+                      data-testid={`button-post-edit-menu-${post.id}`}
+                      className="flex h-8 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground">
+                      <MoreHorizontal className="h-5 w-5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" data-post-navigation-ignore>
+                    <DropdownMenuItem data-testid={`button-edit-post-${post.id}`} onSelect={() => {
+                      if (!isEditAllowedNow()) { setCanStillEdit(false); return }
+                      setEditText(post.transcript)
+                      setIsEditing(true)
+                    }}>Edit</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
             <ModerationActions targetType="post" targetId={post.id} targetLabel="this SHÜÜT" authorHandle={post.author.handle} isSelf={post.canDelete} onBlocked={() => { if (isDetail) setLocation("/") }} />
           </div>
         </div>
@@ -489,9 +518,12 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
                   data-testid={`textarea-edit-post-${post.id}`}
                   className="min-h-28 resize-none text-[15px]"
                 />
+                {(!canStillEdit || !isEditAllowedNow()) && (
+                  <p className="text-sm text-destructive" role="alert">The 30-minute editing window has closed. Your changes cannot be saved.</p>
+                )}
                 <div className="flex justify-end gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="rounded-full">Cancel</Button>
-                  <Button size="sm" onClick={handleEdit} disabled={updatePost.isPending || !editText.trim() || !canStillEdit} className="rounded-full px-5 font-bold">
+                  <Button size="sm" onClick={handleEdit} disabled={updatePost.isPending || !editText.trim() || !canStillEdit || !isEditAllowedNow()} className="rounded-full px-5 font-bold">
                     {updatePost.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save
                   </Button>
@@ -603,19 +635,6 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
             >
               <Share className="w-[18px] h-[18px]" />
             </button>
-
-            {canShowPostDeleteAction(post) && canStillEdit && (
-              <button
-                onClick={() => {
-                  setEditText(post.transcript)
-                  setIsEditing(true)
-                }}
-                className="flex w-9 h-9 items-center justify-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground active:scale-95 shrink-0"
-                title="Edit SHÜÜT"
-              >
-                <Pencil className="w-[18px] h-[18px]" />
-              </button>
-            )}
 
             {canShowPostDeleteAction(post) && (
               <button

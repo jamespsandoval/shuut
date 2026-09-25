@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, Share, Platform, ActivityIndicator, AppState, Linking, Alert, Modal, useWindowDimensions } from 'react-native';
 import { useColors } from '../hooks/useColors';
 import { Post, useDeletePost, useSetReaction, useCreatePostShareLink, useReshuutPost, useCreatePostComment, useRequestUploadUrl, useGetPostComments, useUpdatePost, useGetProfile } from '@workspace/api-client-react';
 import { useRouter, usePathname } from 'expo-router';
-import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, Pencil, ImagePlus, X } from 'lucide-react-native';
+import { Trash2, Mic, Share as ShareIcon, Repeat2, Send, Square, MoreHorizontal, ImagePlus, X } from 'lucide-react-native';
 import { SafetyActionSheet } from './SafetyActionSheet';
 import { AuthenticatedAudioPlayer } from './AuthenticatedAudioPlayer';
 import { Image } from 'expo-image';
@@ -53,6 +53,31 @@ export function PostCard({
   const [showCommentComposer, setShowCommentComposer] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(post.transcript);
+  const [showEditMenu, setShowEditMenu] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const editDeadline = post.editableUntil ? new Date(post.editableUntil).getTime() : 0;
+  const editAllowedNow = () => post.canEdit && Number.isFinite(editDeadline) && Date.now() < editDeadline;
+  const [canStillEdit, setCanStillEdit] = useState(editAllowedNow);
+
+  useEffect(() => {
+    const checkDeadline = () => {
+      const allowed = editAllowedNow();
+      setCanStillEdit(allowed);
+      if (!allowed) setShowEditMenu(false);
+    };
+    checkDeadline();
+    if (!post.canEdit || !Number.isFinite(editDeadline)) return;
+    const remaining = editDeadline - Date.now();
+    const timer = setTimeout(checkDeadline, Math.max(0, remaining));
+    // Native timers pause in the background; check again when the app returns.
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkDeadline();
+    });
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
+  }, [post.canEdit, editDeadline]);
 
   // Comment composer state
   const generationRef = useRef(0);
@@ -329,14 +354,24 @@ export function PostCard({
 
   const handleEdit = async () => {
     const transcript = editText.trim();
+    if (!editAllowedNow() || !canStillEdit) {
+      setCanStillEdit(false);
+      return;
+    }
     if (!transcript || updatePost.isPending) return;
-
-    await updatePost.mutateAsync({
-      postId: post.id,
-      data: { transcript },
-    });
-    setIsEditing(false);
-    refetchFeed();
+    setEditError(null);
+    try {
+      await updatePost.mutateAsync({
+        postId: post.id,
+        data: { transcript },
+      });
+      setIsEditing(false);
+      refetchFeed();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Please try again.';
+      if (!editAllowedNow() || /30-minute editing window/.test(message)) setCanStillEdit(false);
+      else setEditError(message);
+    }
   };
 
   const handleShare = async () => {
@@ -597,11 +632,49 @@ export function PostCard({
             <Text style={[styles.authorHandle, { color: colors.mutedForeground }]}>@{post.author.handle}</Text>
           </View>
         </TouchableOpacity>
-        <Text style={[styles.time, { color: colors.mutedForeground }]} onPress={isDetail ? undefined : () => router.push(`/post/${post.id}`)}>
-          {formatApproximateTimeAgo(post.createdAt)}
-        </Text>
+        <View style={styles.headerActions}>
+          <Text style={[styles.time, { color: colors.mutedForeground }]} onPress={isDetail ? undefined : () => router.push(`/post/${post.id}`)}>
+            {formatApproximateTimeAgo(post.createdAt)}
+          </Text>
+          {post.canDelete && canStillEdit && editAllowedNow() && (
+            <TouchableOpacity style={styles.editMenuTrigger}
+              onPress={() => {
+                if (!editAllowedNow()) { setCanStillEdit(false); return; }
+                setShowEditMenu(true);
+              }}
+              accessibilityRole="button" accessibilityLabel="More SHÜÜT actions"
+              testID={`button-post-edit-menu-${post.id}`}>
+              <MoreHorizontal color={colors.mutedForeground} size={20} />
+            </TouchableOpacity>
+          )}
+        </View>
         <SafetyActionSheet targetType="post" targetId={post.id} authorHandle={post.author.handle} self={post.canDelete || post.author.handle === viewerProfile?.founder?.handle} onBlocked={() => router.back()} />
       </View>
+
+      {showEditMenu && canStillEdit && editAllowedNow() && <Modal visible transparent animationType="fade" onRequestClose={() => setShowEditMenu(false)}>
+        <View style={styles.editMenuOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEditMenu(false)} accessibilityLabel="Close SHÜÜT actions" />
+          <View style={[styles.editMenuSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.editMenuHeading}>
+              <Text style={[styles.editMenuTitle, { color: colors.foreground }]}>SHÜÜT actions</Text>
+              <TouchableOpacity onPress={() => setShowEditMenu(false)} accessibilityRole="button" accessibilityLabel="Close SHÜÜT actions">
+                <X color={colors.foreground} size={22} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.editMenuOption} accessibilityRole="button" accessibilityLabel="Edit SHÜÜT transcript"
+              testID={`button-edit-post-${post.id}`}
+              onPress={() => {
+                setShowEditMenu(false);
+                if (!editAllowedNow()) { setCanStillEdit(false); return; }
+                setEditText(post.transcript);
+                setEditError(null);
+                setIsEditing(true);
+              }}>
+              <Text style={[styles.editMenuOptionText, { color: colors.foreground }]}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>}
 
       {isEditing ? (
         <View style={styles.editComposer}>
@@ -613,10 +686,17 @@ export function PostCard({
             maxLength={5000}
             autoFocus
           />
+          {(!canStillEdit || !editAllowedNow()) && (
+            <Text style={[styles.editError, { color: colors.destructive }]} accessibilityRole="alert">
+              The 30-minute editing window has closed. Your changes cannot be saved.
+            </Text>
+          )}
+          {editError && canStillEdit && <Text style={[styles.editError, { color: colors.destructive }]} accessibilityRole="alert">{editError}</Text>}
           <View style={styles.editActions}>
             <TouchableOpacity
               onPress={() => {
                 setEditText(post.transcript);
+                setEditError(null);
                 setIsEditing(false);
               }}
               disabled={updatePost.isPending}
@@ -626,7 +706,9 @@ export function PostCard({
             <TouchableOpacity
               style={[styles.editSaveButton, { backgroundColor: colors.primary }]}
               onPress={handleEdit}
-              disabled={!editText.trim() || updatePost.isPending}
+              disabled={!editText.trim() || updatePost.isPending || !canStillEdit || !editAllowedNow()}
+              accessibilityRole="button" accessibilityLabel="Save edited SHÜÜT transcript"
+              testID={`button-save-edit-post-${post.id}`}
             >
               {updatePost.isPending ? (
                 <ActivityIndicator size="small" color={colors.primaryForeground} />
@@ -822,11 +904,6 @@ export function PostCard({
         <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
           <ShareIcon color={colors.mutedForeground} size={18} />
         </TouchableOpacity>
-        {post.canEdit && (
-          <TouchableOpacity style={styles.actionBtn} onPress={() => setIsEditing(true)}>
-            <Pencil color={colors.mutedForeground} size={18} />
-          </TouchableOpacity>
-        )}
         {post.canDelete && (
           <TouchableOpacity style={styles.actionBtn} onPress={handleDelete} disabled={deletePost.isPending}>
             <Trash2 color={colors.mutedForeground} size={18} />
@@ -934,6 +1011,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  headerActions: {
+    alignItems: 'flex-end',
+  },
+  editMenuTrigger: {
+    width: 40,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editMenuOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  editMenuSheet: {
+    borderWidth: 1,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 36,
+  },
+  editMenuHeading: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  editMenuTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 20,
+  },
+  editMenuOption: {
+    minHeight: 52,
+    justifyContent: 'center',
+  },
+  editMenuOptionText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
   },
   authorInfo: {
     flexDirection: 'row',
@@ -1161,6 +1277,12 @@ const styles = StyleSheet.create({
   },
   editComposer: {
     marginBottom: 12,
+  },
+  editError: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 8,
   },
   editInput: {
     minHeight: 88,

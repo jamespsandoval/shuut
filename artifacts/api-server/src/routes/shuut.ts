@@ -126,7 +126,7 @@ import {
 const router: IRouter = Router();
 const ASK_MINIMUM_POSTS = 5;
 const objectStorage = new ObjectStorageService();
-const POST_EDIT_WINDOW_MS = 30 * 1000;
+const POST_EDIT_WINDOW_MS = 30 * 60 * 1000;
 const CLEANUP_RETRY_BASE_MS = 5_000;
 const SIGNED_UPLOAD_EXPIRY_SAFETY_MS = 5_000;
 class AudioVerificationError extends Error {}
@@ -516,7 +516,7 @@ function postJson(
     canEdit:
       post.transcriptionStatus === "ready" &&
       viewerFounderId === post.authorId &&
-      Date.now() <= post.createdAt.getTime() + POST_EDIT_WINDOW_MS,
+      Date.now() < post.createdAt.getTime() + POST_EDIT_WINDOW_MS,
     canDelete: viewerFounderId === post.authorId,
     editableUntil:
       viewerFounderId === post.authorId
@@ -3146,8 +3146,8 @@ router.patch("/posts/:postId", async (req, res): Promise<void> => {
     res.status(403).json({ error: "You can only edit your own posts" });
     return;
   }
-  if (Date.now() > post.createdAt.getTime() + POST_EDIT_WINDOW_MS) {
-    res.status(409).json({ error: "The 30-second editing window has closed" });
+  if (Date.now() >= post.createdAt.getTime() + POST_EDIT_WINDOW_MS) {
+    res.status(409).json({ error: "The 30-minute editing window has closed" });
     return;
   }
   const [updated] = await db.update(postsTable)
@@ -3156,9 +3156,23 @@ router.patch("/posts/:postId", async (req, res): Promise<void> => {
       moderationStatus: "unreviewed", moderationRevision: sql`${postsTable.moderationRevision} + 1`,
       moderationRiskScore: null, moderationCategories: "[]", moderationErrorCode: null,
     })
-    .where(and(eq(postsTable.id, post.id), ne(postsTable.moderationStatus, "removed"), ne(postsTable.moderationStatus, "quarantined")))
+    .where(and(
+      eq(postsTable.id, post.id),
+      eq(postsTable.authorId, founder.id),
+      eq(postsTable.deletionStatus, "active"),
+      eq(postsTable.transcriptionStatus, "ready"),
+      ne(postsTable.moderationStatus, "removed"),
+      ne(postsTable.moderationStatus, "quarantined"),
+      // Evaluate the deadline at UPDATE time, including after waiting on a row lock.
+      sql`${postsTable.createdAt} + (${POST_EDIT_WINDOW_MS} * interval '1 millisecond') > clock_timestamp()`,
+    ))
     .returning();
-  if (!updated) { res.status(409).json({ error: "This post is no longer editable" }); return; }
+  if (!updated) {
+    res.status(409).json({ error: Date.now() >= post.createdAt.getTime() + POST_EDIT_WINDOW_MS
+      ? "The 30-minute editing window has closed"
+      : "This post is no longer editable" });
+    return;
+  }
   await emitApprovalNotifications(post.id);
   res.json(UpdatePostResponse.parse(postJson(
     updated,
