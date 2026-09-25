@@ -106,7 +106,7 @@ import {
 import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/security";
 import { createPostShareToken } from "../lib/postShareToken";
 import { createReshuutShareToken } from "../lib/postShareToken";
-import { distributableReshuutChain, MAX_RESHUUT_ANCESTRY } from "../lib/reshuutAccess";
+import { distributableReshuutChain, distributableReshuutChains, MAX_RESHUUT_ANCESTRY } from "../lib/reshuutAccess";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
 import { hasCurrentVoiceAiConsent, requireCurrentVoiceAiConsent } from "../lib/voiceAiConsent";
@@ -892,6 +892,8 @@ async function retainVisibleReshuutAncestry(items: FeedItemJson[], viewerFounder
   const viewerReshuutIds = new Set(viewerReshuuts.flatMap((row) =>
     row.parentReshuutId === null ? [] : [row.parentReshuutId],
   ));
+  const nestedIds = rows.filter((row) => row.parentReshuutId !== null).map((row) => row.id);
+  const chains = await distributableReshuutChains(nestedIds, viewerFounderId);
   const visible: FeedItemJson[] = [];
   for (const item of items) {
     if (item.type !== "reshuut" || !item.reshuut) {
@@ -901,8 +903,28 @@ async function retainVisibleReshuutAncestry(items: FeedItemJson[], viewerFounder
     const row = rowById.get(item.reshuut.id);
     if (!row) continue;
     if (row.parentReshuutId !== null) {
-      const hydrated = await serializeReshuutFeedItem(item.reshuut.id, viewerFounderId);
-      if (hydrated) visible.push(hydrated);
+      const chain = chains.get(row.id);
+      const author = chain?.authors.get(row.founderId);
+      const parent = chain?.rows[1];
+      const parentAuthor = parent && chain.authors.get(parent.founderId);
+      if (!chain || !author || !parent || !parentAuthor) continue;
+      const parentReference = {
+        id: parent.id,
+        author: founderJson(parentAuthor),
+        mode: parent.audioUrl ? "audio" as const : "text" as const,
+        text: parent.transcript,
+        audioUrl: parent.audioUrl ? `/api/reshuuts/${parent.id}/audio` : null,
+        imageUrl: parent.imageUrl ? `/api/reshuuts/${parent.id}/image` : null,
+        createdAt: parent.createdAt,
+      };
+      visible.push({
+        ...item,
+        author: founderJson(author),
+        reshuut: {
+          ...reshuutJson(row, author, reactionById.get(row.id), viewerReshuutIds.has(row.id), parentReference),
+          originalPost: item.reshuut.originalPost,
+        },
+      });
     } else {
       const author = authorById.get(row.founderId);
       if (!author) continue;

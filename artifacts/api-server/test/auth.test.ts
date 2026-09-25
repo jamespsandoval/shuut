@@ -26,6 +26,7 @@ import {
   notificationsTable,
   postMentionsTable,
   postReshuutsTable,
+  reshuutReactionsTable,
   foundersTable,
   legalPolicyAcceptancesTable,
   moderationCasesTable,
@@ -45,6 +46,7 @@ import {
   voiceAiConsentsTable,
   webauthnChallengesTable,
 } from "@workspace/db";
+import { distributableReshuutChains } from "../src/lib/reshuutAccess";
 import { CURRENT_LEGAL_POLICY_VERSIONS, CURRENT_LEGAL_POLICY_CONTENT_HASHES } from "../src/lib/legalPolicy";
 import { CURRENT_VOICE_AI_CONSENT_VERSION } from "../src/lib/voiceAiConsent";
 import { enqueueModeration, enqueueUnreviewedReshuuts, runModerationSweep, setModerationProviderForTests, sweepModerationRetention } from "../src/lib/moderation";
@@ -1890,6 +1892,90 @@ test("many reSHÜÜTs paginate without scanning past the cursor or losing tied i
       assert.ok(posts.every((post) => seen.includes(`post:${post.id}`)));
     }
   }
+});
+
+test("many nested reSHÜÜTs retain per-event reactions and reject hidden ancestors", async (t) => {
+  const fixture = await securityFixture("nested-batch");
+  t.after(() => fixture.cleanup());
+  const [blockedAuthor] = await db.insert(foundersTable).values({
+    name: "Hidden ancestor", handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-10)}nested`,
+    bio: "", avatarColor: "#333333",
+  }).returning();
+  t.after(async () => {
+    await db.delete(accountBlocksTable).where(eq(accountBlocksTable.blockerFounderId, blockedAuthor.id));
+    await db.delete(foundersTable).where(eq(foundersTable.id, blockedAuthor.id));
+  });
+  const posts = await db.insert(postsTable).values(Array.from({ length: 30 }, (_, i) => ({
+    authorId: fixture.owner.id, transcript: `Nested original ${i}`,
+    durationSeconds: 2, moderationStatus: "approved",
+  }))).returning();
+  const roots = await db.insert(postReshuutsTable).values(posts.map((post) => ({
+    postId: post.id, founderId: fixture.owner.id,
+  }))).returning();
+  const parents = await db.insert(postReshuutsTable).values(roots.map((root, i) => ({
+    postId: root.postId, parentReshuutId: root.id,
+    founderId: i === 2 ? blockedAuthor.id : fixture.viewer.id,
+  }))).returning();
+  const leaves = await db.insert(postReshuutsTable).values(parents.map((parent) => ({
+    postId: parent.postId, parentReshuutId: parent.id, founderId: fixture.owner.id,
+  }))).returning();
+  await db.insert(reshuutReactionsTable).values([
+    { reshuutId: roots[3].id, founderId: fixture.viewer.id, emojiType: "laughing" },
+    { reshuutId: leaves[3].id, founderId: fixture.viewer.id, emojiType: "rocket" },
+  ]);
+  await db.update(postReshuutsTable).set({ moderationStatus: "quarantined" })
+    .where(eq(postReshuutsTable.id, parents[0].id));
+  await db.update(postReshuutsTable).set({ deletionStatus: "deleted" })
+    .where(eq(postReshuutsTable.id, parents[1].id));
+  await db.insert(accountBlocksTable).values({
+    blockerFounderId: blockedAuthor.id, blockedFounderId: fixture.viewer.id,
+  });
+  await db.update(postsTable).set({ authorId: blockedAuthor.id })
+    .where(eq(postsTable.id, posts[4].id));
+
+  const chains = await distributableReshuutChains(leaves.map((leaf) => leaf.id), fixture.viewer.id);
+  assert.equal(chains.size, 26);
+  assert.deepEqual(chains.get(leaves[3].id)?.rows.map((row) => row.id),
+    [leaves[3].id, parents[3].id, roots[3].id]);
+  const expected = new Set(leaves.filter((_, i) => i >= 3 && i !== 4).map((leaf) => `reshuut:${leaf.id}`));
+  const check = (items: Array<FeedTestItem & { reshuut: (FeedTestItem["reshuut"] & {
+    viewerReaction?: string | null; parentReshuut?: { id: number }; isReshuuted?: boolean;
+  }) | null }>) => {
+    const visible = items.filter((item) => expected.has(item.feedItemKey));
+    assert.equal(visible.length, 26);
+    assert.ok([...leaves.slice(0, 3), leaves[4]].every((leaf) =>
+      !items.some((item) => item.feedItemKey === `reshuut:${leaf.id}`)));
+    assert.equal(visible.find((item) => item.feedItemKey === `reshuut:${leaves[3].id}`)?.reshuut?.originalPost.id, posts[3].id);
+  };
+  const feed = await request("/api/feed", { session: fixture.viewerSession });
+  assert.equal(feed.status, 200);
+  const feedItems = await feed.json() as FeedTestItem[];
+  check(feedItems);
+  const leafReaction = (feedItems.find((item) => item.feedItemKey === `reshuut:${leaves[3].id}`)?.reshuut as
+    { viewerReaction?: string; isReshuuted?: boolean; parentReshuut?: { id: number } } | undefined);
+  assert.equal(leafReaction?.viewerReaction, "rocket");
+  assert.equal(leafReaction?.isReshuuted, false);
+  assert.equal(leafReaction?.parentReshuut?.id, parents[3].id);
+  const rootReaction = (feedItems.find((item) => item.feedItemKey === `reshuut:${roots[3].id}`)?.reshuut as
+    { viewerReaction?: string; isReshuuted?: boolean } | undefined);
+  assert.equal(rootReaction?.viewerReaction, "laughing");
+  assert.equal(rootReaction?.isReshuuted, true);
+  const profile = await request(`/api/profiles/${fixture.owner.handle}`, { session: fixture.viewerSession });
+  assert.equal(profile.status, 200);
+  check((await profile.json() as { posts: FeedTestItem[] }).posts);
+
+  const seen: FeedTestItem[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await request(`/api/feed/page?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { session: fixture.viewerSession });
+    assert.equal(page.status, 200);
+    const body = await page.json() as { posts: FeedTestItem[]; nextCursor: string | null };
+    seen.push(...body.posts);
+    cursor = body.nextCursor;
+    assert.ok(seen.length < 500, "pagination must terminate");
+  } while (cursor);
+  check(seen);
 });
 
 test("browser sessions do not require an enrolled passkey", async () => {
