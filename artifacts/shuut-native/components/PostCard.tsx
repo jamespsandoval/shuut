@@ -25,6 +25,7 @@ export function PostCard({
   disableAuthorNavigation = false,
   onReply,
   onRevealReshuut,
+  embeddedOriginal = false,
 }: {
   post: Post;
   refetchFeed: () => void;
@@ -32,6 +33,7 @@ export function PostCard({
   disableAuthorNavigation?: boolean;
   onReply?: () => void;
   onRevealReshuut?: (distance: number) => void;
+  embeddedOriginal?: boolean;
 }) {
   const colors = useColors();
   const router = useRouter();
@@ -672,7 +674,7 @@ export function PostCard({
       <AuthenticatedAudioPlayer url={post.audioUrl} durationSeconds={post.durationSeconds} />
       </View>
 
-      {showReshuutMenu && (
+      {!embeddedOriginal && showReshuutMenu && (
         <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutMenu, { borderColor: colors.border, backgroundColor: colors.background }]}>
           {post.isReshuuted ? (
             <TouchableOpacity style={styles.reshuutMenuOption} onPress={() => void toggleReshuutNow()} accessibilityRole="button" accessibilityLabel="Remove reSHÜÜT">
@@ -694,7 +696,7 @@ export function PostCard({
         </View>
       )}
 
-      {showReshuutComposer && !post.isReshuuted && (
+      {!embeddedOriginal && showReshuutComposer && !post.isReshuuted && (
         <View ref={reshuutPanelRef} onLayout={revealReshuutPanel} style={[styles.reshuutComposer, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Text style={[styles.reshuutComposerTitle, { color: colors.foreground }]}>Add to your reSHÜÜT</Text>
           <View style={styles.reshuutPublisherRow}>
@@ -797,7 +799,7 @@ export function PostCard({
         </View>
       )}
 
-      <View style={styles.reactionsRow}>
+      {!embeddedOriginal && <View style={styles.reactionsRow}>
         <TouchableOpacity style={[styles.reactionBtn, post.viewerReaction === 'rocket' && { backgroundColor: `${colors.primary}1A` }]} onPress={() => handleReaction('rocket')}>
           <Text style={styles.emojiText}>🚀</Text>
           {post.reactions.rocket > 0 && <Text style={[styles.reactionCount, { color: post.viewerReaction === 'rocket' ? colors.primary : colors.mutedForeground }]}>{post.reactions.rocket}</Text>}
@@ -830,9 +832,9 @@ export function PostCard({
             <Trash2 color={colors.mutedForeground} size={18} />
           </TouchableOpacity>
         )}
-      </View>
+      </View>}
 
-      {!isDetail && showCommentComposer && (
+      {!embeddedOriginal && !isDetail && showCommentComposer && (
         <View style={styles.commentSection}>
           <View style={[styles.composerContainer, { borderColor: colors.border }]}>
             <View style={styles.replyComposerHeader}>

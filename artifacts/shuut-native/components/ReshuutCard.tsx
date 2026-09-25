@@ -309,8 +309,13 @@ export function ReshuutCard({
       </View>
       {originalPost ? (
         <View style={[styles.original, { borderColor: colors.cardBorder, backgroundColor: colors.background }]}>
-          <Text style={[styles.originalLabel, { color: colors.mutedForeground }]}>ORIGINAL SHÜÜT</Text>
-          <PostCard post={originalPost} refetchFeed={() => { void invalidateRelated(); }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={[styles.originalLabel, { color: colors.mutedForeground }]}>ORIGINAL SHÜÜT</Text>
+            <TouchableOpacity onPress={() => router.push(`/post/${originalPost.id}`)} accessibilityRole="link" accessibilityLabel="View original SHÜÜT">
+              <Text style={[styles.originalLabel, { color: colors.primary }]}>View original</Text>
+            </TouchableOpacity>
+          </View>
+          <PostCard post={originalPost} refetchFeed={() => { void invalidateRelated(); }} embeddedOriginal />
         </View>
       ) : null}
       <View style={styles.reactions}>

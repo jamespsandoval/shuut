@@ -202,7 +202,7 @@ export function ReshuutCard({ item, isDetail = false, isFocused = false }: {
             <Repeat2 className="h-3.5 w-3.5" />
             Original SHÜÜT
           </div>
-          <PostCard post={originalPost} />
+          <PostCard post={originalPost} embeddedOriginal />
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto border-t border-border/30 pt-2 sm:gap-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" data-post-navigation-ignore>

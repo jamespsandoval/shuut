@@ -33,6 +33,7 @@ interface PostCardProps {
   post: Post
   isDetail?: boolean
   isFocused?: boolean
+  embeddedOriginal?: boolean
 }
 
 const REACTIONS: { type: ReactionInputEmojiType; emoji: string }[] = [
@@ -43,7 +44,7 @@ const REACTIONS: { type: ReactionInputEmojiType; emoji: string }[] = [
 
 const POST_INTERACTIVE_SELECTOR = "a, button, input, textarea, select, [role='button'], [data-post-navigation-ignore]"
 
-export function PostCard({ post, isDetail = false, isFocused = false }: PostCardProps) {
+export function PostCard({ post, isDetail = false, isFocused = false, embeddedOriginal = false }: PostCardProps) {
   const queryClient = useQueryClient()
   const setReaction = useSetReaction()
   const reshuutPost = useReshuutPost()
@@ -529,7 +530,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
 
         </div>
           {/* Action Bar */}
-          <div className="flex items-center gap-1.5 sm:gap-4 mt-1 pt-2 border-t border-border/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-1" data-post-navigation-ignore>
+          {!embeddedOriginal && <div className="flex items-center gap-1.5 sm:gap-4 mt-1 pt-2 border-t border-border/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pb-1" data-post-navigation-ignore>
             {/* Reactions */}
             <div className="flex items-center gap-1 shrink-0">
               {REACTIONS.map(({ type, emoji }) => {
@@ -623,9 +624,9 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
                 <Trash2 className="w-[18px] h-[18px]" />
               </button>
             )}
-          </div>
+          </div>}
 
-          {showReshuutComposer && (
+          {!embeddedOriginal && showReshuutComposer && (
             <div ref={reshuutPanelRef} className="mt-3 rounded-xl border border-border/60 bg-secondary/10 p-3" aria-label="ReSHÜÜT composer" data-post-navigation-ignore>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold">Add to your reSHÜÜT</p>
@@ -651,7 +652,7 @@ export function PostCard({ post, isDetail = false, isFocused = false }: PostCard
             </div>
           )}
 
-          {(showComments) && (
+          {!embeddedOriginal && showComments && (
             <div data-post-navigation-ignore>
               <PostComments
                 postId={post.id}
