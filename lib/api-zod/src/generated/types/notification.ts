@@ -17,6 +17,8 @@ export interface Notification {
   reactionType?: NotificationReactionType;
   /** @nullable */
   commentId?: number | null;
+  /** @nullable */
+  reshuutId: number | null;
   createdAt: Date;
   actor: Founder;
   post: NotificationPost;

@@ -692,6 +692,33 @@ export const GetFeedResponseItem = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -817,6 +844,33 @@ export const GetFeedPageResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -861,6 +915,7 @@ export const GetNotificationsResponseItem = zod.object({
   "eventType": zod.enum(['reaction', 'reshuut', 'comment', 'mention']),
   "reactionType": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
   "commentId": zod.number().int().nullish(),
+  "reshuutId": zod.number().int().nullable(),
   "createdAt": zod.coerce.date(),
   "actor": zod.object({
   "id": zod.number().int(),
@@ -975,6 +1030,33 @@ export const GetProfileResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1132,6 +1214,33 @@ export const UpdateProfileResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1295,6 +1404,33 @@ export const CreatePostResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1430,6 +1566,33 @@ export const GetPostResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1544,6 +1707,33 @@ export const UpdatePostResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1645,6 +1835,33 @@ export const SetReactionResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1807,6 +2024,33 @@ export const ReshuutPostResponse = zod.object({
   "imageUrl": zod.string().nullable(),
   "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
   "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
   "originalPost": zod.union([zod.object({
   "id": zod.number().int(),
   "author": zod.object({
@@ -1841,6 +2085,516 @@ export const ReshuutPostResponse = zod.object({
   "editableUntil": zod.coerce.date().nullable()
 }),zod.null()])
 }),zod.null()]).optional()
+})
+
+
+
+
+
+export const GetReshuutParams = zod.object({
+  "reshuutId": zod.coerce.number().int().min(1)
+})
+
+export const GetReshuutResponse = zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
+})
+
+
+
+
+
+export const SetReshuutReactionParams = zod.object({
+  "reshuutId": zod.coerce.number().int().min(1)
+})
+
+export const SetReshuutReactionBody = zod.object({
+  "emojiType": zod.enum(['rocket', 'laughing', 'thumbsDown'])
+})
+
+export const SetReshuutReactionResponse = zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
+})
+
+
+
+
+
+export const GetReshuutCommentsParams = zod.object({
+  "reshuutId": zod.coerce.number().int().min(1)
+})
+
+export const GetReshuutCommentsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "audioUrl": zod.string(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date()
+})
+export const GetReshuutCommentsResponse = zod.array(GetReshuutCommentsResponseItem)
+
+
+
+
+
+export const CreateReshuutCommentParams = zod.object({
+  "reshuutId": zod.coerce.number().int().min(1)
+})
+
+export const createReshuutCommentBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+export const createReshuutCommentBodyDurationSecondsMax = 90;
+
+
+
+export const CreateReshuutCommentBody = zod.object({
+  "audioObjectPath": zod.string().regex(createReshuutCommentBodyAudioObjectPathRegExp),
+  "durationSeconds": zod.number().int().min(1).max(createReshuutCommentBodyDurationSecondsMax)
+})
+
+export const CreateReshuutCommentResponse = zod.object({
+  "id": zod.number().int(),
+  "status": zod.enum(['processing'])
+})
+
+
+
+
+
+export const ReshuutReshuutParams = zod.object({
+  "reshuutId": zod.coerce.number().int().min(1)
+})
+
+export const reshuutReshuutBodyAudioObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+export const reshuutReshuutBodyDurationSecondsMax = 90;
+
+export const reshuutReshuutBodyImageObjectPathRegExp = new RegExp('^/objects/uploads/[A-Za-z0-9-]+$');
+
+
+export const ReshuutReshuutBody = zod.object({
+  "audioObjectPath": zod.string().regex(reshuutReshuutBodyAudioObjectPathRegExp).optional(),
+  "durationSeconds": zod.number().int().min(1).max(reshuutReshuutBodyDurationSecondsMax).optional(),
+  "imageObjectPath": zod.string().regex(reshuutReshuutBodyImageObjectPathRegExp).optional()
+})
+
+export const ReshuutReshuutResponse = zod.object({
+  "feedItemKey": zod.string(),
+  "type": zod.enum(['post', 'reshuut']),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "post": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()]),
+  "reshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "transcriptionStatus": zod.enum(['none', 'processing', 'ready', 'failed']),
+  "audioUrl": zod.string().nullable(),
+  "durationSeconds": zod.number().int().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullable(),
+  "isReshuuted": zod.boolean(),
+  "parentReshuut": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "mode": zod.enum(['text', 'audio']),
+  "text": zod.string().nullable(),
+  "audioUrl": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}).describe('Non-recursive parent share reference, including sharer identity and display media.'),zod.null()]),
+  "originalPost": zod.union([zod.object({
+  "id": zod.number().int(),
+  "author": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "handle": zod.string(),
+  "bio": zod.string(),
+  "avatarColor": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "isFollowing": zod.boolean(),
+  "previewTranscript": zod.boolean()
+}),
+  "transcript": zod.string(),
+  "transcriptionStatus": zod.enum(['processing', 'ready', 'failed']),
+  "moderationStatus": zod.enum(['pending', 'processing', 'approved', 'unreviewed', 'quarantined', 'failed', 'removed']).optional(),
+  "audioUrl": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "durationSeconds": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "reactions": zod.object({
+  "rocket": zod.number().int(),
+  "laughing": zod.number().int(),
+  "thumbsDown": zod.number().int()
+}),
+  "viewerReaction": zod.union([zod.literal('rocket'),zod.literal('laughing'),zod.literal('thumbsDown'),zod.literal(null)]).nullish(),
+  "isReshuuted": zod.boolean(),
+  "reshuutedBy": zod.string().nullish(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean(),
+  "editableUntil": zod.coerce.date().nullable()
+}),zod.null()])
+}),zod.null()])
+})
+
+
+
+
+
+export const CreateReshuutShareLinkParams = zod.object({
+  "reshuutId": zod.coerce.number().int().min(1)
+})
+
+export const CreateReshuutShareLinkResponse = zod.object({
+  "url": zod.string().url(),
+  "deepLink": zod.string().url()
 })
 
 
@@ -1892,7 +2646,7 @@ export const createReportBodyDetailsMax = 1000;
 
 
 export const CreateReportBody = zod.object({
-  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetType": zod.enum(['post', 'reshuut', 'comment', 'profile']),
   "targetId": zod.number().int().min(1).describe('Canonical numeric target ID; aliases are rejected'),
   "reason": zod.enum(['spam', 'harassment', 'hate', 'sexual_content', 'violence', 'impersonation', 'other']),
   "details": zod.string().max(createReportBodyDetailsMax).optional()
@@ -1959,7 +2713,7 @@ export const listModerationCasesResponseCasesItemSlaHoursDefault = 24;
 export const ListModerationCasesResponse = zod.object({
   "cases": zod.array(zod.object({
   "id": zod.number().int(),
-  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetType": zod.enum(['post', 'reshuut', 'comment', 'profile']),
   "targetId": zod.number().int(),
   "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
   "priority": zod.enum(['normal', 'high']),
@@ -1983,7 +2737,7 @@ export const getModerationCaseResponseCaseSlaHoursDefault = 24;
 export const GetModerationCaseResponse = zod.object({
   "case": zod.object({
   "id": zod.number().int(),
-  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetType": zod.enum(['post', 'reshuut', 'comment', 'profile']),
   "targetId": zod.number().int(),
   "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
   "priority": zod.enum(['normal', 'high']),
@@ -2030,7 +2784,7 @@ export const decideModerationCaseResponseSlaHoursDefault = 24;
 
 export const DecideModerationCaseResponse = zod.object({
   "id": zod.number().int(),
-  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetType": zod.enum(['post', 'reshuut', 'comment', 'profile']),
   "targetId": zod.number().int(),
   "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
   "priority": zod.enum(['normal', 'high']),
@@ -2053,7 +2807,7 @@ export const claimModerationCaseResponseCaseSlaHoursDefault = 24;
 export const ClaimModerationCaseResponse = zod.object({
   "case": zod.object({
   "id": zod.number().int(),
-  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetType": zod.enum(['post', 'reshuut', 'comment', 'profile']),
   "targetId": zod.number().int(),
   "status": zod.enum(['open', 'in_review', 'escalated', 'resolved', 'appealed']),
   "priority": zod.enum(['normal', 'high']),
@@ -2141,7 +2895,7 @@ export const listEligibleModerationAppealsResponseCasesItemContentExcerptMax = 2
 export const ListEligibleModerationAppealsResponse = zod.object({
   "cases": zod.array(zod.object({
   "caseId": zod.number().int(),
-  "targetType": zod.enum(['post', 'comment', 'profile']),
+  "targetType": zod.enum(['post', 'reshuut', 'comment', 'profile']),
   "targetId": zod.number().int(),
   "contentExcerpt": zod.string().max(listEligibleModerationAppealsResponseCasesItemContentExcerptMax).nullable(),
   "contentCreatedAt": zod.string().nullable(),

@@ -11,6 +11,7 @@ export type EligibleModerationAppealTargetType = typeof EligibleModerationAppeal
 
 export const EligibleModerationAppealTargetType = {
   post: 'post',
+  reshuut: 'reshuut',
   comment: 'comment',
   profile: 'profile',
 } as const;

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Mic, Square, Loader2, Send, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatTime } from "@/lib/utils"
-import { useCreatePostComment, useGetVoiceAiConsent } from "@workspace/api-client-react"
+import { useCreatePostComment, useCreateReshuutComment, useGetVoiceAiConsent } from "@workspace/api-client-react"
 import { useToast } from "@/hooks/use-toast"
 import { ToastAction } from "@/components/ui/toast"
 import { AudioPlayer } from "./audio-player"
@@ -24,11 +24,13 @@ function getSupportedRecordingType() {
 
 export function CommentComposer({
   postId,
+  reshuutId,
   onSubmitted,
   onDismiss,
   autoStart = false,
 }: {
   postId: number
+  reshuutId?: number
   onSubmitted: (id: number) => void
   onDismiss: () => void
   autoStart?: boolean
@@ -47,6 +49,8 @@ export function CommentComposer({
   const mountedRef = useRef(true)
 
   const createComment = useCreatePostComment()
+  const createReshuutComment = useCreateReshuutComment()
+  const isSubmitting = reshuutId ? createReshuutComment.isPending : createComment.isPending
   const { data: voiceAiConsent, isLoading: voiceAiConsentLoading, isError: voiceAiConsentError, refetch: refetchVoiceAiConsent } = useGetVoiceAiConsent()
   const { toast } = useToast()
 
@@ -216,29 +220,29 @@ export function CommentComposer({
       })
       if (!putResponse.ok) throw new Error("Upload failed")
 
-      createComment.mutate(
-        {
-          postId,
-          data: {
-            audioObjectPath: upload.objectPath,
-            durationSeconds: time || 1,
-          }
+      const data = {
+        audioObjectPath: upload.objectPath,
+        durationSeconds: time || 1,
+      }
+      const callbacks = {
+        onSuccess: (res: { id: number }) => {
+          handleCancel()
+          onSubmitted(res.id)
         },
-        {
-          onSuccess: (res) => {
-            handleCancel()
-            onSubmitted(res.id)
-          },
-          onError: () => {
-            toast({
-              title: "Error",
-              description: "Failed to post comment. Try again.",
-              variant: "destructive"
-            })
-          },
-          onSettled: () => setIsUploading(false)
-        }
-      )
+        onError: () => {
+          toast({
+            title: "Error",
+            description: "Failed to post comment. Try again.",
+            variant: "destructive"
+          })
+        },
+        onSettled: () => setIsUploading(false),
+      }
+      if (reshuutId) {
+        createReshuutComment.mutate({ reshuutId, data }, callbacks)
+      } else {
+        createComment.mutate({ postId, data }, callbacks)
+      }
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -279,8 +283,8 @@ export function CommentComposer({
               <Button variant="ghost" className="rounded-full px-5 text-muted-foreground hover:text-foreground" onClick={handleCancel} disabled={isUploading}>
                 Cancel
               </Button>
-              <Button className="rounded-full px-8 font-bold shadow-md active:scale-95 transition-all" onClick={handleSubmit} disabled={isUploading || createComment.isPending}>
-                {(isUploading || createComment.isPending) ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              <Button className="rounded-full px-8 font-bold shadow-md active:scale-95 transition-all" onClick={handleSubmit} disabled={isUploading || isSubmitting}>
+                {(isUploading || isSubmitting) ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                 Post Comment
               </Button>
             </div>

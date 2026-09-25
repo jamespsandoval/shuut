@@ -20,6 +20,7 @@ import Landing from '@/pages/landing';
 const NotFound = lazy(() => import('@/pages/not-found'));
 const Home = lazy(() => import('@/pages/home'));
 const PostDetail = lazy(() => import('@/pages/post-detail'));
+const ReshuutDetail = lazy(() => import('@/pages/reshuut-detail'));
 const Profile = lazy(() => import('@/pages/profile'));
 const Explore = lazy(() => import('@/pages/explore'));
 const Onboarding = lazy(() => import('@/pages/onboarding'));
@@ -133,6 +134,7 @@ function Router() {
           <ProtectedRoute path="/notifications" component={NotificationsPage} />
           <ProtectedRoute path="/explore" component={Explore} />
           <ProtectedRoute path="/p/:postId" component={PostDetail} />
+          <ProtectedRoute path="/r/:reshuutId" component={ReshuutDetail} />
           <ProtectedRoute path="/u/:handle" component={Profile} />
           <ProtectedRoute path="/settings" component={SettingsPage} />
           <ProtectedRoute path="/moderation" component={ModerationDashboard} />
@@ -186,6 +188,7 @@ function AnalyticsRouteTracker() {
     const firstSegment = location.slice(1).split('/')[0];
     const knownScreens = ['feed', 'settings', 'notifications', 'explore', 'about', 'community', 'terms', 'privacy', 'cookies', 'contact', 'appeals'];
     const screen = location.startsWith('/p/') ? 'post'
+      : location.startsWith('/r/') ? 'reshuut'
       : location.startsWith('/u/') ? 'profile'
       : location.startsWith('/onboarding/') ? 'onboarding'
       : location.startsWith('/moderation') ? 'moderation'

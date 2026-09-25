@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '../../hooks/useColors';
 import { getGetFeedPageQueryKey, useGetProfile, useToggleFollow } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,6 +25,10 @@ export default function ProfileScreen() {
   const { data: profileData, isLoading, isError, refetch } = useGetProfile(handle, { query: { queryKey: ['profile', handle] } });
   const { data: viewerProfile } = useGetProfile('me', { query: { queryKey: ['profile', 'me'] } });
   const toggleFollow = useToggleFollow();
+
+  useFocusEffect(useCallback(() => {
+    void refetch();
+  }, [refetch]));
 
   const handleFollow = () => {
     toggleFollow.mutate({ handle }, {

@@ -11,6 +11,7 @@ export type ReportInputTargetType = typeof ReportInputTargetType[keyof typeof Re
 
 export const ReportInputTargetType = {
   post: 'post',
+  reshuut: 'reshuut',
   comment: 'comment',
   profile: 'profile',
 } as const;

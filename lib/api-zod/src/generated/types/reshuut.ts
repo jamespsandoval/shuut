@@ -6,10 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Founder } from './founder';
+import type { ParentReshuut } from './parentReshuut';
 import type { PostSnapshot } from './postSnapshot';
+import type { ReactionSummary } from './reactionSummary';
 import type { ReshuutMode } from './reshuutMode';
 import type { ReshuutModerationStatus } from './reshuutModerationStatus';
 import type { ReshuutTranscriptionStatus } from './reshuutTranscriptionStatus';
+import type { ReshuutViewerReaction } from './reshuutViewerReaction';
 
 export interface Reshuut {
   id: number;
@@ -28,5 +31,10 @@ export interface Reshuut {
   imageUrl: string | null;
   moderationStatus: ReshuutModerationStatus;
   createdAt: Date;
+  reactions: ReactionSummary;
+  /** @nullable */
+  viewerReaction: ReshuutViewerReaction;
+  isReshuuted: boolean;
+  parentReshuut: ParentReshuut | null;
   originalPost: PostSnapshot | null;
 }

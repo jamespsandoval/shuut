@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react"
-import { useGetPostComments, getGetPostCommentsQueryKey, useGetProfile } from "@workspace/api-client-react"
+import {
+  useGetPostComments,
+  getGetPostCommentsQueryKey,
+  useGetReshuutComments,
+  getGetReshuutCommentsQueryKey,
+  useGetProfile,
+} from "@workspace/api-client-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { CommentComposer } from "./comment-composer"
 import { AudioPlayer } from "./audio-player"
@@ -10,10 +16,12 @@ import { ModerationActions } from "./moderation-actions"
 
 export function PostComments({
   postId,
+  reshuutId,
   autoStartRecording = false,
   onComposerClose,
 }: {
   postId: number
+  reshuutId?: number
   autoStartRecording?: boolean
   onComposerClose?: () => void
 }) {
@@ -25,12 +33,22 @@ export function PostComments({
 
   const hasActivePending = pendingComments.some(p => !p.failed)
 
-  const { data: comments, isLoading } = useGetPostComments(postId, {
+  const postComments = useGetPostComments(postId, {
     query: {
       queryKey: getGetPostCommentsQueryKey(postId),
+      enabled: !reshuutId,
       refetchInterval: hasActivePending ? 3000 : pendingComments.length > 0 ? 10000 : false
     }
   })
+  const reshuutComments = useGetReshuutComments(reshuutId ?? 0, {
+    query: {
+      queryKey: getGetReshuutCommentsQueryKey(reshuutId ?? 0),
+      enabled: Boolean(reshuutId),
+      refetchInterval: hasActivePending ? 3000 : pendingComments.length > 0 ? 10000 : false,
+    },
+  })
+  const comments = reshuutId ? reshuutComments.data : postComments.data
+  const isLoading = reshuutId ? reshuutComments.isLoading : postComments.isLoading
 
   useEffect(() => {
     if (comments) {
@@ -62,12 +80,17 @@ export function PostComments({
     <div className="mt-4 pt-4 border-t border-border/40 flex flex-col gap-6">
       {autoStartRecording && <div className="px-1">
         <CommentComposer 
-          postId={postId} 
+          postId={postId}
+          reshuutId={reshuutId}
           autoStart={autoStartRecording}
           onDismiss={() => onComposerClose?.()}
           onSubmitted={(submissionId) => {
             setPendingComments(prev => [...prev, { id: submissionId, timestamp: Date.now() }])
-            queryClient.invalidateQueries({ queryKey: getGetPostCommentsQueryKey(postId) })
+            queryClient.invalidateQueries({
+              queryKey: reshuutId
+                ? getGetReshuutCommentsQueryKey(reshuutId)
+                : getGetPostCommentsQueryKey(postId),
+            })
             onComposerClose?.()
           }} 
         />

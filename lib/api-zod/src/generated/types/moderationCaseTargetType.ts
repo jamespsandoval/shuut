@@ -11,6 +11,7 @@ export type ModerationCaseTargetType = typeof ModerationCaseTargetType[keyof typ
 
 export const ModerationCaseTargetType = {
   post: 'post',
+  reshuut: 'reshuut',
   comment: 'comment',
   profile: 'profile',
 } as const;

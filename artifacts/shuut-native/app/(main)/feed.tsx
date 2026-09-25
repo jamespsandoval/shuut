@@ -136,6 +136,10 @@ export default function FeedScreen() {
     setIsOpeningRecorder(false);
   }, []));
 
+  useFocusEffect(useCallback(() => {
+    void refetchFeed();
+  }, [refetchFeed]));
+
   useEffect(() => {
     if (!isOpeningRecorder) return;
 

@@ -128,6 +128,7 @@ export async function emitApprovalNotifications(postId: number) {
   }
   const comments = await db.select({ id: commentsTable.id, authorId: commentsTable.authorId }).from(commentsTable).where(and(
     eq(commentsTable.postId, postId),
+    isNull(commentsTable.reshuutId),
     eq(commentsTable.transcriptionStatus, "ready"),
   ));
   for (const comment of comments) {
@@ -143,6 +144,51 @@ export async function emitApprovalNotifications(postId: number) {
       eventType: "comment", dedupeKey: `comment:${comment.id}`,
     }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
   }
+}
+
+export async function emitReshuutCommentNotification(commentId: number) {
+  const [comment] = await db.select({
+    id: commentsTable.id,
+    postId: commentsTable.postId,
+    reshuutId: commentsTable.reshuutId,
+    authorId: commentsTable.authorId,
+    transcriptionStatus: commentsTable.transcriptionStatus,
+    moderationStatus: commentsTable.moderationStatus,
+  }).from(commentsTable).where(eq(commentsTable.id, commentId)).limit(1);
+  if (!comment || comment.reshuutId === null ||
+      comment.transcriptionStatus !== "ready" || comment.moderationStatus !== "approved") return;
+  const [share] = await db.select({
+    founderId: postReshuutsTable.founderId,
+    audioUrl: postReshuutsTable.audioUrl,
+    transcriptionStatus: postReshuutsTable.transcriptionStatus,
+    moderationStatus: postReshuutsTable.moderationStatus,
+    deletionStatus: postReshuutsTable.deletionStatus,
+  }).from(postReshuutsTable).where(eq(postReshuutsTable.id, comment.reshuutId)).limit(1);
+  if (!share || share.deletionStatus !== "active" ||
+      (share.audioUrl && (share.transcriptionStatus !== "ready" || share.moderationStatus !== "approved")) ||
+      share.founderId === comment.authorId ||
+      !(await canDistributeComment(comment.id)) ||
+      !(await isFounderDistributable(share.founderId)) ||
+      !(await isFounderDistributable(comment.authorId))) return;
+  await db.transaction(async (tx) => {
+    const low = Math.min(comment.authorId, share.founderId);
+    const high = Math.max(comment.authorId, share.founderId);
+    await tx.execute(sql`select pg_advisory_xact_lock(${low}::bigint * 1000000 + ${high}::bigint)`);
+    const [blocked] = await tx.select({ id: accountBlocksTable.id }).from(accountBlocksTable).where(or(
+      and(eq(accountBlocksTable.blockerFounderId, comment.authorId), eq(accountBlocksTable.blockedFounderId, share.founderId)),
+      and(eq(accountBlocksTable.blockedFounderId, comment.authorId), eq(accountBlocksTable.blockerFounderId, share.founderId)),
+    )).limit(1);
+    if (blocked) return;
+    await tx.insert(notificationsTable).values({
+      actorId: comment.authorId,
+      recipientId: share.founderId,
+      postId: comment.postId,
+      reshuutId: comment.reshuutId,
+      commentId: comment.id,
+      eventType: "comment",
+      dedupeKey: `comment:${comment.id}`,
+    }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
+  });
 }
 
 export interface TextModerationProvider {
@@ -269,6 +315,33 @@ export async function enqueueUnreviewedPosts(limit = 25) {
   return result.rows.length;
 }
 
+// Legacy voice shares created before moderation dispatch was connected must
+// enter the same consent-checked, fail-closed moderation pipeline.
+export async function enqueueUnreviewedReshuuts(limit = 25) {
+  const result = await db.execute(sql`
+    select r.id, r.transcript, r.moderation_revision as revision
+    from shuut_post_reshuuts r
+    where r.audio_url is not null
+      and r.transcription_status = 'ready'
+      and r.moderation_status = 'unreviewed'
+      and r.deletion_status = 'active'
+      and r.transcript is not null
+      and r.transcript <> ''
+      and not exists (
+        select 1 from shuut_moderation_jobs j
+        where j.target_type = 'reshuut'
+          and j.target_id = r.id
+          and j.revision = r.moderation_revision
+      )
+    order by r.created_at asc
+    limit ${limit}
+  `) as unknown as { rows: Array<{ id: number; transcript: string; revision: number }> };
+  for (const reshuut of result.rows) {
+    await enqueueModeration("reshuut", reshuut.id, reshuut.transcript, reshuut.revision);
+  }
+  return result.rows.length;
+}
+
 export async function ensureModerationCase(
   targetType: string,
   targetId: number,
@@ -361,10 +434,17 @@ async function applyResult(job: { id: number; targetType: string; targetId: numb
   if (!owned) return;
   if (status === "quarantined") await ensureModerationCase(job.targetType, job.targetId, "high", "automated_flag");
   if (status === "approved") {
-    const [target] = job.targetType === "post"
-      ? [{ postId: job.targetId }]
-      : await db.select({ postId: commentsTable.postId }).from(commentsTable).where(eq(commentsTable.id, job.targetId));
-    if (target) await emitApprovalNotifications(target.postId);
+    if (job.targetType === "post") {
+      await emitApprovalNotifications(job.targetId);
+    } else if (job.targetType === "comment") {
+      const [comment] = await db.select({
+        postId: commentsTable.postId,
+        reshuutId: commentsTable.reshuutId,
+      }).from(commentsTable).where(eq(commentsTable.id, job.targetId)).limit(1);
+      if (comment?.reshuutId == null) {
+        if (comment) await emitApprovalNotifications(comment.postId);
+      } else await emitReshuutCommentNotification(job.targetId);
+    }
   }
 }
 
@@ -459,11 +539,18 @@ export async function sweepModerationRetention(now = new Date()) {
         .where(and(eq(moderationCasesTable.id, current.id), isNull(moderationCasesTable.sourceCleanupQueuedAt))).returning();
       if (!locked) return;
       const [target] = current.targetType === "post"
-        ? await tx.select({ audioUrl: postsTable.audioUrl }).from(postsTable).where(eq(postsTable.id, current.targetId))
-        : await tx.select({ audioUrl: commentsTable.audioUrl }).from(commentsTable).where(eq(commentsTable.id, current.targetId));
-      if (target?.audioUrl) await tx.insert(objectCleanupJobsTable).values({
-        objectPath: target.audioUrl, scopeType: "moderation", scopeId: String(row.id),
-      }).onConflictDoNothing();
+        ? await tx.select({ audioUrl: postsTable.audioUrl, imageUrl: postsTable.imageUrl })
+          .from(postsTable).where(eq(postsTable.id, current.targetId))
+        : current.targetType === "reshuut"
+          ? await tx.select({ audioUrl: postReshuutsTable.audioUrl, imageUrl: postReshuutsTable.imageUrl })
+            .from(postReshuutsTable).where(eq(postReshuutsTable.id, current.targetId))
+          : await tx.select({ audioUrl: commentsTable.audioUrl, imageUrl: sql<string | null>`null` })
+            .from(commentsTable).where(eq(commentsTable.id, current.targetId));
+      for (const objectPath of [target?.audioUrl, target?.imageUrl]) {
+        if (objectPath) await tx.insert(objectCleanupJobsTable).values({
+          objectPath, scopeType: "moderation", scopeId: String(row.id),
+        }).onConflictDoNothing();
+      }
     });
   }
   return rows.length;
@@ -472,6 +559,7 @@ export async function sweepModerationRetention(now = new Date()) {
 export function startModerationWorker() {
   const sweep = async () => {
     await enqueueUnreviewedPosts();
+    await enqueueUnreviewedReshuuts();
     await runModerationSweep();
   };
   const timer = setInterval(() => void sweep().catch(() => undefined), 5_000);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import { and, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import app from "../src/app";
 import { retryDueCleanupJobs, visibleOriginalPostsQuery, visibleReshuutPageQuery, visibleReshuutSourcesQuery } from "../src/routes/shuut";
 import { queueExpiredPrivateUploads } from "../src/lib/privateObjectCleanup";
@@ -29,8 +29,10 @@ import {
   foundersTable,
   legalPolicyAcceptancesTable,
   moderationCasesTable,
+  moderationAppealsTable,
   moderationJobsTable,
   moderationSubjectsTable,
+  operatorGrantsTable,
   passkeyRecoveriesTable,
   objectCleanupJobsTable,
   passkeysTable,
@@ -45,7 +47,8 @@ import {
 } from "@workspace/db";
 import { CURRENT_LEGAL_POLICY_VERSIONS, CURRENT_LEGAL_POLICY_CONTENT_HASHES } from "../src/lib/legalPolicy";
 import { CURRENT_VOICE_AI_CONSENT_VERSION } from "../src/lib/voiceAiConsent";
-import { enqueueModeration, runModerationSweep, setModerationProviderForTests } from "../src/lib/moderation";
+import { enqueueModeration, enqueueUnreviewedReshuuts, runModerationSweep, setModerationProviderForTests, sweepModerationRetention } from "../src/lib/moderation";
+import { setTranscriptPolishProviderForTests } from "../src/lib/transcriptPolish";
 
 const prefix = `auth-security-${Date.now()}`;
 const userAgent = "SHUUT security regression test";
@@ -1280,6 +1283,501 @@ test("other viewers get distinct reSHÜÜT feed/profile entries with cursor-stab
   assert.equal(profileEvent.reshuut?.originalPost.id, fixture.post.id);
 });
 
+test("reSHÜÜTs have independent interactions, bounded parents, comments, and signed previews", async (t) => {
+  const fixture = await securityFixture("reshuut-interactions");
+  t.after(() => fixture.cleanup());
+
+  const rootShareResponse = await request(`/api/posts/${fixture.post.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+  });
+  assert.equal(rootShareResponse.status, 200);
+  const [rootShare] = await db.select().from(postReshuutsTable).where(and(
+    eq(postReshuutsTable.postId, fixture.post.id),
+    eq(postReshuutsTable.founderId, fixture.viewer.id),
+  ));
+  assert.ok(rootShare);
+
+  const rootEventResponse = await request(`/api/reshuuts/${rootShare.id}`, {
+    session: fixture.ownerSession,
+  });
+  assert.equal(rootEventResponse.status, 200);
+  const rootEvent = await rootEventResponse.json() as {
+    reshuut: {
+      id: number;
+      reactions: { rocket: number };
+      viewerReaction: string | null;
+      parentReshuut: null;
+      originalPost: { id: number };
+    };
+  };
+  assert.equal(rootEvent.reshuut?.id, rootShare.id);
+  assert.equal(rootEvent.reshuut?.reactions.rocket, 0);
+  assert.equal(rootEvent.reshuut?.viewerReaction, null);
+  assert.equal(rootEvent.reshuut?.parentReshuut, null);
+  assert.equal(rootEvent.reshuut?.originalPost.id, fixture.post.id);
+
+  const reactionResponse = await request(`/api/reshuuts/${rootShare.id}/reaction`, {
+    method: "PUT",
+    session: fixture.ownerSession,
+    json: { emojiType: "rocket" },
+  });
+  assert.equal(reactionResponse.status, 200);
+  const reacted = await reactionResponse.json() as typeof rootEvent;
+  assert.equal(reacted.reshuut?.reactions.rocket, 1);
+  assert.equal(reacted.reshuut?.viewerReaction, "rocket");
+
+  const unreactResponse = await request(`/api/reshuuts/${rootShare.id}/reaction`, {
+    method: "PUT",
+    session: fixture.ownerSession,
+    json: { emojiType: "rocket" },
+  });
+  assert.equal(unreactResponse.status, 200);
+  const unreacted = await unreactResponse.json() as typeof rootEvent;
+  assert.equal(unreacted.reshuut?.reactions.rocket, 0);
+  assert.equal(unreacted.reshuut?.viewerReaction, null);
+
+  const commentsResponse = await request(`/api/reshuuts/${rootShare.id}/comments`, {
+    session: fixture.ownerSession,
+  });
+  assert.equal(commentsResponse.status, 200);
+  assert.deepEqual(await commentsResponse.json(), []);
+
+  const nestedResponse = await request(`/api/reshuuts/${rootShare.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+  });
+  assert.equal(nestedResponse.status, 201);
+  const nested = await nestedResponse.json() as {
+    reshuut: { id: number; parentReshuut: { id: number; author: { id: number } } };
+  };
+  assert.equal(nested.reshuut?.parentReshuut.id, rootShare.id);
+  assert.equal(nested.reshuut?.parentReshuut.author.id, fixture.viewer.id);
+
+  const linkResponse = await request(`/api/reshuuts/${nested.reshuut.id}/share-link`, {
+    method: "POST",
+    session: fixture.viewerSession,
+  });
+  assert.equal(linkResponse.status, 200);
+  const link = await linkResponse.json() as { url: string; deepLink: string };
+  assert.match(link.url, /^https:\/\/shuut\.me\/r\/\d+\?t=/);
+  assert.match(link.deepLink, /^shuut-native:\/\/reshuut\/\d+\?t=/);
+  const previewUrl = new URL(link.url);
+  const preview = await request(`${previewUrl.pathname}${previewUrl.search}`);
+  assert.equal(preview.status, 200);
+  const previewHtml = await preview.text();
+  assert.match(previewHtml, /noindex, nofollow/);
+  assert.match(previewHtml, new RegExp(fixture.viewer.name));
+
+  await db.update(postReshuutsTable).set({ moderationStatus: "removed" })
+    .where(eq(postReshuutsTable.id, rootShare.id));
+  const hiddenAncestorPreview = await request(`${previewUrl.pathname}${previewUrl.search}`);
+  const hiddenHtml = await hiddenAncestorPreview.text();
+  assert.doesNotMatch(hiddenHtml, new RegExp(fixture.viewer.name));
+  assert.doesNotMatch(hiddenHtml, /Original reportable transcript/);
+
+  await db.update(postReshuutsTable).set({ moderationStatus: "approved" })
+    .where(eq(postReshuutsTable.id, rootShare.id));
+  const toggleOff = await request(`/api/reshuuts/${rootShare.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+  });
+  assert.equal(toggleOff.status, 200);
+  const toggledParent = await toggleOff.json() as { reshuut: { id: number; isReshuuted: boolean } };
+  assert.equal(toggledParent.reshuut.id, rootShare.id);
+  assert.equal(toggledParent.reshuut.isReshuuted, false);
+
+  let chainParentId = rootShare.id;
+  for (let depth = 2; depth <= 8; depth += 1) {
+    const [row] = await db.insert(postReshuutsTable).values({
+      postId: fixture.post.id,
+      parentReshuutId: chainParentId,
+      founderId: depth % 2 === 0 ? fixture.owner.id : fixture.viewer.id,
+      transcript: null,
+      transcriptionStatus: "none",
+      moderationStatus: "approved",
+    }).returning({ id: postReshuutsTable.id });
+    chainParentId = row.id;
+  }
+  const overDepth = await request(`/api/reshuuts/${chainParentId}/reshuut`, {
+    method: "POST",
+    session: fixture.ownerSession,
+  });
+  assert.equal(overDepth.status, 409);
+  assert.equal((await db.select().from(postReshuutsTable)
+    .where(eq(postReshuutsTable.parentReshuutId, chainParentId))).length, 0);
+});
+
+test("root and nested voice reSHÜÜTs return owner processing state and queue moderation", async (t) => {
+  const fixture = await securityFixture("reshuut-voice-moderation");
+  const rootFailurePath = `/objects/uploads/${prefix}-root-failing-voice`;
+  const rootVoicePath = `/objects/uploads/${prefix}-root-voice`;
+  const nestedFailurePath = `/objects/uploads/${prefix}-nested-failing-voice`;
+  const nestedVoicePath = `/objects/uploads/${prefix}-nested-voice`;
+  const legacyRootPath = `/objects/uploads/${prefix}-legacy-root-voice`;
+  const legacyNestedPath = `/objects/uploads/${prefix}-legacy-nested-voice`;
+  const previousPublishAudio = ObjectStorageService.prototype.publishAudio;
+  const previousReadAudio = ObjectStorageService.prototype.readAudio;
+  const previousFetch = globalThis.fetch;
+  const previousElevenLabsKey = process.env.ELEVENLABS_API_KEY;
+  const previousPolisher = setTranscriptPolishProviderForTests({ polish: async (text) => text });
+  const voiceResults: Array<{ audioPath: string; resolve: (response: Response) => void }> = [];
+  let lastAudioPath = "";
+  let legacyPostId: number | null = null;
+  const reshuutIds = new Set<number>();
+  const waitFor = async (predicate: () => Promise<boolean>, message: string) => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (await predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.fail(message);
+  };
+  t.after(async () => {
+    ObjectStorageService.prototype.publishAudio = previousPublishAudio;
+    ObjectStorageService.prototype.readAudio = previousReadAudio;
+    globalThis.fetch = previousFetch;
+    if (previousElevenLabsKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = previousElevenLabsKey;
+    setTranscriptPolishProviderForTests(previousPolisher);
+    const ids = [...reshuutIds];
+    if (ids.length) {
+      await db.delete(moderationJobsTable).where(and(
+        eq(moderationJobsTable.targetType, "reshuut"),
+        inArray(moderationJobsTable.targetId, ids),
+      ));
+      await db.delete(moderationSubjectsTable).where(and(
+        eq(moderationSubjectsTable.targetType, "reshuut"),
+        inArray(moderationSubjectsTable.targetId, ids),
+      ));
+      await db.delete(objectCleanupJobsTable).where(and(
+        eq(objectCleanupJobsTable.scopeType, "reshuut"),
+        inArray(objectCleanupJobsTable.scopeId, ids.map(String)),
+      ));
+      await db.delete(postReshuutsTable).where(inArray(postReshuutsTable.id, ids));
+    }
+    if (legacyPostId !== null) await db.delete(postsTable).where(eq(postsTable.id, legacyPostId));
+    await fixture.cleanup();
+  });
+  process.env.ELEVENLABS_API_KEY = "transcription-test-key";
+  ObjectStorageService.prototype.publishAudio = async () => {};
+  ObjectStorageService.prototype.readAudio = async (path: string) => {
+    lastAudioPath = path;
+    return { data: Buffer.from(path), contentType: "audio/webm" };
+  };
+  globalThis.fetch = async (input, init) => {
+    if (String(input) === "https://api.elevenlabs.io/v1/speech-to-text") {
+      const audioPath = lastAudioPath;
+      return new Promise<Response>((resolve) => voiceResults.push({ audioPath, resolve }));
+    }
+    return previousFetch(input, init);
+  };
+
+  const makeUpload = async (path: string) => {
+    await db.insert(profileImageUploadsTable).values({ objectPath: path, userId: fixture.viewerUser.id });
+  };
+  await makeUpload(rootFailurePath);
+  const failedRootResponse = await request(`/api/posts/${fixture.post.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+    json: { audioObjectPath: rootFailurePath, durationSeconds: 2 },
+  });
+  assert.equal(failedRootResponse.status, 200);
+  const failedRoot = await failedRootResponse.json() as { reshuut: { id: number } };
+  reshuutIds.add(failedRoot.reshuut.id);
+  await waitFor(async () => voiceResults.some((job) => job.audioPath === rootFailurePath), "root voice transcription did not start");
+  voiceResults.find((job) => job.audioPath === rootFailurePath)!.resolve(
+    new Response(JSON.stringify({ error: "transcription failed" }), { status: 503 }),
+  );
+  await waitFor(async () => !(await db.select({ id: postReshuutsTable.id }).from(postReshuutsTable)
+    .where(eq(postReshuutsTable.id, failedRoot.reshuut.id))).length, "failed root voice row still occupies its unique key");
+
+  await makeUpload(rootVoicePath);
+  const rootVoiceResponse = await request(`/api/posts/${fixture.post.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+    json: { audioObjectPath: rootVoicePath, durationSeconds: 2 },
+  });
+  assert.equal(rootVoiceResponse.status, 200);
+  const rootVoice = await rootVoiceResponse.json() as {
+    reshuut: { id: number; transcriptionStatus: string; audioUrl: string | null };
+  };
+  reshuutIds.add(rootVoice.reshuut.id);
+  assert.equal(rootVoice.reshuut.transcriptionStatus, "processing");
+  assert.equal(rootVoice.reshuut.audioUrl, null);
+  await waitFor(async () => voiceResults.some((job) => job.audioPath === rootVoicePath), "root voice transcription did not start");
+
+  const [parent] = await db.insert(postReshuutsTable).values({
+    postId: fixture.post.id,
+    founderId: fixture.owner.id,
+    transcript: "Approved text parent",
+    transcriptionStatus: "none",
+    moderationStatus: "approved",
+  }).returning();
+  reshuutIds.add(parent.id);
+  await makeUpload(nestedFailurePath);
+  const failedNestedResponse = await request(`/api/reshuuts/${parent.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+    json: { audioObjectPath: nestedFailurePath, durationSeconds: 2 },
+  });
+  assert.equal(failedNestedResponse.status, 201);
+  const failedNested = await failedNestedResponse.json() as { reshuut: { id: number } };
+  reshuutIds.add(failedNested.reshuut.id);
+  await waitFor(async () => voiceResults.some((job) => job.audioPath === nestedFailurePath), "failed nested transcription did not start");
+  voiceResults.find((job) => job.audioPath === nestedFailurePath)!.resolve(
+    new Response(JSON.stringify({ error: "transcription failed" }), { status: 503 }),
+  );
+  await waitFor(async () => !(await db.select({ id: postReshuutsTable.id }).from(postReshuutsTable)
+    .where(eq(postReshuutsTable.id, failedNested.reshuut.id))).length, "failed nested voice row still occupies its unique key");
+
+  await makeUpload(nestedVoicePath);
+  const nestedResponse = await request(`/api/reshuuts/${parent.id}/reshuut`, {
+    method: "POST",
+    session: fixture.viewerSession,
+    json: { audioObjectPath: nestedVoicePath, durationSeconds: 2 },
+  });
+  assert.equal(nestedResponse.status, 201);
+  const nestedItem = await nestedResponse.json() as {
+    type: string;
+    reshuut: { id: number; transcriptionStatus: string; audioUrl: string | null };
+  };
+  reshuutIds.add(nestedItem.reshuut.id);
+  assert.equal(nestedItem.type, "reshuut");
+  assert.equal(nestedItem.reshuut.transcriptionStatus, "processing");
+  assert.equal(nestedItem.reshuut.audioUrl, null);
+  assert.equal((await request(`/api/reshuuts/${nestedItem.reshuut.id}`, {
+    session: fixture.ownerSession,
+  })).status, 404);
+  await waitFor(async () => voiceResults.some((job) => job.audioPath === nestedVoicePath), "nested voice transcription did not start");
+
+  for (const path of [rootVoicePath, nestedVoicePath]) {
+    voiceResults.find((job) => job.audioPath === path)!.resolve(
+      new Response(JSON.stringify({ text: "A cleaned voice transcript" }), { status: 200 }),
+    );
+  }
+  await waitFor(async () => {
+    const rows = await db.select({
+      id: postReshuutsTable.id,
+      transcriptionStatus: postReshuutsTable.transcriptionStatus,
+      moderationStatus: postReshuutsTable.moderationStatus,
+    }).from(postReshuutsTable).where(inArray(postReshuutsTable.id, [
+      rootVoice.reshuut.id,
+      nestedItem.reshuut.id,
+    ]));
+    const jobs = await db.select({ targetId: moderationJobsTable.targetId }).from(moderationJobsTable).where(and(
+      eq(moderationJobsTable.targetType, "reshuut"),
+      inArray(moderationJobsTable.targetId, [rootVoice.reshuut.id, nestedItem.reshuut.id]),
+    ));
+    return rows.length === 2 && rows.every((row) =>
+      row.transcriptionStatus === "ready" && row.moderationStatus === "unreviewed") && jobs.length === 2;
+  }, "voice transcription did not enqueue moderation for both share paths");
+
+  const [legacyPost] = await db.insert(postsTable).values({
+    authorId: fixture.owner.id,
+    transcript: "Legacy voice shares",
+    durationSeconds: 2,
+    moderationStatus: "approved",
+  }).returning();
+  legacyPostId = legacyPost.id;
+  const [legacyRoot] = await db.insert(postReshuutsTable).values({
+    postId: legacyPost.id,
+    founderId: fixture.owner.id,
+    transcript: "Legacy root voice transcript",
+    transcriptionStatus: "ready",
+    audioUrl: legacyRootPath,
+    moderationStatus: "unreviewed",
+    createdAt: new Date(0),
+  }).returning();
+  const [legacyNested] = await db.insert(postReshuutsTable).values({
+    postId: legacyPost.id,
+    parentReshuutId: legacyRoot.id,
+    founderId: fixture.viewer.id,
+    transcript: "Legacy nested voice transcript",
+    transcriptionStatus: "ready",
+    audioUrl: legacyNestedPath,
+    moderationStatus: "unreviewed",
+    createdAt: new Date(0),
+  }).returning();
+  reshuutIds.add(legacyRoot.id);
+  reshuutIds.add(legacyNested.id);
+  await enqueueUnreviewedReshuuts(1000);
+  const legacyJobs = await db.select({
+    targetId: moderationJobsTable.targetId,
+    status: moderationJobsTable.status,
+  }).from(moderationJobsTable).where(and(
+    eq(moderationJobsTable.targetType, "reshuut"),
+    inArray(moderationJobsTable.targetId, [legacyRoot.id, legacyNested.id]),
+  ));
+  assert.equal(legacyJobs.length, 2);
+  assert.ok(legacyJobs.every((job) => job.status === "pending"));
+  const legacyShares = await db.select({
+    id: postReshuutsTable.id,
+    moderationStatus: postReshuutsTable.moderationStatus,
+  }).from(postReshuutsTable).where(inArray(postReshuutsTable.id, [legacyRoot.id, legacyNested.id]));
+  assert.ok(legacyShares.every((share) => share.moderationStatus === "unreviewed"));
+
+  const targetJob = legacyJobs.find((job) => job.targetId === legacyNested.id)!;
+  const pendingSchedule = await db.select({
+    id: moderationJobsTable.id,
+    nextAttemptAt: moderationJobsTable.nextAttemptAt,
+  }).from(moderationJobsTable).where(eq(moderationJobsTable.status, "pending"));
+  const processingLeases = await db.select({
+    id: moderationJobsTable.id,
+    leaseUntil: moderationJobsTable.leaseUntil,
+  }).from(moderationJobsTable).where(eq(moderationJobsTable.status, "processing"));
+  const previousModerationProvider = setModerationProviderForTests({
+    classify: async () => {
+      throw new Error("A voice share without current consent must not reach moderation");
+    },
+  });
+  try {
+    const later = new Date(Date.now() + 60 * 60_000);
+    await db.update(moderationJobsTable).set({ nextAttemptAt: later })
+      .where(eq(moderationJobsTable.status, "pending"));
+    await db.update(moderationJobsTable).set({ nextAttemptAt: new Date(0) })
+      .where(and(
+        eq(moderationJobsTable.targetType, "reshuut"),
+        eq(moderationJobsTable.targetId, targetJob.targetId),
+      ));
+    await db.update(moderationJobsTable).set({ leaseUntil: later })
+      .where(eq(moderationJobsTable.status, "processing"));
+    await db.update(voiceAiConsentsTable).set({ revokedAt: new Date() })
+      .where(eq(voiceAiConsentsTable.userId, fixture.viewerUser.id));
+
+    await runModerationSweep(1);
+    const [blockedJob] = await db.select().from(moderationJobsTable).where(and(
+      eq(moderationJobsTable.targetType, "reshuut"),
+      eq(moderationJobsTable.targetId, targetJob.targetId),
+    ));
+    assert.equal(blockedJob.lastErrorCode, "VOICE_AI_CONSENT_REQUIRED");
+    assert.equal(blockedJob.status, "pending");
+    const [stillUnreviewed] = await db.select({ moderationStatus: postReshuutsTable.moderationStatus })
+      .from(postReshuutsTable).where(eq(postReshuutsTable.id, legacyNested.id));
+    assert.equal(stillUnreviewed.moderationStatus, "unreviewed");
+  } finally {
+    setModerationProviderForTests(previousModerationProvider);
+    for (const job of pendingSchedule) {
+      await db.update(moderationJobsTable).set({ nextAttemptAt: job.nextAttemptAt })
+        .where(eq(moderationJobsTable.id, job.id));
+    }
+    for (const job of processingLeases) {
+      await db.update(moderationJobsTable).set({ leaseUntil: job.leaseUntil })
+        .where(eq(moderationJobsTable.id, job.id));
+    }
+  }
+});
+
+test("reSHÜÜT moderation cases support ownership, decisions, appeals, and retained evidence", async (t) => {
+  const fixture = await securityFixture("reshuut-moderation");
+  const audioPath = `/objects/uploads/${prefix}-moderated-reshuut-audio`;
+  const imagePath = `/objects/uploads/${prefix}-moderated-reshuut-image`;
+  const evidencePath = `/objects/evidence/${prefix}-moderated-reshuut-evidence`;
+  let caseId: number | null = null;
+  let reshuutId: number | null = null;
+  t.after(async () => {
+    if (caseId !== null) {
+      await db.delete(accountReportsTable).where(eq(accountReportsTable.moderationCaseId, caseId));
+      await db.delete(objectCleanupJobsTable).where(and(
+        eq(objectCleanupJobsTable.scopeType, "moderation"),
+        eq(objectCleanupJobsTable.scopeId, String(caseId)),
+      ));
+      await db.delete(moderationCasesTable).where(eq(moderationCasesTable.id, caseId));
+    }
+    await db.delete(operatorGrantsTable).where(eq(operatorGrantsTable.userId, fixture.ownerUser.id));
+    if (reshuutId !== null) await db.delete(postReshuutsTable).where(eq(postReshuutsTable.id, reshuutId));
+    await fixture.cleanup();
+  });
+
+  const [reshuut] = await db.insert(postReshuutsTable).values({
+    postId: fixture.post.id,
+    founderId: fixture.viewer.id,
+    transcript: "Moderation case for a reSHÜÜT",
+    transcriptionStatus: "ready",
+    audioUrl: audioPath,
+    imageUrl: imagePath,
+    durationSeconds: 3,
+    moderationStatus: "approved",
+  }).returning();
+  reshuutId = reshuut.id;
+  const [caseRow] = await db.insert(moderationCasesTable).values({
+    targetType: "reshuut",
+    targetId: reshuut.id,
+    dueAt: new Date(Date.now() + 60_000),
+  }).returning();
+  caseId = caseRow.id;
+  await db.insert(operatorGrantsTable).values({
+    userId: fixture.ownerUser.id,
+    role: "reviewer",
+    active: true,
+  });
+  await db.insert(accountReportsTable).values({
+    reporterUserId: fixture.ownerUser.id,
+    targetType: "reshuut",
+    targetId: String(reshuut.id),
+    reason: "spam",
+    targetAuthorId: fixture.viewer.id,
+    contentSnapshot: "Moderation case for a reSHÜÜT",
+    evidenceAudioObjectPath: evidencePath,
+    moderationCaseId: caseRow.id,
+  });
+
+  const caseResponse = await request(`/api/moderation/cases/${caseRow.id}`, {
+    session: fixture.ownerSession,
+  });
+  assert.equal(caseResponse.status, 200);
+  assert.equal((await caseResponse.json() as { case: { targetType: string; targetId: number } }).case.targetType, "reshuut");
+
+  const quarantine = await request(`/api/moderation/cases/${caseRow.id}/decision`, {
+    method: "POST",
+    session: fixture.ownerSession,
+    json: { version: 1, decision: "quarantine" },
+  });
+  assert.equal(quarantine.status, 200);
+  assert.equal((await db.select().from(postReshuutsTable).where(eq(postReshuutsTable.id, reshuut.id)))[0]?.moderationStatus, "quarantined");
+
+  const eligibleResponse = await request("/api/moderation/appeals/eligible", { session: fixture.viewerSession });
+  assert.equal(eligibleResponse.status, 200);
+  const eligible = (await eligibleResponse.json() as { cases: Array<{ caseId: number; targetType: string }> }).cases;
+  assert.ok(eligible.some((entry) => entry.caseId === caseRow.id && entry.targetType === "reshuut"));
+
+  const appealResponse = await request(`/api/moderation/cases/${caseRow.id}/appeals`, {
+    method: "POST",
+    session: fixture.viewerSession,
+    json: { statement: "This reSHÜÜT should be restored." },
+  });
+  assert.equal(appealResponse.status, 201);
+  const appeal = await appealResponse.json() as { appeal: { id: number } };
+  const restore = await request(`/api/moderation/appeals/${appeal.appeal.id}/decision`, {
+    method: "POST",
+    session: fixture.ownerSession,
+    json: { decision: "restore" },
+  });
+  assert.equal(restore.status, 200);
+  assert.equal((await db.select().from(postReshuutsTable).where(eq(postReshuutsTable.id, reshuut.id)))[0]?.moderationStatus, "approved");
+
+  const currentCase = (await db.select().from(moderationCasesTable).where(eq(moderationCasesTable.id, caseRow.id)))[0]!;
+  const remove = await request(`/api/moderation/cases/${caseRow.id}/decision`, {
+    method: "POST",
+    session: fixture.ownerSession,
+    json: { version: currentCase.version, decision: "remove" },
+  });
+  assert.equal(remove.status, 200);
+  assert.equal((await db.select().from(postReshuutsTable).where(eq(postReshuutsTable.id, reshuut.id)))[0]?.moderationStatus, "removed");
+
+  await db.update(moderationCasesTable).set({ appealDeadlineAt: new Date(Date.now() - 1) })
+    .where(eq(moderationCasesTable.id, caseRow.id));
+  await sweepModerationRetention(new Date());
+  const cleanup = await db.select({ objectPath: objectCleanupJobsTable.objectPath })
+    .from(objectCleanupJobsTable).where(and(
+      eq(objectCleanupJobsTable.scopeType, "moderation"),
+      eq(objectCleanupJobsTable.scopeId, String(caseRow.id)),
+    ));
+  assert.deepEqual(new Set(cleanup.map((row) => row.objectPath)), new Set([audioPath, imagePath]));
+  const [report] = await db.select({ evidenceAudioObjectPath: accountReportsTable.evidenceAudioObjectPath })
+    .from(accountReportsTable).where(eq(accountReportsTable.moderationCaseId, caseRow.id));
+  assert.equal(report?.evidenceAudioObjectPath, evidencePath);
+});
+
 test("many reSHÜÜTs paginate without scanning past the cursor or losing tied items", async (t) => {
   const fixture = await securityFixture("reshuut-pages");
   t.after(() => fixture.cleanup());
@@ -1316,13 +1814,14 @@ test("many reSHÜÜTs paginate without scanning past the cursor or losing tied i
     authorId: blockedAuthor.id, transcript: "Blocked original", durationSeconds: 2,
     moderationStatus: "approved", createdAt: originalTime,
   }).returning();
-  const [blockedShare, blockedSharer, hiddenShare, unfinishedShare] = await db.insert(postReshuutsTable).values([
+  const [blockedShare, blockedSharer, hiddenShare, unfinishedShare, unapprovedAudioShare] = await db.insert(postReshuutsTable).values([
     { postId: blockedOriginal.id, founderId: fixture.viewer.id, createdAt: sharedTime },
     { postId: fixture.post.id, founderId: blockedAuthor.id, createdAt: sharedTime },
     { postId: fixture.post.id, founderId: fixture.owner.id, moderationStatus: "quarantined", createdAt: sharedTime },
     { postId: posts[0].id, founderId: fixture.owner.id, audioUrl: "/objects/uploads/unready-share", transcriptionStatus: "processing", createdAt: sharedTime },
+    { postId: posts[1].id, founderId: fixture.owner.id, audioUrl: "/objects/uploads/unapproved-share", transcriptionStatus: "ready", moderationStatus: "unreviewed", createdAt: sharedTime },
   ]).returning();
-  const excludedKeys = [blockedShare, blockedSharer, hiddenShare, unfinishedShare].map((row) => `reshuut:${row.id}`);
+  const excludedKeys = [blockedShare, blockedSharer, hiddenShare, unfinishedShare, unapprovedAudioShare].map((row) => `reshuut:${row.id}`);
   // A post at the same instant must sort before every reSHÜÜT at that instant.
   await db.update(postsTable).set({ createdAt: sharedTime }).where(eq(postsTable.id, fixture.post.id));
 
@@ -1924,9 +2423,15 @@ test("notifications require authentication and capture attributed activity witho
   assert.equal((await request(`/api/posts/${post.id}/reaction`, {
     method: "PUT", session: actorSession, json: { emojiType: "laughing" },
   })).status, 200);
-  assert.equal((await request(`/api/posts/${post.id}/reshuut`, {
+  const rootShareResponse = await request(`/api/posts/${post.id}/reshuut`, {
     method: "POST", session: actorSession,
-  })).status, 200);
+  });
+  assert.equal(rootShareResponse.status, 200);
+  const [actorRootShare] = await db.select({ id: postReshuutsTable.id }).from(postReshuutsTable).where(and(
+    eq(postReshuutsTable.postId, post.id),
+    eq(postReshuutsTable.founderId, actor.id),
+    isNull(postReshuutsTable.parentReshuutId),
+  ));
 
   const objectPath = `/objects/uploads/${prefix}-notification-comment`;
   await db.insert(profileImageUploadsTable).values({ objectPath, userId: actorUser.id });
@@ -1984,6 +2489,7 @@ test("notifications require authentication and capture attributed activity witho
   const reaction = notifications.find((notification) => notification.eventType === "reaction");
   assert.equal(reaction?.reactionType, "laughing");
   assert.ok(notifications.find((notification) => notification.eventType === "comment")?.commentId);
+  assert.equal(notifications.find((notification) => notification.eventType === "reshuut")?.reshuutId, actorRootShare.id);
   const response = await request("/api/notifications", { session: ownerSession });
   assert.equal(response.status, 200);
   const body = await response.json() as Array<{
@@ -2006,8 +2512,19 @@ test("notifications require authentication and capture attributed activity witho
   })).status, 200);
   const afterReshare = await request("/api/notifications", { session: ownerSession });
   assert.equal(afterReshare.status, 200);
-  const reshareBody = await afterReshare.json() as Array<{ eventType: string; actor: { id: number } }>;
-  assert.equal(reshareBody.filter((item) => item.eventType === "reshuut" && item.actor.id === actor.id).length, 2);
+  const reshareBody = await afterReshare.json() as Array<{
+    eventType: string;
+    actor: { id: number };
+    reshuutId: number | null;
+  }>;
+  const reshareNotifications = reshareBody.filter((item) => item.eventType === "reshuut" && item.actor.id === actor.id);
+  assert.equal(reshareNotifications.length, 1);
+  const [currentActorRoot] = await db.select({ id: postReshuutsTable.id }).from(postReshuutsTable).where(and(
+    eq(postReshuutsTable.postId, post.id),
+    eq(postReshuutsTable.founderId, actor.id),
+    isNull(postReshuutsTable.parentReshuutId),
+  ));
+  assert.equal(reshareNotifications[0]?.reshuutId, currentActorRoot.id);
   setModerationProviderForTests(previousModerationProvider);
 });
 

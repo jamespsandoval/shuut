@@ -56,6 +56,21 @@ import {
   BlockAccountParams,
   BlockAccountResponse,
   ListBlockedAccountsResponse,
+  GetReshuutParams,
+  GetReshuutResponse,
+  SetReshuutReactionParams,
+  SetReshuutReactionBody,
+  SetReshuutReactionResponse,
+  GetReshuutCommentsParams,
+  GetReshuutCommentsResponse,
+  CreateReshuutCommentParams,
+  CreateReshuutCommentBody,
+  CreateReshuutCommentResponse,
+  ReshuutReshuutParams,
+  ReshuutReshuutBody,
+  ReshuutReshuutResponse,
+  CreateReshuutShareLinkParams,
+  CreateReshuutShareLinkResponse,
 } from "@workspace/api-zod";
 import {
   db,
@@ -63,6 +78,7 @@ import {
   postsTable,
   postReactionsTable,
   postReshuutsTable,
+  reshuutReactionsTable,
   commentsTable,
   notificationsTable,
   postMentionsTable,
@@ -89,6 +105,8 @@ import {
 } from "../middlewares/sessionAuth";
 import { auditSecurityEvent, consumeRateLimit, privacyHash } from "../lib/security";
 import { createPostShareToken } from "../lib/postShareToken";
+import { createReshuutShareToken } from "../lib/postShareToken";
+import { distributableReshuutChain, MAX_RESHUUT_ANCESTRY } from "../lib/reshuutAccess";
 import { queueExpiredPrivateUploads } from "../lib/privateObjectCleanup";
 import { requireCurrentLegalPolicyConsent } from "../lib/legalPolicy";
 import { hasCurrentVoiceAiConsent, requireCurrentVoiceAiConsent } from "../lib/voiceAiConsent";
@@ -99,6 +117,7 @@ import {
   canDistributeComment,
   canDistributePost,
   emitApprovalNotifications,
+  enqueueModeration,
   ensureModerationCase,
   isFounderDistributable,
   sweepModerationRetention,
@@ -111,6 +130,7 @@ const POST_EDIT_WINDOW_MS = 30 * 1000;
 const CLEANUP_RETRY_BASE_MS = 5_000;
 const SIGNED_UPLOAD_EXPIRY_SAFETY_MS = 5_000;
 class AudioVerificationError extends Error {}
+class UploadOwnershipError extends Error {}
 
 type CleanupScope = { type: "post" | "account" | "orphan" | "moderation" | "reshuut"; id: string };
 
@@ -159,26 +179,49 @@ async function finalizeCleanupScope(scope: CleanupScope) {
         ));
         const reactions = await tx.select().from(postReactionsTable)
           .where(eq(postReactionsTable.founderId, founder.id));
+        const reshuutReactions = await tx.select().from(reshuutReactionsTable)
+          .where(eq(reshuutReactionsTable.founderId, founder.id));
         const authoredPosts = await tx.select({ id: postsTable.id })
           .from(postsTable)
           .where(eq(postsTable.authorId, founder.id));
-        const authoredReshuuts = await tx.select({ id: postReshuutsTable.id })
+        const authoredReshuuts = await tx.select({
+          id: postReshuutsTable.id,
+          parentReshuutId: postReshuutsTable.parentReshuutId,
+        })
           .from(postReshuutsTable)
           .where(eq(postReshuutsTable.founderId, founder.id));
+        const allReshuuts = await tx.select({
+          id: postReshuutsTable.id,
+          parentReshuutId: postReshuutsTable.parentReshuutId,
+        }).from(postReshuutsTable);
+        const reshuutIdsSet = new Set(authoredReshuuts.map((reshuut) => reshuut.id));
+        let expanded = true;
+        while (expanded) {
+          expanded = false;
+          for (const row of allReshuuts) {
+            if (row.parentReshuutId !== null && reshuutIdsSet.has(row.parentReshuutId) && !reshuutIdsSet.has(row.id)) {
+              reshuutIdsSet.add(row.id);
+              expanded = true;
+            }
+          }
+        }
+        const reshuutIds = [...reshuutIdsSet];
         const authoredComments = await tx.select({ id: commentsTable.id })
           .from(commentsTable)
           .where(authoredPosts.length
             ? or(
               eq(commentsTable.authorId, founder.id),
               inArray(commentsTable.postId, authoredPosts.map((post) => post.id)),
+              ...(reshuutIds.length ? [inArray(commentsTable.reshuutId, reshuutIds)] : []),
             )
-            : eq(commentsTable.authorId, founder.id));
+            : reshuutIds.length
+              ? or(eq(commentsTable.authorId, founder.id), inArray(commentsTable.reshuutId, reshuutIds))
+              : eq(commentsTable.authorId, founder.id));
         // Subjects/jobs are ephemeral provider work and must not retain deleted
         // content. Cases, reports, actions, sanctions, and appeals intentionally
         // remain as safety evidence and are not deleted here.
         const postIds = authoredPosts.map((post) => post.id);
         const commentIds = authoredComments.map((comment) => comment.id);
-        const reshuutIds = authoredReshuuts.map((reshuut) => reshuut.id);
         if (postIds.length || commentIds.length || reshuutIds.length) {
           const targets = [
             ...(postIds.length ? [{ type: "post", ids: postIds }] : []),
@@ -194,6 +237,33 @@ async function finalizeCleanupScope(scope: CleanupScope) {
               eq(moderationSubjectsTable.targetType, target.type),
               inArray(moderationSubjectsTable.targetId, target.ids),
             ));
+          }
+        }
+        if (reshuutIds.length) {
+          await tx.delete(notificationsTable).where(inArray(notificationsTable.reshuutId, reshuutIds));
+          await tx.delete(commentsTable).where(inArray(commentsTable.id, commentIds));
+          await tx.delete(postReshuutsTable).where(inArray(postReshuutsTable.id, reshuutIds));
+        }
+        const remainingReshuutIds = [...new Set(reshuutReactions
+          .map((reaction) => reaction.reshuutId)
+          .filter((reshuutId) => !reshuutIdsSet.has(reshuutId)))].sort((left, right) => left - right);
+        for (const reshuutId of remainingReshuutIds) {
+          await tx.execute(sql`select id from shuut_post_reshuuts where id = ${reshuutId} for update`);
+        }
+        for (const reaction of reshuutReactions) {
+          if (reshuutIdsSet.has(reaction.reshuutId)) continue;
+          if (reaction.emojiType === "rocket") {
+            await tx.update(postReshuutsTable)
+              .set({ rocket: sql`greatest(0, ${postReshuutsTable.rocket} - 1)` })
+              .where(eq(postReshuutsTable.id, reaction.reshuutId));
+          } else if (reaction.emojiType === "laughing") {
+            await tx.update(postReshuutsTable)
+              .set({ laughing: sql`greatest(0, ${postReshuutsTable.laughing} - 1)` })
+              .where(eq(postReshuutsTable.id, reaction.reshuutId));
+          } else if (reaction.emojiType === "thumbsDown") {
+            await tx.update(postReshuutsTable)
+              .set({ thumbsDown: sql`greatest(0, ${postReshuutsTable.thumbsDown} - 1)` })
+              .where(eq(postReshuutsTable.id, reaction.reshuutId));
           }
         }
         const postIdsToLock = [...new Set([
@@ -456,7 +526,21 @@ function postJson(
   };
 }
 
-function reshuutJson(row: typeof postReshuutsTable.$inferSelect, author: FounderRow) {
+function reshuutJson(
+  row: typeof postReshuutsTable.$inferSelect,
+  author: FounderRow,
+  viewerReaction: string | null = null,
+  isReshuuted = false,
+  parentReshuut: {
+    id: number;
+    author: ReturnType<typeof founderJson>;
+    mode: "text" | "audio";
+    text: string | null;
+    audioUrl: string | null;
+    imageUrl: string | null;
+    createdAt: Date;
+  } | null = null,
+) {
   return {
     id: row.id,
     author: founderJson(author),
@@ -465,11 +549,26 @@ function reshuutJson(row: typeof postReshuutsTable.$inferSelect, author: Founder
     mode: row.audioUrl ? "audio" as const : "text" as const,
     text: row.transcript,
     transcriptionStatus: row.transcriptionStatus,
-    audioUrl: row.audioUrl ? `/api/reshuuts/${row.id}/audio` : null,
+    audioUrl: row.audioUrl && row.transcriptionStatus === "ready" && row.moderationStatus === "approved"
+      ? `/api/reshuuts/${row.id}/audio`
+      : null,
     durationSeconds: row.durationSeconds,
-    imageUrl: row.imageUrl ? `/api/reshuuts/${row.id}/image` : null,
+    imageUrl: row.imageUrl && (!row.audioUrl ||
+      (row.transcriptionStatus === "ready" && row.moderationStatus === "approved"))
+      ? `/api/reshuuts/${row.id}/image`
+      : null,
     moderationStatus: row.moderationStatus,
     createdAt: row.createdAt,
+    reactions: {
+      rocket: row.rocket ?? 0,
+      laughing: row.laughing ?? 0,
+      thumbsDown: row.thumbsDown ?? 0,
+    },
+    viewerReaction: ["rocket", "laughing", "thumbsDown"].includes(viewerReaction ?? "")
+      ? viewerReaction as "rocket" | "laughing" | "thumbsDown"
+      : null,
+    isReshuuted,
+    parentReshuut,
     originalPost: null,
   };
 }
@@ -615,6 +714,7 @@ async function hydratePosts(rows: PostRow[], viewerFounderId?: number | null) {
   const viewerReshuuts = viewerFounderId
     ? await db.select({ postId: postReshuutsTable.postId }).from(postReshuutsTable).where(and(
         eq(postReshuutsTable.founderId, viewerFounderId),
+        isNull(postReshuutsTable.parentReshuutId),
         inArray(postReshuutsTable.postId, rows.map((row) => row.id)),
       ))
     : [];
@@ -673,6 +773,157 @@ function reshuutFeedItem(
   };
 }
 
+async function serializeReshuutFeedItem(reshuutId: number, viewerFounderId?: number | null): Promise<FeedItemJson | null> {
+  const chain = await distributableReshuutChain(reshuutId, viewerFounderId);
+  if (!chain) return null;
+  for (const row of chain.rows) {
+    if (viewerFounderId && !(await visibleToViewer(viewerFounderId, row.founderId))) return null;
+  }
+  const [post] = await db.select().from(postsTable).where(and(
+    eq(postsTable.id, chain.rows[0]!.postId),
+    eq(postsTable.deletionStatus, "active"),
+  )).limit(1);
+  if (!post || !(await canDistributePost(post.id)) ||
+      (viewerFounderId && !(await visibleToViewer(viewerFounderId, post.authorId)))) return null;
+  const [author] = await db.select().from(foundersTable)
+    .where(eq(foundersTable.id, chain.rows[0]!.founderId)).limit(1);
+  if (!author) return null;
+  const hydratedOriginal = await hydratePosts([post], viewerFounderId);
+  const originalPost = hydratedOriginal[0];
+  if (!originalPost) return null;
+  const row = chain.rows[0]!;
+  const parent = chain.rows[1];
+  const parentAuthor = parent ? chain.authors.get(parent.founderId) : undefined;
+  const parentReference = parent && parentAuthor ? {
+    id: parent.id,
+    author: founderJson(parentAuthor),
+    mode: parent.audioUrl ? "audio" as const : "text" as const,
+    text: parent.transcript,
+    audioUrl: parent.audioUrl ? `/api/reshuuts/${parent.id}/audio` : null,
+    imageUrl: parent.imageUrl ? `/api/reshuuts/${parent.id}/image` : null,
+    createdAt: parent.createdAt,
+  } : null;
+  const viewerReaction = viewerFounderId
+    ? (await db.select({ emojiType: reshuutReactionsTable.emojiType })
+      .from(reshuutReactionsTable).where(and(
+        eq(reshuutReactionsTable.reshuutId, row.id),
+        eq(reshuutReactionsTable.founderId, viewerFounderId),
+      )).limit(1))[0]?.emojiType ?? null
+    : null;
+  const isReshuuted = viewerFounderId
+    ? Boolean((await db.select({ id: postReshuutsTable.id }).from(postReshuutsTable).where(and(
+      eq(postReshuutsTable.parentReshuutId, row.id),
+      eq(postReshuutsTable.founderId, viewerFounderId),
+      eq(postReshuutsTable.deletionStatus, "active"),
+    )).limit(1))[0])
+    : false;
+  const base = reshuutFeedItem({
+    reshuut: row,
+    post,
+    author,
+    cursorTime: row.createdAt.toISOString(),
+  }, originalPost);
+  return {
+    ...base,
+    reshuut: {
+      ...reshuutJson(row, author, viewerReaction, isReshuuted, parentReference),
+      originalPost,
+    },
+  };
+}
+
+function ownerProcessingReshuutFeedItem(
+  row: typeof postReshuutsTable.$inferSelect,
+  owner: FounderRow,
+  parentItem: FeedItemJson,
+): FeedItemJson | null {
+  const parent = parentItem.reshuut;
+  if (row.founderId !== owner.id || !row.audioUrl || !parent?.originalPost ||
+      ["removed", "quarantined"].includes(row.moderationStatus)) return null;
+  const parentReference = {
+    id: parent.id,
+    author: parent.author,
+    mode: parent.mode,
+    text: parent.text,
+    audioUrl: parent.audioUrl,
+    imageUrl: parent.imageUrl,
+    createdAt: parent.createdAt,
+  };
+  return {
+    feedItemKey: `reshuut:${row.id}`,
+    type: "reshuut",
+    author: founderJson(owner),
+    post: null,
+    reshuut: {
+      ...reshuutJson(row, owner, null, false, parentReference),
+      originalPost: parent.originalPost,
+    },
+  };
+}
+
+async function retainVisibleReshuutAncestry(items: FeedItemJson[], viewerFounderId?: number | null) {
+  const reshuutIds = items.flatMap((item) =>
+    item.type === "reshuut" && item.reshuut ? [item.reshuut.id] : [],
+  );
+  if (!reshuutIds.length) return items;
+  const rows = await db.select().from(postReshuutsTable)
+    .where(inArray(postReshuutsTable.id, reshuutIds));
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+  const authors = rows.length
+    ? await db.select().from(foundersTable)
+      .where(inArray(foundersTable.id, [...new Set(rows.map((row) => row.founderId))]))
+    : [];
+  const authorById = new Map(authors.map((author) => [author.id, author]));
+  const viewerReactions = viewerFounderId
+    ? await db.select().from(reshuutReactionsTable).where(and(
+      eq(reshuutReactionsTable.founderId, viewerFounderId),
+      inArray(reshuutReactionsTable.reshuutId, reshuutIds),
+    ))
+    : [];
+  const reactionById = new Map(viewerReactions.map((reaction) => [reaction.reshuutId, reaction.emojiType]));
+  const viewerReshuuts = viewerFounderId
+    ? await db.select({ parentReshuutId: postReshuutsTable.parentReshuutId })
+      .from(postReshuutsTable).where(and(
+        eq(postReshuutsTable.founderId, viewerFounderId),
+        inArray(postReshuutsTable.parentReshuutId, reshuutIds),
+        eq(postReshuutsTable.deletionStatus, "active"),
+      ))
+    : [];
+  const viewerReshuutIds = new Set(viewerReshuuts.flatMap((row) =>
+    row.parentReshuutId === null ? [] : [row.parentReshuutId],
+  ));
+  const visible: FeedItemJson[] = [];
+  for (const item of items) {
+    if (item.type !== "reshuut" || !item.reshuut) {
+      visible.push(item);
+      continue;
+    }
+    const row = rowById.get(item.reshuut.id);
+    if (!row) continue;
+    if (row.parentReshuutId !== null) {
+      const hydrated = await serializeReshuutFeedItem(item.reshuut.id, viewerFounderId);
+      if (hydrated) visible.push(hydrated);
+    } else {
+      const author = authorById.get(row.founderId);
+      if (!author) continue;
+      const rootReshuut = reshuutJson(
+        row,
+        author,
+        reactionById.get(row.id),
+        viewerReshuutIds.has(row.id),
+      );
+      visible.push({
+        ...item,
+        reshuut: {
+          ...rootReshuut,
+          originalPost: item.reshuut.originalPost,
+        },
+      });
+    }
+  }
+  return visible;
+}
+
 // Legacy feed/profile responses return the entire history. Filter eligibility in
 // SQL so the amount of database work does not grow by several queries per share.
 export function visibleReshuutSourcesQuery(options: {
@@ -719,7 +970,13 @@ export function visibleReshuutSourcesQuery(options: {
     .where(and(
       eq(postReshuutsTable.deletionStatus, "active"),
       inArray(postReshuutsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
-      or(isNull(postReshuutsTable.audioUrl), eq(postReshuutsTable.transcriptionStatus, "ready")),
+      or(
+        isNull(postReshuutsTable.audioUrl),
+        and(
+          eq(postReshuutsTable.transcriptionStatus, "ready"),
+          eq(postReshuutsTable.moderationStatus, "approved"),
+        ),
+      ),
       eq(postsTable.deletionStatus, "active"),
       eq(postsTable.transcriptionStatus, "ready"),
       inArray(postsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
@@ -765,7 +1022,7 @@ async function profileFeedItems(
     return new Date(rightTime).getTime() - new Date(leftTime).getTime() ||
       left.feedItemKey.localeCompare(right.feedItemKey);
   });
-  return items;
+  return retainVisibleReshuutAncestry(items, viewerFounderId);
 }
 
 async function viewerReactionFor(postId: number, viewerFounderId?: number | null) {
@@ -787,6 +1044,7 @@ async function viewerReshuutedPost(postId: number, viewerFounderId?: number | nu
     .where(and(
       eq(postReshuutsTable.postId, postId),
       eq(postReshuutsTable.founderId, viewerFounderId),
+      isNull(postReshuutsTable.parentReshuutId),
     ))
     .limit(1);
   return Boolean(reshuut);
@@ -832,7 +1090,7 @@ router.get("/feed", async (req, res): Promise<void> => {
     return new Date(rightTime).getTime() - new Date(leftTime).getTime() ||
       left.feedItemKey.localeCompare(right.feedItemKey);
   });
-  res.json(GetFeedResponse.parse(items));
+  res.json(GetFeedResponse.parse(await retainVisibleReshuutAncestry(items, viewer?.id)));
 });
 
 // Use the database's full microsecond timestamp as the seek key. A JavaScript
@@ -903,7 +1161,13 @@ export function visibleReshuutPageQuery(options: {
     .where(and(
       eq(postReshuutsTable.deletionStatus, "active"),
       inArray(postReshuutsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
-      or(isNull(postReshuutsTable.audioUrl), eq(postReshuutsTable.transcriptionStatus, "ready")),
+      or(
+        isNull(postReshuutsTable.audioUrl),
+        and(
+          eq(postReshuutsTable.transcriptionStatus, "ready"),
+          eq(postReshuutsTable.moderationStatus, "approved"),
+        ),
+      ),
       eq(postsTable.deletionStatus, "active"),
       eq(postsTable.transcriptionStatus, "ready"),
       inArray(postsTable.moderationStatus, ["approved", "unreviewed", "pending", "processing", "failed"]),
@@ -1049,7 +1313,7 @@ router.get("/feed/page", async (req, res): Promise<void> => {
     })];
   });
   res.json(GetFeedPageResponse.parse({
-    posts: pageItems.map((item) => item.reshuut ? {
+    posts: (await retainVisibleReshuutAncestry(pageItems, viewer?.id)).map((item) => item.reshuut ? {
       ...item,
       reshuut: {
         ...item.reshuut,
@@ -1099,15 +1363,22 @@ router.get("/notifications", async (req, res): Promise<void> => {
   const distributablePostIds = new Set((await Promise.all(rows.map(async (row) =>
     await canDistributePost(row.post.id) ? row.post.id : null,
   ))).filter((id): id is number => id !== null));
+  const visibleNotificationIds = new Set((await Promise.all(rows.map(async (row) => {
+    if (row.notification.reshuutId === null) return row.notification.id;
+    const target = await serializeReshuutFeedItem(row.notification.reshuutId, viewer.id);
+    return target ? row.notification.id : null;
+  }))).filter((id): id is number => id !== null));
   res.json(GetNotificationsResponse.parse(rows
      .filter((row) => activeIds.has(row.actor.id) && distributableActorIds.has(row.actor.id) &&
        !blockedActorIds.has(row.actor.id) &&
-       distributablePostIds.has(row.post.id))
+        distributablePostIds.has(row.post.id) &&
+        visibleNotificationIds.has(row.notification.id))
     .map((row) => ({
       id: row.notification.id,
       eventType: row.notification.eventType,
       reactionType: row.notification.reactionType,
       commentId: row.notification.commentId,
+      reshuutId: row.notification.reshuutId,
       createdAt: row.notification.createdAt,
       actor: founderJson(row.actor),
       post: {
@@ -1248,6 +1519,22 @@ router.post("/reports", async (req, res): Promise<void> => {
     contentSnapshot = post.transcript;
     sourceCreatedAt = post.createdAt;
     sourceAudioObjectPath = post.audioUrl;
+  } else if (targetType === "reshuut") {
+    const item = await serializeReshuutFeedItem(targetNumericId, viewer.founder.id);
+    const chain = await distributableReshuutChain(targetNumericId, viewer.founder.id);
+    const target = chain?.rows[0];
+    if (!item || !target) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, target.founderId)).limit(1);
+    if (!author || !(await isFounderActive(author))) {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    contentSnapshot = target.transcript;
+    sourceCreatedAt = target.createdAt;
+    sourceAudioObjectPath = target.audioUrl;
   } else {
     const [comment] = await db.select().from(commentsTable)
       .where(eq(commentsTable.id, targetNumericId)).limit(1);
@@ -1265,6 +1552,11 @@ router.post("/reports", async (req, res): Promise<void> => {
     const [parent] = await db.select({ deletionStatus: postsTable.deletionStatus })
       .from(postsTable).where(eq(postsTable.id, comment.postId)).limit(1);
     if (!parent || parent.deletionStatus !== "active") {
+      res.status(404).json({ error: "Report target not found" });
+      return;
+    }
+    if (comment.reshuutId !== null &&
+        !(await serializeReshuutFeedItem(comment.reshuutId, viewer.founder.id))) {
       res.status(404).json({ error: "Report target not found" });
       return;
     }
@@ -1763,15 +2055,14 @@ router.get("/posts/:postId/image", async (req, res): Promise<void> => {
 });
 
 async function canViewReshuutMedia(reshuut: typeof postReshuutsTable.$inferSelect, viewerId: number) {
-  if (viewerId === reshuut.founderId) return true;
-  if (["removed", "quarantined"].includes(reshuut.moderationStatus) ||
-      (reshuut.audioUrl && reshuut.transcriptionStatus !== "ready")) return false;
+  const chain = await distributableReshuutChain(reshuut.id, viewerId);
+  if (!chain) return false;
+  for (const row of chain.rows) {
+    if (!(await visibleToViewer(viewerId, row.founderId))) return false;
+  }
   const [parent] = await db.select({ authorId: postsTable.authorId }).from(postsTable)
-    .where(eq(postsTable.id, reshuut.postId)).limit(1);
-  return Boolean(parent && await canDistributePost(reshuut.postId) &&
-    await isFounderDistributable(reshuut.founderId) &&
-    await visibleToViewer(viewerId, parent.authorId) &&
-    await visibleToViewer(viewerId, reshuut.founderId));
+    .where(and(eq(postsTable.id, reshuut.postId), eq(postsTable.deletionStatus, "active"))).limit(1);
+  return Boolean(parent && await visibleToViewer(viewerId, parent.authorId));
 }
 
 router.get("/reshuuts/:reshuutId/audio", async (req, res): Promise<void> => {
@@ -1814,6 +2105,237 @@ router.get("/reshuuts/:reshuutId/image", async (req, res): Promise<void> => {
     if (!res.headersSent) res.status(404).json({ error: "Image not found" });
     else res.destroy();
   }
+});
+
+async function notifyReshuutOwner(
+  actorId: number,
+  reshuutId: number,
+  postId: number,
+  recipientId: number,
+  eventType: "reaction" | "reshuut" | "comment",
+  reactionType?: string,
+  commentId?: number,
+) {
+  if (actorId === recipientId) return;
+  await db.transaction(async (tx) => {
+    await lockFounderPair(tx, actorId, recipientId);
+    if (await foundersBlocked(actorId, recipientId)) return;
+    await tx.insert(notificationsTable).values({
+      actorId,
+      recipientId,
+      postId,
+      reshuutId,
+      eventType,
+      reactionType: reactionType ?? null,
+      commentId: commentId ?? null,
+      dedupeKey: `${eventType}:${actorId}:${reshuutId}:${commentId ?? reactionType ?? Date.now()}`,
+    }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
+  });
+}
+
+router.get("/reshuuts/:reshuutId", async (req, res): Promise<void> => {
+  const params = GetReshuutParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const item = await serializeReshuutFeedItem(params.data.reshuutId, viewer?.id);
+  if (!item) {
+    res.status(404).json({ error: "reSHÜÜT not found" });
+    return;
+  }
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json(GetReshuutResponse.parse(item));
+});
+
+router.put("/reshuuts/:reshuutId/reaction", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const params = SetReshuutReactionParams.safeParse(req.params);
+  const body = SetReshuutReactionBody.safeParse(req.body);
+  const viewer = await requireViewer(req, res);
+  if (!viewer) return;
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid reSHÜÜT reaction" });
+    return;
+  }
+  const item = await serializeReshuutFeedItem(params.data.reshuutId, viewer.founder.id);
+  const chain = await distributableReshuutChain(params.data.reshuutId, viewer.founder.id);
+  if (!item || !chain) {
+    res.status(404).json({ error: "reSHÜÜT not found" });
+    return;
+  }
+  const row = chain.rows[0]!;
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from shuut_post_reshuuts where id = ${row.id} for update`);
+    await lockFounderPair(tx, viewer.founder.id, row.founderId);
+    if (await foundersBlocked(viewer.founder.id, row.founderId)) return "blocked" as const;
+    const [current] = await tx.select().from(reshuutReactionsTable).where(and(
+      eq(reshuutReactionsTable.reshuutId, row.id),
+      eq(reshuutReactionsTable.founderId, viewer.founder.id),
+    )).limit(1);
+    const removing = current?.emojiType === body.data.emojiType;
+    const counterColumn = current?.emojiType === "rocket"
+      ? postReshuutsTable.rocket
+      : current?.emojiType === "laughing"
+        ? postReshuutsTable.laughing
+        : current?.emojiType === "thumbsDown"
+          ? postReshuutsTable.thumbsDown
+          : null;
+    if (counterColumn) {
+      await tx.update(postReshuutsTable).set({
+        [current!.emojiType === "rocket" ? "rocket" : current!.emojiType === "laughing" ? "laughing" : "thumbsDown"]:
+          sql`greatest(0, ${counterColumn} - 1)`,
+      }).where(eq(postReshuutsTable.id, row.id));
+    }
+    await tx.delete(reshuutReactionsTable).where(and(
+      eq(reshuutReactionsTable.reshuutId, row.id),
+      eq(reshuutReactionsTable.founderId, viewer.founder.id),
+    ));
+    if (removing) return "removed" as const;
+    const nextColumn = body.data.emojiType === "rocket"
+      ? postReshuutsTable.rocket
+      : body.data.emojiType === "laughing"
+        ? postReshuutsTable.laughing
+        : postReshuutsTable.thumbsDown;
+    const nextKey = body.data.emojiType === "rocket" ? "rocket" : body.data.emojiType === "laughing" ? "laughing" : "thumbsDown";
+    await tx.update(postReshuutsTable).set({
+      [nextKey]: sql`${nextColumn} + 1`,
+    }).where(eq(postReshuutsTable.id, row.id));
+    await tx.insert(reshuutReactionsTable).values({
+      reshuutId: row.id,
+      founderId: viewer.founder.id,
+      emojiType: body.data.emojiType,
+    });
+    return "updated" as const;
+  });
+  if (result === "blocked") {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
+  if (result === "updated") {
+    await notifyReshuutOwner(viewer.founder.id, row.id, row.postId, row.founderId, "reaction", body.data.emojiType);
+  }
+  const updated = await serializeReshuutFeedItem(row.id, viewer.founder.id);
+  if (!updated) {
+    res.status(404).json({ error: "reSHÜÜT not found" });
+    return;
+  }
+  res.json(SetReshuutReactionResponse.parse(updated));
+});
+
+router.get("/reshuuts/:reshuutId/comments", async (req, res): Promise<void> => {
+  const params = GetReshuutCommentsParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const viewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
+  const parentItem = await serializeReshuutFeedItem(params.data.reshuutId, viewer?.id);
+  const chain = await distributableReshuutChain(params.data.reshuutId, viewer?.id);
+  if (!parentItem || !chain) {
+    res.status(404).json({ error: "reSHÜÜT not found" });
+    return;
+  }
+  const rows = await db.select().from(commentsTable).where(and(
+    eq(commentsTable.reshuutId, params.data.reshuutId),
+    eq(commentsTable.transcriptionStatus, "ready"),
+    ne(commentsTable.moderationStatus, "removed"),
+    ne(commentsTable.moderationStatus, "quarantined"),
+  )).orderBy(asc(commentsTable.createdAt));
+  const visibleRows = (await Promise.all(rows.map(async (row) =>
+    row.authorId === viewer?.id || await canDistributeComment(row.id) ? row : null,
+  ))).filter((row): row is CommentRow => Boolean(row));
+  const authors = visibleRows.length
+    ? await activeFounders(await db.select().from(foundersTable)
+      .where(inArray(foundersTable.id, [...new Set(visibleRows.map((row) => row.authorId))])))
+    : [];
+  const byId = new Map(authors.map((author) => [author.id, author]));
+  const comments = (await Promise.all(visibleRows.map(async (row) => {
+    const author = byId.get(row.authorId);
+    return author && (!viewer || await visibleToViewer(viewer.id, author.id))
+      ? commentJson(row, author)
+      : null;
+  }))).filter((comment): comment is NonNullable<typeof comment> => Boolean(comment));
+  res.json(GetReshuutCommentsResponse.parse(comments));
+});
+
+router.post("/reshuuts/:reshuutId/comments", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const userId = getAuthenticatedUserId(req);
+  const params = CreateReshuutCommentParams.safeParse(req.params);
+  const body = CreateReshuutCommentBody.safeParse(req.body);
+  if (!userId || !params.success || !body.success) {
+    res.status(userId ? 400 : 401).json({ error: userId ? "Invalid voice comment" : "Unauthorized" });
+    return;
+  }
+  if (!(await requireCurrentVoiceAiConsent(req, res))) return;
+  const viewer = await currentFounder(userId);
+  if (!viewer) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const parentItem = await serializeReshuutFeedItem(params.data.reshuutId, viewer.id);
+  const chain = await distributableReshuutChain(params.data.reshuutId, viewer.id);
+  if (!parentItem || !chain) {
+    res.status(404).json({ error: "reSHÜÜT not found" });
+    return;
+  }
+  try { await assertCanParticipate(userId); } catch (error) {
+    res.status(403).json({ error: error instanceof Error ? error.message : "Account restricted" });
+    return;
+  }
+  const rootPostId = chain.rows[0]!.postId;
+  const ownerId = chain.rows[0]!.founderId;
+  const created = await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+    await tx.execute(sql`select id from shuut_post_reshuuts where id = ${params.data.reshuutId} for update`);
+    await lockFounderPair(tx, viewer.id, ownerId);
+    const [upload] = await tx.delete(profileImageUploadsTable).where(and(
+      eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+      eq(profileImageUploadsTable.userId, userId),
+    )).returning({ objectPath: profileImageUploadsTable.objectPath });
+    if (!upload) return null;
+    await objectStorage.publishAudio(upload.objectPath, userId);
+    const [comment] = await tx.insert(commentsTable).values({
+      postId: rootPostId,
+      reshuutId: params.data.reshuutId,
+      authorId: viewer.id,
+      audioUrl: upload.objectPath,
+      durationSeconds: body.data.durationSeconds,
+      moderationStatus: "unreviewed",
+      moderationRevision: 1,
+    }).returning();
+    return comment;
+  });
+  if (!created) {
+    res.status(403).json({ error: "This voice recording does not belong to you" });
+    return;
+  }
+  res.status(202).json(CreateReshuutCommentResponse.parse({ id: created.id, status: "processing" }));
+  void transcribeRecording(created.audioUrl, userId)
+    .then(async (result) => {
+      if (result.status === "raw") throw new Error("transcript_cleanup_requires_author_approval");
+      await db.update(commentsTable).set({
+        transcript: result.transcript,
+        transcriptionStatus: "ready",
+        moderationStatus: "unreviewed",
+        moderationRevision: 1,
+      }).where(eq(commentsTable.id, created.id));
+      await enqueueModeration("comment", created.id, result.transcript, 1);
+    })
+    .catch(async (error) => {
+      req.log.error({ err: error, commentId: created.id }, "Background reSHÜÜT comment transcription failed");
+      const scope: CleanupScope = { type: "orphan", id: created.audioUrl };
+      await db.transaction(async (tx) => {
+        await tx.insert(objectCleanupJobsTable).values({
+          objectPath: created.audioUrl,
+          scopeType: scope.type,
+          scopeId: scope.id,
+        }).onConflictDoNothing();
+        await tx.delete(commentsTable).where(eq(commentsTable.id, created.id));
+      });
+    });
 });
 
 router.post("/transcriptions", async (req, res): Promise<void> => {
@@ -1881,6 +2403,172 @@ async function transcribeRecording(audioObjectPath: string, userId: string): Pro
     const transcript = result.text?.trim() ?? "";
     if (!transcript) throw new Error("Transcription was empty");
     return polishTranscript(transcript);
+}
+
+async function queueReshuutObjectCleanup(reshuutId: number, paths: Array<string | null | undefined>) {
+  const uniquePaths = [...new Set(paths.filter((path): path is string => Boolean(path)))];
+  if (!uniquePaths.length) return;
+  await db.transaction(async (tx) => {
+    for (const objectPath of uniquePaths) {
+      await tx.insert(objectCleanupJobsTable).values({
+        objectPath,
+        scopeType: "reshuut",
+        scopeId: String(reshuutId),
+      }).onConflictDoNothing();
+    }
+  });
+}
+
+async function cleanupFailedReshuutVoice(
+  reshuutId: number,
+  audioPath: string,
+  previous?: typeof postReshuutsTable.$inferSelect,
+) {
+  await db.transaction(async (tx) => {
+    const [failed] = await tx.select().from(postReshuutsTable).where(and(
+      eq(postReshuutsTable.id, reshuutId),
+      eq(postReshuutsTable.audioUrl, audioPath),
+      eq(postReshuutsTable.transcriptionStatus, "processing"),
+      eq(postReshuutsTable.deletionStatus, "active"),
+    )).for("update").limit(1);
+    if (!failed) return;
+
+    if (previous) {
+      for (const objectPath of [failed.audioUrl, failed.imageUrl]) {
+        if (objectPath && objectPath !== previous.audioUrl && objectPath !== previous.imageUrl) {
+          await tx.insert(objectCleanupJobsTable).values({
+            objectPath,
+            scopeType: "reshuut",
+            scopeId: String(reshuutId),
+          }).onConflictDoNothing();
+        }
+      }
+      await tx.update(postReshuutsTable).set({
+        transcript: previous.transcript,
+        transcriptionStatus: previous.transcriptionStatus,
+        audioUrl: previous.audioUrl,
+        imageUrl: previous.imageUrl,
+        durationSeconds: previous.durationSeconds,
+        moderationStatus: previous.moderationStatus,
+        moderationRevision: previous.moderationRevision,
+        deletionStatus: previous.deletionStatus,
+      }).where(eq(postReshuutsTable.id, reshuutId));
+      return;
+    }
+
+    const rows = [failed];
+    let frontier = [failed.id];
+    while (frontier.length) {
+      const children = await tx.select().from(postReshuutsTable).where(inArray(
+        postReshuutsTable.parentReshuutId,
+        frontier,
+      )).orderBy(asc(postReshuutsTable.id)).for("update");
+      const knownIds = new Set(rows.map((row) => row.id));
+      const freshChildren = children.filter((row) => !knownIds.has(row.id));
+      rows.push(...freshChildren);
+      frontier = freshChildren.map((row) => row.id);
+    }
+
+    const reshuutIds = rows.map((row) => row.id);
+    const shareComments = await tx.select({
+      id: commentsTable.id,
+      audioUrl: commentsTable.audioUrl,
+    }).from(commentsTable).where(inArray(commentsTable.reshuutId, reshuutIds));
+    const paths = [
+      ...rows.flatMap((row) => [row.audioUrl, row.imageUrl]),
+      ...shareComments.map((comment) => comment.audioUrl),
+    ].filter((path): path is string => Boolean(path));
+    for (const objectPath of paths) {
+      await tx.insert(objectCleanupJobsTable).values({
+        objectPath,
+        scopeType: "reshuut",
+        scopeId: String(reshuutId),
+      }).onConflictDoNothing();
+    }
+    const commentIds = shareComments.map((comment) => comment.id);
+    await tx.delete(notificationsTable).where(inArray(notificationsTable.reshuutId, reshuutIds));
+    await tx.delete(moderationJobsTable).where(and(
+      eq(moderationJobsTable.targetType, "reshuut"),
+      inArray(moderationJobsTable.targetId, reshuutIds),
+    ));
+    await tx.delete(moderationSubjectsTable).where(and(
+      eq(moderationSubjectsTable.targetType, "reshuut"),
+      inArray(moderationSubjectsTable.targetId, reshuutIds),
+    ));
+    if (commentIds.length) {
+      await tx.delete(notificationsTable).where(inArray(notificationsTable.commentId, commentIds));
+      await tx.delete(moderationJobsTable).where(and(
+        eq(moderationJobsTable.targetType, "comment"),
+        inArray(moderationJobsTable.targetId, commentIds),
+      ));
+      await tx.delete(moderationSubjectsTable).where(and(
+        eq(moderationSubjectsTable.targetType, "comment"),
+        inArray(moderationSubjectsTable.targetId, commentIds),
+      ));
+      await tx.delete(commentsTable).where(inArray(commentsTable.id, commentIds));
+    }
+    await tx.delete(postReshuutsTable).where(inArray(postReshuutsTable.id, reshuutIds));
+  });
+}
+
+function startReshuutTranscription(
+  row: typeof postReshuutsTable.$inferSelect,
+  userId: string,
+  req: Request,
+  previous?: typeof postReshuutsTable.$inferSelect,
+) {
+  if (!row.audioUrl) return;
+  const audioPath = row.audioUrl;
+  void (async () => {
+    let transcript: string;
+    try {
+      const result = await transcribeRecording(audioPath, userId);
+      if (result.status === "raw") throw new Error("transcript_cleanup_requires_author_approval");
+      transcript = result.transcript;
+    } catch (error) {
+      req.log.warn({ err: error, reshuutId: row.id }, "reSHÜÜT transcription failed; cleaning up failed processing");
+      try {
+        await cleanupFailedReshuutVoice(row.id, audioPath, previous);
+      } catch (cleanupError) {
+        req.log.error({ err: cleanupError, reshuutId: row.id }, "Could not clean up failed reSHÜÜT voice");
+      }
+      return;
+    }
+
+    const [ready] = await db.update(postReshuutsTable).set({
+      transcript,
+      transcriptionStatus: "ready",
+      moderationStatus: "unreviewed",
+    }).where(and(
+      eq(postReshuutsTable.id, row.id),
+      eq(postReshuutsTable.audioUrl, audioPath),
+      eq(postReshuutsTable.transcriptionStatus, "processing"),
+      eq(postReshuutsTable.deletionStatus, "active"),
+    )).returning({ id: postReshuutsTable.id, moderationRevision: postReshuutsTable.moderationRevision });
+    if (!ready) return;
+    if (previous) {
+      try {
+        await queueReshuutObjectCleanup(row.id, [
+          previous.audioUrl !== audioPath ? previous.audioUrl : null,
+          previous.imageUrl !== row.imageUrl ? previous.imageUrl : null,
+        ]);
+      } catch (error) {
+        req.log.error({ err: error, reshuutId: row.id }, "Could not queue replaced reSHÜÜT media cleanup");
+      }
+    }
+    try {
+      await enqueueModeration("reshuut", ready.id, transcript, ready.moderationRevision);
+    } catch (error) {
+      req.log.error({ err: error, reshuutId: row.id }, "Could not enqueue reSHÜÜT moderation; bounded backfill will retry");
+    }
+  })().catch(async (error) => {
+    req.log.error({ err: error, reshuutId: row.id }, "Unexpected reSHÜÜT transcription worker failure");
+    try {
+      await cleanupFailedReshuutVoice(row.id, audioPath, previous);
+    } catch (cleanupError) {
+      req.log.error({ err: cleanupError, reshuutId: row.id }, "Could not clean up failed reSHÜÜT voice");
+    }
+  });
 }
 
 router.get("/storage/objects/*path", async (req, res): Promise<void> => {
@@ -2143,6 +2831,7 @@ router.get("/posts/:postId/comments", async (req, res): Promise<void> => {
   const rows = await db.select().from(commentsTable)
     .where(and(
       eq(commentsTable.postId, params.data.postId),
+      isNull(commentsTable.reshuutId),
       eq(commentsTable.transcriptionStatus, "ready"),
       ne(commentsTable.moderationStatus, "removed"),
       ne(commentsTable.moderationStatus, "quarantined"),
@@ -2345,6 +3034,11 @@ router.get("/comments/:commentId/audio", async (req, res): Promise<void> => {
   }
   const commentAudioViewer = await currentFounder(getAuthenticatedUserId(req) ?? "");
   const ownerCommentAudio = commentAudioViewer?.id === comment.authorId;
+  if (comment.reshuutId !== null &&
+      !(await serializeReshuutFeedItem(comment.reshuutId, commentAudioViewer?.id))) {
+    res.status(404).json({ error: "Audio not found" });
+    return;
+  }
   if (!ownerCommentAudio && !(await canDistributeComment(comment.id))) {
     res.status(404).json({ error: "Audio not found" });
     return;
@@ -2671,6 +3365,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
         actorId: viewer.id,
         recipientId: post.authorId,
         postId: post.id,
+        reshuutId,
         eventType: "reshuut",
         dedupeKey: `reshuut:${reshuutId}`,
       }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
@@ -2678,17 +3373,66 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     const [existing] = await tx.select().from(postReshuutsTable).where(and(
       eq(postReshuutsTable.postId, post.id),
       eq(postReshuutsTable.founderId, viewer.id),
+      isNull(postReshuutsTable.parentReshuutId),
     )).limit(1);
     const hasContent = body.audioObjectPath !== undefined || body.imageObjectPath !== undefined;
     if (existing && !hasContent) {
-      for (const objectPath of [existing.audioUrl, existing.imageUrl].filter((path): path is string => Boolean(path))) {
+      const descendants = await tx.select({
+        id: postReshuutsTable.id,
+        parentReshuutId: postReshuutsTable.parentReshuutId,
+        audioUrl: postReshuutsTable.audioUrl,
+        imageUrl: postReshuutsTable.imageUrl,
+      }).from(postReshuutsTable);
+      const removalIds = new Set([existing.id]);
+      let expandedDescendants = true;
+      while (expandedDescendants) {
+        expandedDescendants = false;
+        for (const row of descendants) {
+          if (row.parentReshuutId !== null && removalIds.has(row.parentReshuutId) && !removalIds.has(row.id)) {
+            removalIds.add(row.id);
+            expandedDescendants = true;
+          }
+        }
+      }
+      const ids = [...removalIds];
+      const shareComments = await tx.select({
+        id: commentsTable.id,
+        audioUrl: commentsTable.audioUrl,
+      }).from(commentsTable).where(inArray(commentsTable.reshuutId, ids));
+      const objects = [
+        ...descendants.filter((row) => removalIds.has(row.id)).flatMap((row) => [row.audioUrl, row.imageUrl]),
+        ...shareComments.map((comment) => comment.audioUrl),
+      ].filter((path): path is string => Boolean(path));
+      for (const objectPath of objects) {
         await tx.insert(objectCleanupJobsTable).values({
           objectPath,
           scopeType: "reshuut",
           scopeId: String(existing.id),
         }).onConflictDoNothing();
       }
-      await tx.delete(postReshuutsTable).where(eq(postReshuutsTable.id, existing.id));
+      await tx.delete(moderationJobsTable).where(and(
+        eq(moderationJobsTable.targetType, "reshuut"),
+        inArray(moderationJobsTable.targetId, ids),
+      ));
+      await tx.delete(moderationSubjectsTable).where(and(
+        eq(moderationSubjectsTable.targetType, "reshuut"),
+        inArray(moderationSubjectsTable.targetId, ids),
+      ));
+      if (shareComments.length) {
+        const commentIds = shareComments.map((comment) => comment.id);
+        await tx.delete(notificationsTable).where(inArray(notificationsTable.commentId, commentIds));
+        await tx.delete(moderationJobsTable).where(and(
+          eq(moderationJobsTable.targetType, "comment"),
+          inArray(moderationJobsTable.targetId, commentIds),
+        ));
+        await tx.delete(moderationSubjectsTable).where(and(
+          eq(moderationSubjectsTable.targetType, "comment"),
+          inArray(moderationSubjectsTable.targetId, commentIds),
+        ));
+        await tx.delete(commentsTable).where(inArray(commentsTable.id, commentIds));
+      }
+      await tx.delete(notificationsTable).where(inArray(notificationsTable.reshuutId, ids));
+      await tx.delete(postReshuutsTable).where(inArray(postReshuutsTable.id, ids));
       return { status: "updated" as const, updated: post, isReshuuted: false };
     }
     if (hasContent) {
@@ -2713,7 +3457,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
         imagePath = claimed.objectPath;
       }
       for (const objectPath of [existing?.audioUrl, existing?.imageUrl].filter((path): path is string => Boolean(path))) {
-        if (objectPath !== audioPath && objectPath !== imagePath) {
+        if (objectPath !== audioPath && objectPath !== imagePath && !(audioPath && existing)) {
           await tx.insert(objectCleanupJobsTable).values({
             objectPath,
             scopeType: "reshuut",
@@ -2737,7 +3481,13 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
         ? await tx.update(postReshuutsTable).set(values).where(eq(postReshuutsTable.id, existing.id)).returning()
         : await tx.insert(postReshuutsTable).values(values).returning();
       if (!existing) await notifyPublisher(reshuut.id);
-      return { status: "updated" as const, updated: post, isReshuuted: true, reshuut };
+      return {
+        status: "updated" as const,
+        updated: post,
+        isReshuuted: true,
+        reshuut,
+        previousReshuut: audioPath ? existing ?? null : null,
+      };
     }
     const [reshuut] = await tx.insert(postReshuutsTable)
       .values({ postId: post.id, founderId: viewer.id }).returning({ id: postReshuutsTable.id });
@@ -2770,6 +3520,7 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     return;
   }
   const reshuutContent = "reshuut" in result ? result.reshuut : null;
+  const previousReshuut = "previousReshuut" in result ? result.previousReshuut ?? undefined : undefined;
   const [author] = await db.select().from(foundersTable).where(eq(foundersTable.id, updated.authorId));
   res.json(ReshuutPostResponse.parse(postJson(
     updated,
@@ -2780,26 +3531,294 @@ router.post("/posts/:postId/reshuut", async (req, res): Promise<void> => {
     reshuutContent ? reshuutJson(reshuutContent, viewer) : null,
   )));
   if (reshuutContent?.audioUrl) {
-    void transcribeRecording(reshuutContent.audioUrl, userId!)
-      .then(async (result) => {
-        if (result.status === "raw") throw new Error("transcript_cleanup_requires_author_approval");
-        await db.update(postReshuutsTable).set({
-          transcript: result.transcript,
-          transcriptionStatus: "ready",
-          moderationStatus: "unreviewed",
-        }).where(eq(postReshuutsTable.id, reshuutContent.id));
-      })
-      .catch(async () => {
-        try {
-          await db.update(postReshuutsTable).set({
-            transcriptionStatus: "failed",
-            moderationStatus: "failed",
-          }).where(eq(postReshuutsTable.id, reshuutContent.id));
-        } catch (error) {
-          req.log.warn({ err: error, reshuutId: reshuutContent.id }, "Could not persist failed reSHÜÜT transcription state");
-        }
-      });
+    startReshuutTranscription(reshuutContent, userId!, req, previousReshuut);
   }
+});
+
+router.post("/reshuuts/:reshuutId/reshuut", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const params = ReshuutReshuutParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (req.body && typeof req.body === "object" && Object.prototype.hasOwnProperty.call(req.body, "text")) {
+    res.status(400).json({ error: "Written reSHÜÜT commentary is not supported" });
+    return;
+  }
+  const body = ReshuutReshuutBody.safeParse(req.body ?? {});
+  if (!body.success ||
+      (body.data.audioObjectPath && !body.data.durationSeconds) ||
+      (body.data.imageObjectPath && !body.data.audioObjectPath)) {
+    res.status(400).json({ error: "A reSHÜÜT photo requires a voice note and audio duration" });
+    return;
+  }
+  if (body.data.audioObjectPath && !(await requireCurrentVoiceAiConsent(req, res))) return;
+  const userId = getAuthenticatedUserId(req);
+  const viewer = await requireViewer(req, res);
+  if (!userId || !viewer) return;
+  const parentItem = await serializeReshuutFeedItem(params.data.reshuutId, viewer.founder.id);
+  const chain = await distributableReshuutChain(params.data.reshuutId, viewer.founder.id);
+  if (!parentItem || !chain) {
+    res.status(404).json({ error: "Parent reSHÜÜT not found" });
+    return;
+  }
+  const parent = chain.rows[0]!;
+  let status: "created" | "removed" | "blocked" | "upload_missing" | "account_deleting" | "depth_limit" = "created";
+  let created: typeof postReshuutsTable.$inferSelect | undefined;
+  const publishedPaths: string[] = [];
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from shuut_users where id = ${userId} for update`);
+      const [activeUser] = await tx.select({ deletionStatus: usersTable.deletionStatus })
+        .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (activeUser?.deletionStatus !== "active") {
+        status = "account_deleting";
+        return;
+      }
+
+      await tx.execute(sql`select id from shuut_posts where id = ${parent.postId} for update`);
+      const [post] = await tx.select().from(postsTable).where(and(
+        eq(postsTable.id, parent.postId),
+        eq(postsTable.deletionStatus, "active"),
+      )).limit(1);
+      if (!post) {
+        status = "account_deleting";
+        return;
+      }
+      const chainIds = [...new Set(chain.rows.map((row) => row.id))].sort((left, right) => left - right);
+      const lockedChainRows = await tx.select({ id: postReshuutsTable.id })
+        .from(postReshuutsTable)
+        .where(inArray(postReshuutsTable.id, chainIds))
+        .orderBy(asc(postReshuutsTable.id))
+        .for("update");
+      if (lockedChainRows.length !== chainIds.length) {
+        status = "account_deleting";
+        return;
+      }
+      const freshChain = await distributableReshuutChain(parent.id, viewer.founder.id);
+      if (!freshChain || freshChain.rows.length !== chainIds.length ||
+          freshChain.rows.some((row) => !chainIds.includes(row.id))) {
+        status = "account_deleting";
+        return;
+      }
+
+      for (const ancestor of freshChain.rows) {
+        await lockFounderPair(tx, viewer.founder.id, ancestor.founderId);
+        if (await foundersBlocked(viewer.founder.id, ancestor.founderId)) {
+          status = "blocked";
+          return;
+        }
+      }
+      await lockFounderPair(tx, viewer.founder.id, post.authorId);
+      if (await foundersBlocked(viewer.founder.id, post.authorId)) {
+        status = "blocked";
+        return;
+      }
+
+      const [existingChild] = await tx.select().from(postReshuutsTable).where(and(
+        eq(postReshuutsTable.parentReshuutId, parent.id),
+        eq(postReshuutsTable.founderId, viewer.founder.id),
+        eq(postReshuutsTable.deletionStatus, "active"),
+      )).for("update").limit(1);
+      if (existingChild) {
+        const removalRows = [existingChild];
+        let frontier = [existingChild.id];
+        while (frontier.length) {
+          const children = await tx.select().from(postReshuutsTable).where(inArray(
+            postReshuutsTable.parentReshuutId,
+            frontier,
+          )).orderBy(asc(postReshuutsTable.id)).for("update");
+          const knownIds = new Set(removalRows.map((row) => row.id));
+          const freshChildren = children.filter((row) => !knownIds.has(row.id));
+          removalRows.push(...freshChildren);
+          frontier = freshChildren.map((row) => row.id);
+        }
+        const removalIds = removalRows.map((row) => row.id);
+        const shareComments = await tx.select({
+          id: commentsTable.id,
+          audioUrl: commentsTable.audioUrl,
+        }).from(commentsTable).where(inArray(commentsTable.reshuutId, removalIds));
+        const cleanupPaths = [
+          ...removalRows.flatMap((row) => [row.audioUrl, row.imageUrl]),
+          ...shareComments.map((comment) => comment.audioUrl),
+        ].filter((path): path is string => Boolean(path));
+        for (const objectPath of cleanupPaths) {
+          await tx.insert(objectCleanupJobsTable).values({
+            objectPath,
+            scopeType: "reshuut",
+            scopeId: String(existingChild.id),
+          }).onConflictDoNothing();
+        }
+        const commentIds = shareComments.map((comment) => comment.id);
+        await tx.delete(moderationJobsTable).where(and(
+          eq(moderationJobsTable.targetType, "reshuut"),
+          inArray(moderationJobsTable.targetId, removalIds),
+        ));
+        await tx.delete(moderationSubjectsTable).where(and(
+          eq(moderationSubjectsTable.targetType, "reshuut"),
+          inArray(moderationSubjectsTable.targetId, removalIds),
+        ));
+        if (commentIds.length) {
+          await tx.delete(notificationsTable).where(inArray(notificationsTable.commentId, commentIds));
+          await tx.delete(moderationJobsTable).where(and(
+            eq(moderationJobsTable.targetType, "comment"),
+            inArray(moderationJobsTable.targetId, commentIds),
+          ));
+          await tx.delete(moderationSubjectsTable).where(and(
+            eq(moderationSubjectsTable.targetType, "comment"),
+            inArray(moderationSubjectsTable.targetId, commentIds),
+          ));
+          await tx.delete(commentsTable).where(inArray(commentsTable.id, commentIds));
+        }
+        await tx.delete(notificationsTable).where(inArray(notificationsTable.reshuutId, removalIds));
+        await tx.delete(postReshuutsTable).where(inArray(postReshuutsTable.id, removalIds));
+        status = "removed";
+        return;
+      }
+      if (freshChain.rows.length >= MAX_RESHUUT_ANCESTRY) {
+        status = "depth_limit";
+        return;
+      }
+
+      let audioPath: string | null = null;
+      let imagePath: string | null = null;
+      let claimedAudioPath: string | null = null;
+      let claimedImagePath: string | null = null;
+      if (body.data.audioObjectPath) {
+        const [claimed] = await tx.delete(profileImageUploadsTable).where(and(
+          eq(profileImageUploadsTable.objectPath, body.data.audioObjectPath),
+          eq(profileImageUploadsTable.userId, userId),
+        )).returning({ objectPath: profileImageUploadsTable.objectPath });
+        if (!claimed) throw new UploadOwnershipError("reSHÜÜT audio upload is not owned by this account");
+        claimedAudioPath = claimed.objectPath;
+      }
+      if (body.data.imageObjectPath) {
+        const [claimed] = await tx.delete(profileImageUploadsTable).where(and(
+          eq(profileImageUploadsTable.objectPath, body.data.imageObjectPath),
+          eq(profileImageUploadsTable.userId, userId),
+        )).returning({ objectPath: profileImageUploadsTable.objectPath });
+        if (!claimed) throw new UploadOwnershipError("reSHÜÜT image upload is not owned by this account");
+        claimedImagePath = claimed.objectPath;
+      }
+      if (claimedAudioPath) {
+        await objectStorage.publishAudio(claimedAudioPath, userId);
+        audioPath = claimedAudioPath;
+        publishedPaths.push(claimedAudioPath);
+      }
+      if (claimedImagePath) {
+        await objectStorage.publishImage(claimedImagePath, userId);
+        imagePath = claimedImagePath;
+        publishedPaths.push(claimedImagePath);
+      }
+      [created] = await tx.insert(postReshuutsTable).values({
+        postId: parent.postId,
+        parentReshuutId: parent.id,
+        founderId: viewer.founder.id,
+        transcript: null,
+        transcriptionStatus: audioPath ? "processing" : "none",
+        audioUrl: audioPath,
+        imageUrl: imagePath,
+        durationSeconds: body.data.durationSeconds ?? null,
+        moderationStatus: audioPath ? "unreviewed" : "approved",
+        moderationRevision: 1,
+        deletionStatus: "active",
+      }).returning();
+      if (viewer.founder.id !== parent.founderId && !(await foundersBlocked(viewer.founder.id, parent.founderId))) {
+        await tx.insert(notificationsTable).values({
+          actorId: viewer.founder.id,
+          recipientId: parent.founderId,
+          postId: parent.postId,
+          reshuutId: parent.id,
+          eventType: "reshuut",
+          dedupeKey: `reshuut:${created.id}`,
+        }).onConflictDoNothing({ target: notificationsTable.dedupeKey });
+      }
+    });
+  } catch (error) {
+    if (error instanceof UploadOwnershipError) {
+      status = "upload_missing";
+    } else {
+      for (const objectPath of publishedPaths) {
+        const orphanScope: CleanupScope = { type: "orphan", id: objectPath };
+        await db.insert(objectCleanupJobsTable).values({
+          objectPath,
+          scopeType: orphanScope.type,
+          scopeId: orphanScope.id,
+        }).onConflictDoNothing();
+        await processCleanupScope(orphanScope, req.log);
+      }
+      throw error;
+    }
+  }
+  if ((status as string) === "account_deleting") {
+    res.status(409).json({ error: "The parent reSHÜÜT or account is being deleted" });
+    return;
+  }
+  if ((status as string) === "blocked") {
+    res.status(403).json({ error: "Blocked relationship", code: "BLOCKED_RELATIONSHIP" });
+    return;
+  }
+  if ((status as string) === "upload_missing") {
+    res.status(403).json({ error: "One or more uploads do not belong to you" });
+    return;
+  }
+  if ((status as string) === "depth_limit") {
+    res.status(409).json({ error: `reSHÜÜT ancestry is limited to ${MAX_RESHUUT_ANCESTRY} levels` });
+    return;
+  }
+  if ((status as string) === "removed") {
+    const currentParent = await serializeReshuutFeedItem(parent.id, viewer.founder.id);
+    if (!currentParent) {
+      res.status(404).json({ error: "Parent reSHÜÜT not found" });
+      return;
+    }
+    res.status(200).json(ReshuutReshuutResponse.parse(currentParent));
+    return;
+  }
+  if (!created) {
+    res.status(500).json({ error: "Could not create reSHÜÜT" });
+    return;
+  }
+  if (created.audioUrl) startReshuutTranscription(created, userId, req);
+  let item = await serializeReshuutFeedItem(created.id, viewer.founder.id);
+  if (!item && created.audioUrl) {
+    const [liveCreated] = await db.select().from(postReshuutsTable).where(and(
+      eq(postReshuutsTable.id, created.id),
+      eq(postReshuutsTable.deletionStatus, "active"),
+    )).limit(1);
+    const liveParent = await serializeReshuutFeedItem(parent.id, viewer.founder.id);
+    if (liveCreated && liveParent && await isFounderDistributable(viewer.founder.id)) {
+      item = ownerProcessingReshuutFeedItem(liveCreated, viewer.founder, liveParent);
+    }
+  }
+  if (!item) {
+    res.status(404).json({ error: "Created reSHÜÜT is not currently visible" });
+    return;
+  }
+  res.status(201).json(ReshuutReshuutResponse.parse(item));
+});
+
+router.post("/reshuuts/:reshuutId/share-link", async (req, res): Promise<void> => {
+  if (!(await requireCurrentLegalPolicyConsent(req, res))) return;
+  const requiredViewer = await requireViewer(req, res);
+  if (!requiredViewer) return;
+  const params = CreateReshuutShareLinkParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const item = await serializeReshuutFeedItem(params.data.reshuutId, requiredViewer.founder.id);
+  if (!item) {
+    res.status(404).json({ error: "reSHÜÜT not found" });
+    return;
+  }
+  const token = createReshuutShareToken(params.data.reshuutId);
+  const query = `?t=${encodeURIComponent(token)}`;
+  res.json(CreateReshuutShareLinkResponse.parse({
+    url: `https://shuut.me/r/${params.data.reshuutId}${query}`,
+    deepLink: `shuut-native://reshuut/${params.data.reshuutId}${query}`,
+  }));
 });
 
 router.put("/profiles/:handle/follow", async (req, res): Promise<void> => {
@@ -2960,6 +3979,32 @@ router.delete("/account", async (req, res): Promise<void> => {
         .from(postsTable)
         .where(eq(postsTable.authorId, founder.id))
       : [];
+    const allReshuuts = founder
+      ? await tx
+        .select({
+          id: postReshuutsTable.id,
+          parentReshuutId: postReshuutsTable.parentReshuutId,
+          founderId: postReshuutsTable.founderId,
+          postId: postReshuutsTable.postId,
+          audioUrl: postReshuutsTable.audioUrl,
+          imageUrl: postReshuutsTable.imageUrl,
+        })
+        .from(postReshuutsTable)
+      : [];
+    const reshuutIds = new Set(allReshuuts.filter((row) =>
+      row.founderId === founder?.id || posts.some((post) => post.id === row.postId),
+    ).map((row) => row.id));
+    let foundDescendant = true;
+    while (foundDescendant) {
+      foundDescendant = false;
+      for (const row of allReshuuts) {
+        if (row.parentReshuutId !== null && reshuutIds.has(row.parentReshuutId) && !reshuutIds.has(row.id)) {
+          reshuutIds.add(row.id);
+          foundDescendant = true;
+        }
+      }
+    }
+    const reshuutMedia = allReshuuts.filter((row) => reshuutIds.has(row.id));
     const commentRecordings = founder
       ? await tx
         .select({ objectPath: commentsTable.audioUrl })
@@ -2967,18 +4012,7 @@ router.delete("/account", async (req, res): Promise<void> => {
         .where(or(
           eq(commentsTable.authorId, founder.id),
           ...(posts.length ? [inArray(commentsTable.postId, posts.map((post) => post.id))] : []),
-        ))
-      : [];
-    const reshuutMedia = founder
-      ? await tx
-        .select({
-          audioUrl: postReshuutsTable.audioUrl,
-          imageUrl: postReshuutsTable.imageUrl,
-        })
-        .from(postReshuutsTable)
-        .where(or(
-          eq(postReshuutsTable.founderId, founder.id),
-          ...(posts.length ? [inArray(postReshuutsTable.postId, posts.map((post) => post.id))] : []),
+          ...(reshuutIds.size ? [inArray(commentsTable.reshuutId, [...reshuutIds])] : []),
         ))
       : [];
     const pendingUploads = await tx

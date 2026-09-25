@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -7,6 +8,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const foundersTable = pgTable("shuut_founders", {
@@ -95,6 +97,8 @@ export const postReshuutsTable = pgTable(
     postId: integer("post_id")
       .notNull()
       .references(() => postsTable.id, { onDelete: "cascade" }),
+    parentReshuutId: integer("parent_reshuut_id")
+      .references((): AnyPgColumn => postReshuutsTable.id, { onDelete: "cascade" }),
     founderId: integer("founder_id")
       .notNull()
       .references(() => foundersTable.id, { onDelete: "cascade" }),
@@ -103,15 +107,37 @@ export const postReshuutsTable = pgTable(
     audioUrl: text("audio_url"),
     imageUrl: text("image_url"),
     durationSeconds: integer("duration_seconds"),
+    rocket: integer("rocket").notNull().default(0),
+    laughing: integer("laughing").notNull().default(0),
+    thumbsDown: integer("thumbs_down").notNull().default(0),
     moderationStatus: text("moderation_status").notNull().default("approved"),
     moderationRevision: integer("moderation_revision").notNull().default(1),
     deletionStatus: text("deletion_status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("shuut_post_reshuuts_post_founder_idx").on(table.postId, table.founderId),
+    uniqueIndex("shuut_post_reshuuts_post_founder_idx").on(table.postId, table.founderId)
+      .where(sql`${table.parentReshuutId} is null`),
+    uniqueIndex("shuut_post_reshuuts_parent_founder_idx").on(table.parentReshuutId, table.founderId)
+      .where(sql`${table.parentReshuutId} is not null`),
     index("shuut_post_reshuuts_founder_idx").on(table.founderId),
+    index("shuut_post_reshuuts_parent_idx").on(table.parentReshuutId),
     index("shuut_post_reshuuts_feed_created_id_idx").on(table.createdAt, table.id),
+  ],
+);
+
+export const reshuutReactionsTable = pgTable(
+  "shuut_reshuut_reactions",
+  {
+    id: serial("id").primaryKey(),
+    reshuutId: integer("reshuut_id").notNull().references(() => postReshuutsTable.id, { onDelete: "cascade" }),
+    founderId: integer("founder_id").notNull().references(() => foundersTable.id, { onDelete: "cascade" }),
+    emojiType: text("emoji_type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("shuut_reshuut_reactions_reshuut_founder_idx").on(table.reshuutId, table.founderId),
+    index("shuut_reshuut_reactions_founder_idx").on(table.founderId),
   ],
 );
 
@@ -122,6 +148,7 @@ export const commentsTable = pgTable(
     postId: integer("post_id")
       .notNull()
       .references(() => postsTable.id, { onDelete: "cascade" }),
+    reshuutId: integer("reshuut_id"),
     authorId: integer("author_id")
       .notNull()
       .references(() => foundersTable.id, { onDelete: "cascade" }),
@@ -138,6 +165,7 @@ export const commentsTable = pgTable(
   },
   (table) => [
     index("shuut_comments_post_created_idx").on(table.postId, table.createdAt),
+    index("shuut_comments_reshuut_created_idx").on(table.reshuutId, table.createdAt),
     index("shuut_comments_author_idx").on(table.authorId),
   ],
 );
@@ -166,6 +194,7 @@ export const notificationsTable = pgTable(
     eventType: text("event_type").notNull(),
     reactionType: text("reaction_type"),
     commentId: integer("comment_id").references(() => commentsTable.id, { onDelete: "cascade" }),
+    reshuutId: integer("reshuut_id"),
     dedupeKey: text("dedupe_key").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

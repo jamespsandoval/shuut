@@ -11,6 +11,7 @@ import {
   accountReportsTable,
   accountSanctionsTable,
   postsTable,
+  postReshuutsTable,
   commentsTable,
   foundersTable,
   objectCleanupJobsTable,
@@ -43,7 +44,7 @@ import {
   ListEligibleModerationAppealsResponse,
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/sessionAuth";
-import { emitApprovalNotifications } from "../lib/moderation";
+import { emitApprovalNotifications, emitReshuutCommentNotification } from "../lib/moderation";
 
 const router: IRouter = Router();
 const SLA_HOURS = 24;
@@ -71,7 +72,7 @@ function caseJson(row: typeof moderationCasesTable.$inferSelect) {
   const ageHours = Math.max(0, (Date.now() - row.createdAt.getTime()) / 3_600_000);
   return {
     id: row.id,
-    targetType: row.targetType as "post" | "comment" | "profile",
+    targetType: row.targetType as "post" | "reshuut" | "comment" | "profile",
     targetId: row.targetId,
     status: row.status as "open" | "in_review" | "escalated" | "resolved" | "appealed",
     priority: row.priority as "normal" | "high",
@@ -99,6 +100,12 @@ async function caseOwner(caseRow: typeof moderationCasesTable.$inferSelect) {
   if (caseRow.targetType === "profile") {
     const [row] = await db.select({ userId: foundersTable.userId, founderId: foundersTable.id })
       .from(foundersTable).where(eq(foundersTable.id, caseRow.targetId)).limit(1);
+    return row ?? null;
+  }
+  if (caseRow.targetType === "reshuut") {
+    const [row] = await db.select({ userId: foundersTable.userId, founderId: foundersTable.id })
+      .from(postReshuutsTable).innerJoin(foundersTable, eq(foundersTable.id, postReshuutsTable.founderId))
+      .where(eq(postReshuutsTable.id, caseRow.targetId)).limit(1);
     return row ?? null;
   }
   const [row] = await db.select({ userId: foundersTable.userId, founderId: foundersTable.id })
@@ -146,6 +153,11 @@ async function caseIsAppealable(row: typeof moderationCasesTable.$inferSelect, u
     const [post] = await db.select({ moderationStatus: postsTable.moderationStatus })
       .from(postsTable).where(eq(postsTable.id, row.targetId)).limit(1);
     return post?.moderationStatus === "quarantined" || post?.moderationStatus === "removed";
+  }
+  if (row.targetType === "reshuut") {
+    const [reshuut] = await db.select({ moderationStatus: postReshuutsTable.moderationStatus })
+      .from(postReshuutsTable).where(eq(postReshuutsTable.id, row.targetId)).limit(1);
+    return reshuut?.moderationStatus === "quarantined" || reshuut?.moderationStatus === "removed";
   }
   if (row.targetType === "profile") return Boolean(sanction);
   const [comment] = await db.select({ moderationStatus: commentsTable.moderationStatus })
@@ -290,6 +302,19 @@ router.post("/moderation/cases/:caseId/decision", async (req, res): Promise<void
     } else if (current.targetType === "profile") {
       // Profile reports are account-level cases. They do not have a voice
       // subject to mutate; resolve/escalate/dismiss only updates the case.
+    } else if (current.targetType === "reshuut") {
+      if (decision === "remove") {
+        await tx.update(postReshuutsTable).set({ moderationStatus: "removed" })
+          .where(eq(postReshuutsTable.id, current.targetId));
+        await tx.update(moderationCasesTable).set({ appealDeadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60_000) })
+          .where(eq(moderationCasesTable.id, current.id));
+      } else if (decision === "approve" || decision === "dismiss") {
+        await tx.update(postReshuutsTable).set({ moderationStatus: "approved" })
+          .where(eq(postReshuutsTable.id, current.targetId));
+      } else if (decision === "quarantine") {
+        await tx.update(postReshuutsTable).set({ moderationStatus: "quarantined" })
+          .where(eq(postReshuutsTable.id, current.targetId));
+      }
     } else if (decision === "remove") {
       await tx.update(commentsTable).set({ moderationStatus: "removed" }).where(eq(commentsTable.id, current.targetId));
       await tx.update(moderationCasesTable).set({ appealDeadlineAt: new Date(Date.now() + 30 * 24 * 60 * 60_000) })
@@ -309,9 +334,13 @@ router.post("/moderation/cases/:caseId/decision", async (req, res): Promise<void
   if (updated.kind === "conflict") { res.status(409).json({ error: "Case changed; reload before deciding" }); return; }
   if (updated.notify) {
     if (updated.row.targetType === "post") await emitApprovalNotifications(updated.row.targetId);
-    else {
-      const [comment] = await db.select({ postId: commentsTable.postId }).from(commentsTable).where(eq(commentsTable.id, updated.row.targetId)).limit(1);
-      if (comment) await emitApprovalNotifications(comment.postId);
+    else if (updated.row.targetType === "comment") {
+      const [comment] = await db.select({
+        postId: commentsTable.postId,
+        reshuutId: commentsTable.reshuutId,
+      }).from(commentsTable).where(eq(commentsTable.id, updated.row.targetId)).limit(1);
+      if (comment?.reshuutId === null) await emitApprovalNotifications(comment.postId);
+      else if (comment) await emitReshuutCommentNotification(updated.row.targetId);
     }
   }
   res.json(DecideModerationCaseResponse.parse(caseJson(updated.row)));
@@ -433,6 +462,15 @@ router.get("/moderation/appeals/eligible", async (req, res): Promise<void> => {
       contentExcerpt = post?.transcript.slice(0, 280) ?? null;
       contentCreatedAt = post?.createdAt ?? null;
       contentStatus = post?.moderationStatus ?? null;
+    } else if (row.targetType === "reshuut") {
+      const [reshuut] = await db.select({
+        transcript: postReshuutsTable.transcript,
+        createdAt: postReshuutsTable.createdAt,
+        moderationStatus: postReshuutsTable.moderationStatus,
+      }).from(postReshuutsTable).where(eq(postReshuutsTable.id, row.targetId)).limit(1);
+      contentExcerpt = reshuut?.transcript?.slice(0, 280) ?? null;
+      contentCreatedAt = reshuut?.createdAt ?? null;
+      contentStatus = reshuut?.moderationStatus ?? null;
     } else if (row.targetType === "comment") {
       const [comment] = await db.select({
         transcript: commentsTable.transcript,
@@ -452,7 +490,7 @@ router.get("/moderation/appeals/eligible", async (req, res): Promise<void> => {
       )).limit(1);
     eligible.push({
       caseId: row.id,
-      targetType: row.targetType as "post" | "comment" | "profile",
+      targetType: row.targetType as "post" | "reshuut" | "comment" | "profile",
       targetId: row.targetId,
       contentExcerpt,
       contentCreatedAt: contentCreatedAt?.toISOString() ?? null,
@@ -515,8 +553,13 @@ router.post("/moderation/appeals/:appealId/decision", async (req, res): Promise<
       const retainedRemove = caseRow.resolution === "remove";
       await tx.update(moderationCasesTable).set({ status: "resolved", resolution: retainedRemove ? "remove" : `appeal:${body.data.decision}`, version: caseRow.version + 1, resolvedAt: new Date(), updatedAt: new Date() }).where(eq(moderationCasesTable.id, caseRow.id));
       if (body.data.decision === "restore") {
-        if (caseRow.targetType === "post") await tx.update(postsTable).set({ moderationStatus: "approved", deletionStatus: "active" }).where(eq(postsTable.id, caseRow.targetId));
-        else await tx.update(commentsTable).set({ moderationStatus: "approved" }).where(eq(commentsTable.id, caseRow.targetId));
+        if (caseRow.targetType === "post") {
+          await tx.update(postsTable).set({ moderationStatus: "approved", deletionStatus: "active" }).where(eq(postsTable.id, caseRow.targetId));
+        } else if (caseRow.targetType === "reshuut") {
+          await tx.update(postReshuutsTable).set({ moderationStatus: "approved", deletionStatus: "active" }).where(eq(postReshuutsTable.id, caseRow.targetId));
+        } else {
+          await tx.update(commentsTable).set({ moderationStatus: "approved" }).where(eq(commentsTable.id, caseRow.targetId));
+        }
         await tx.delete(objectCleanupJobsTable).where(and(eq(objectCleanupJobsTable.scopeType, "moderation"), eq(objectCleanupJobsTable.scopeId, String(caseRow.id)), eq(objectCleanupJobsTable.status, "pending")));
         await tx.update(moderationCasesTable).set({ appealDeadlineAt: null, sourceCleanupQueuedAt: null }).where(eq(moderationCasesTable.id, caseRow.id));
       }

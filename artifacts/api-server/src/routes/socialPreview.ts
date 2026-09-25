@@ -3,7 +3,8 @@ import path from "node:path";
 import { Router, type IRouter } from "express";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { db, foundersTable, postsTable, usersTable } from "@workspace/db";
-import { verifyPostShareToken } from "../lib/postShareToken";
+import { verifyPostShareToken, verifyReshuutShareToken } from "../lib/postShareToken";
+import { distributableReshuutChain } from "../lib/reshuutAccess";
 
 const router: IRouter = Router();
 const SITE_URL = "https://shuut.me";
@@ -137,6 +138,51 @@ router.get("/p/:postId", async (req, res): Promise<void> => {
     res.status(200).send(html);
   } catch (error) {
     req.log.error({ err: error }, "Could not render social preview");
+    res.status(500).send("SHÜÜT is temporarily unavailable");
+  }
+});
+
+router.get("/r/:reshuutId", async (req, res): Promise<void> => {
+  const reshuutId = Number(req.params.reshuutId);
+  const token = typeof req.query.t === "string" ? req.query.t : "";
+  const tokenQuery = token ? `?t=${encodeURIComponent(token)}` : "";
+  const canonicalUrl = `${SITE_URL}/r/${encodeURIComponent(req.params.reshuutId)}${tokenQuery}`;
+  let metadata = {
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    canonicalUrl,
+    robots: "noindex, nofollow",
+  };
+  if (Number.isSafeInteger(reshuutId) && reshuutId > 0 && verifyReshuutShareToken(reshuutId, token)) {
+    const chain = await distributableReshuutChain(reshuutId);
+    if (chain) {
+      const current = chain.rows[0]!;
+      const author = chain.authors.get(current.founderId);
+      const [post] = await db.select({
+        transcript: postsTable.transcript,
+      }).from(postsTable).where(and(
+        eq(postsTable.id, current.postId),
+        eq(postsTable.deletionStatus, "active"),
+        eq(postsTable.transcriptionStatus, "ready"),
+      )).limit(1);
+      const displayTranscript = current.transcript?.trim() || post?.transcript?.trim();
+      if (author && displayTranscript) {
+        metadata = {
+          title: `${author.name} on SHÜÜT`,
+          description: transcriptExcerpt(displayTranscript),
+          canonicalUrl,
+          robots: "noindex, nofollow",
+        };
+      }
+    }
+  }
+  try {
+    const html = replaceHeadMetadata(await readSpaShell(), metadata);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).send(html);
+  } catch (error) {
+    req.log.error({ err: error }, "Could not render reSHÜÜT social preview");
     res.status(500).send("SHÜÜT is temporarily unavailable");
   }
 });

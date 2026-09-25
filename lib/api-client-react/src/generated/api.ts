@@ -86,6 +86,7 @@ import type {
   ReportInput,
   ReportResult,
   ReshuutInput,
+  ReshuutShareLink,
   SafeError,
   SanctionInput,
   SearchProfilesParams,
@@ -4351,6 +4352,465 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getReshuutPostMutationOptions(options));
+    }
+
+export const getGetReshuutUrl = (reshuutId: number,) => {
+
+
+
+
+  return `/api/reshuuts/${reshuutId}`
+}
+
+export const getReshuut = async (reshuutId: number, options?: Parameters<typeof customFetch>[1]): Promise<FeedItem> => {
+
+  return customFetch<FeedItem>(getGetReshuutUrl(reshuutId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReshuutQueryKey = (reshuutId: number,) => {
+    return [
+    `/api/reshuuts/${reshuutId}`
+    ] as const;
+    }
+
+
+export const getGetReshuutQueryOptions = <TData = Awaited<ReturnType<typeof getReshuut>>, TError = ErrorType<void>>(reshuutId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReshuut>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReshuutQueryKey(reshuutId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReshuut>>> = ({ signal }) => getReshuut(reshuutId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: reshuutId !== null && reshuutId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReshuut>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReshuutQueryResult = NonNullable<Awaited<ReturnType<typeof getReshuut>>>
+export type GetReshuutQueryError = ErrorType<void>
+
+
+
+export function useGetReshuut<TData = Awaited<ReturnType<typeof getReshuut>>, TError = ErrorType<void>>(
+ reshuutId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReshuut>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReshuutQueryOptions(reshuutId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetReshuutReactionUrl = (reshuutId: number,) => {
+
+
+
+
+  return `/api/reshuuts/${reshuutId}/reaction`
+}
+
+export const setReshuutReaction = async (reshuutId: number,
+    reactionInput: ReactionInput, options?: Parameters<typeof customFetch>[1]): Promise<FeedItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FeedItem>(getSetReshuutReactionUrl(reshuutId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reactionInput)
+  }
+);}
+
+
+
+
+
+export const getSetReshuutReactionMutationKey = () => ['setReshuutReaction'] as const;
+
+export const getSetReshuutReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setReshuutReaction>>, TError,SetReshuutReactionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setReshuutReaction>>, TError,SetReshuutReactionMutationVariables, TContext> => {
+
+const mutationKey = getSetReshuutReactionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setReshuutReaction>>, SetReshuutReactionMutationVariables> = (props) => {
+          const {reshuutId,data} = props ?? {};
+
+          return  setReshuutReaction(reshuutId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetReshuutReactionMutationResult = NonNullable<Awaited<ReturnType<typeof setReshuutReaction>>>
+    export type SetReshuutReactionMutationBody = BodyType<ReactionInput>
+    export type SetReshuutReactionMutationError = ErrorType<void>
+    export type SetReshuutReactionMutationVariables = {reshuutId: number;data: BodyType<ReactionInput>}
+
+    export const useSetReshuutReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setReshuutReaction>>, TError,SetReshuutReactionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setReshuutReaction>>,
+        TError,
+        SetReshuutReactionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetReshuutReactionMutationOptions(options));
+    }
+
+export const getGetReshuutCommentsUrl = (reshuutId: number,) => {
+
+
+
+
+  return `/api/reshuuts/${reshuutId}/comments`
+}
+
+export const getReshuutComments = async (reshuutId: number, options?: Parameters<typeof customFetch>[1]): Promise<VoiceComment[]> => {
+
+  return customFetch<VoiceComment[]>(getGetReshuutCommentsUrl(reshuutId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReshuutCommentsQueryKey = (reshuutId: number,) => {
+    return [
+    `/api/reshuuts/${reshuutId}/comments`
+    ] as const;
+    }
+
+
+export const getGetReshuutCommentsQueryOptions = <TData = Awaited<ReturnType<typeof getReshuutComments>>, TError = ErrorType<void>>(reshuutId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReshuutComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReshuutCommentsQueryKey(reshuutId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReshuutComments>>> = ({ signal }) => getReshuutComments(reshuutId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: reshuutId !== null && reshuutId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReshuutComments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReshuutCommentsQueryResult = NonNullable<Awaited<ReturnType<typeof getReshuutComments>>>
+export type GetReshuutCommentsQueryError = ErrorType<void>
+
+
+
+export function useGetReshuutComments<TData = Awaited<ReturnType<typeof getReshuutComments>>, TError = ErrorType<void>>(
+ reshuutId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReshuutComments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReshuutCommentsQueryOptions(reshuutId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateReshuutCommentUrl = (reshuutId: number,) => {
+
+
+
+
+  return `/api/reshuuts/${reshuutId}/comments`
+}
+
+export const createReshuutComment = async (reshuutId: number,
+    voiceCommentInput: VoiceCommentInput, options?: Parameters<typeof customFetch>[1]): Promise<VoiceCommentSubmission> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<VoiceCommentSubmission>(getCreateReshuutCommentUrl(reshuutId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(voiceCommentInput)
+  }
+);}
+
+
+
+
+
+export const getCreateReshuutCommentMutationKey = () => ['createReshuutComment'] as const;
+
+export const getCreateReshuutCommentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReshuutComment>>, TError,CreateReshuutCommentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createReshuutComment>>, TError,CreateReshuutCommentMutationVariables, TContext> => {
+
+const mutationKey = getCreateReshuutCommentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReshuutComment>>, CreateReshuutCommentMutationVariables> = (props) => {
+          const {reshuutId,data} = props ?? {};
+
+          return  createReshuutComment(reshuutId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateReshuutCommentMutationResult = NonNullable<Awaited<ReturnType<typeof createReshuutComment>>>
+    export type CreateReshuutCommentMutationBody = BodyType<VoiceCommentInput>
+    export type CreateReshuutCommentMutationError = ErrorType<void>
+    export type CreateReshuutCommentMutationVariables = {reshuutId: number;data: BodyType<VoiceCommentInput>}
+
+    export const useCreateReshuutComment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReshuutComment>>, TError,CreateReshuutCommentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createReshuutComment>>,
+        TError,
+        CreateReshuutCommentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateReshuutCommentMutationOptions(options));
+    }
+
+export const getReshuutReshuutUrl = (reshuutId: number,) => {
+
+
+
+
+  return `/api/reshuuts/${reshuutId}/reshuut`
+}
+
+export const reshuutReshuut = async (reshuutId: number,
+    reshuutInput?: ReshuutInput, options?: Parameters<typeof customFetch>[1]): Promise<FeedItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FeedItem>(getReshuutReshuutUrl(reshuutId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reshuutInput)
+  }
+);}
+
+
+
+
+
+export const getReshuutReshuutMutationKey = () => ['reshuutReshuut'] as const;
+
+export const getReshuutReshuutMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reshuutReshuut>>, TError,ReshuutReshuutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reshuutReshuut>>, TError,ReshuutReshuutMutationVariables, TContext> => {
+
+const mutationKey = getReshuutReshuutMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reshuutReshuut>>, ReshuutReshuutMutationVariables> = (props) => {
+          const {reshuutId,data} = props ?? {};
+
+          return  reshuutReshuut(reshuutId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReshuutReshuutMutationResult = NonNullable<Awaited<ReturnType<typeof reshuutReshuut>>>
+    export type ReshuutReshuutMutationBody = BodyType<ReshuutInput> | undefined
+    export type ReshuutReshuutMutationError = ErrorType<void>
+    export type ReshuutReshuutMutationVariables = {reshuutId: number;data?: BodyType<ReshuutInput>}
+
+    export const useReshuutReshuut = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reshuutReshuut>>, TError,ReshuutReshuutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reshuutReshuut>>,
+        TError,
+        ReshuutReshuutMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReshuutReshuutMutationOptions(options));
+    }
+
+export const getCreateReshuutShareLinkUrl = (reshuutId: number,) => {
+
+
+
+
+  return `/api/reshuuts/${reshuutId}/share-link`
+}
+
+export const createReshuutShareLink = async (reshuutId: number, options?: Parameters<typeof customFetch>[1]): Promise<ReshuutShareLink> => {
+
+  return customFetch<ReshuutShareLink>(getCreateReshuutShareLinkUrl(reshuutId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateReshuutShareLinkMutationKey = () => ['createReshuutShareLink'] as const;
+
+export const getCreateReshuutShareLinkMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReshuutShareLink>>, TError,CreateReshuutShareLinkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createReshuutShareLink>>, TError,CreateReshuutShareLinkMutationVariables, TContext> => {
+
+const mutationKey = getCreateReshuutShareLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReshuutShareLink>>, CreateReshuutShareLinkMutationVariables> = (props) => {
+          const {reshuutId} = props ?? {};
+
+          return  createReshuutShareLink(reshuutId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateReshuutShareLinkMutationResult = NonNullable<Awaited<ReturnType<typeof createReshuutShareLink>>>
+
+    export type CreateReshuutShareLinkMutationError = ErrorType<void>
+    export type CreateReshuutShareLinkMutationVariables = {reshuutId: number}
+
+    export const useCreateReshuutShareLink = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReshuutShareLink>>, TError,CreateReshuutShareLinkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createReshuutShareLink>>,
+        TError,
+        CreateReshuutShareLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateReshuutShareLinkMutationOptions(options));
     }
 
 export const getCreatePostShareLinkUrl = (postId: number,) => {

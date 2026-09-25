@@ -733,6 +733,100 @@ paths:
           description: Current legal policies have not been accepted
           content: { application/json: { schema: { $ref: '#/components/schemas/LegalPolicyConsentRequiredError' } } }
         '401': { description: Unauthorized }
+  /reshuuts/{reshuutId}:
+    get:
+      operationId: getReshuut
+      tags: [social]
+      parameters:
+        - { name: reshuutId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Visible reSHÜÜT event
+          content: { application/json: { schema: { $ref: '#/components/schemas/FeedItem' } } }
+        '404': { description: reSHÜÜT not found or not visible }
+  /reshuuts/{reshuutId}/reaction:
+    put:
+      operationId: setReshuutReaction
+      tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: reshuutId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReactionInput' } } }
+      responses:
+        '200':
+          description: Updated reSHÜÜT event
+          content: { application/json: { schema: { $ref: '#/components/schemas/FeedItem' } } }
+        '401': { description: Unauthorized }
+        '404': { description: reSHÜÜT not found or not visible }
+  /reshuuts/{reshuutId}/comments:
+    get:
+      operationId: getReshuutComments
+      tags: [social]
+      parameters:
+        - { name: reshuutId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Ready voice comments on this reSHÜÜT
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VoiceComment' } } } }
+        '404': { description: reSHÜÜT not found or not visible }
+    post:
+      operationId: createReshuutComment
+      tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: reshuutId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VoiceCommentInput' } } }
+      responses:
+        '202':
+          description: Voice comment accepted for transcription
+          content: { application/json: { schema: { $ref: '#/components/schemas/VoiceCommentSubmission' } } }
+        '401': { description: Unauthorized }
+        '404': { description: reSHÜÜT not found or not visible }
+  /reshuuts/{reshuutId}/reshuut:
+    post:
+      operationId: reshuutReshuut
+      tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: reshuutId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReshuutInput' } } }
+      responses:
+        '200':
+          description: Removed an existing child reSHÜÜT and returned the parent event
+          content: { application/json: { schema: { $ref: '#/components/schemas/FeedItem' } } }
+        '201':
+          description: Created nested reSHÜÜT event
+          content: { application/json: { schema: { $ref: '#/components/schemas/FeedItem' } } }
+        '409': { description: reSHÜÜT ancestry limit reached or the account is being deleted }
+        '401': { description: Unauthorized }
+        '404': { description: Parent reSHÜÜT not found or not visible }
+  /reshuuts/{reshuutId}/share-link:
+    post:
+      operationId: createReshuutShareLink
+      tags: [social]
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - { name: reshuutId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Time-limited signed reSHÜÜT share link and deep link
+          content: { application/json: { schema: { $ref: '#/components/schemas/ReshuutShareLink' } } }
+        '401': { description: Unauthorized }
+        '404': { description: reSHÜÜT not found or not visible }
   /posts/{postId}/share-link:
     post:
       operationId: createPostShareLink
@@ -1036,7 +1130,7 @@ components:
       required: [id, targetType, targetId, status, priority, dueAt, version, ageHours, slaHours, overdue]
       properties:
         id: { type: integer }
-        targetType: { type: string, enum: [post, comment, profile] }
+        targetType: { type: string, enum: [post, reshuut, comment, profile] }
         targetId: { type: integer }
         status: { type: string, enum: [open, in_review, escalated, resolved, appealed] }
         priority: { type: string, enum: [normal, high] }
@@ -1125,7 +1219,7 @@ components:
       required: [caseId, targetType, targetId, contentExcerpt, contentCreatedAt, reason, status, alreadyAppealed]
       properties:
         caseId: { type: integer }
-        targetType: { type: string, enum: [post, comment, profile] }
+        targetType: { type: string, enum: [post, reshuut, comment, profile] }
         targetId: { type: integer }
         contentExcerpt: { type: [string, 'null'], maxLength: 280 }
         contentCreatedAt: { type: [string, format: date-time, 'null'] }
@@ -1188,7 +1282,7 @@ components:
       type: object
       required: [targetType, targetId, reason]
       properties:
-        targetType: { type: string, enum: [post, comment, profile] }
+        targetType: { type: string, enum: [post, reshuut, comment, profile] }
         targetId: { type: integer, minimum: 1, description: Canonical numeric target ID; aliases are rejected }
         reason: { type: string, enum: [spam, harassment, hate, sexual_content, violence, impersonation, other] }
         details: { type: string, maxLength: 1000 }
@@ -1554,7 +1648,7 @@ components:
         imageObjectPath: { type: string, pattern: '^/objects/uploads/[A-Za-z0-9-]+$' }
     Reshuut:
       type: object
-      required: [id, author, name, handle, mode, text, transcriptionStatus, audioUrl, durationSeconds, imageUrl, moderationStatus, createdAt, originalPost]
+      required: [id, author, name, handle, mode, text, transcriptionStatus, audioUrl, durationSeconds, imageUrl, moderationStatus, createdAt, reactions, viewerReaction, isReshuuted, parentReshuut, originalPost]
       properties:
         id: { type: integer }
         author: { $ref: '#/components/schemas/Founder' }
@@ -1568,10 +1662,35 @@ components:
         imageUrl: { type: [string, 'null'] }
         moderationStatus: { type: string, enum: [pending, processing, approved, unreviewed, quarantined, failed, removed] }
         createdAt: { type: string, format: date-time }
+        reactions: { $ref: '#/components/schemas/ReactionSummary' }
+        viewerReaction: { type: [string, 'null'], enum: [rocket, laughing, thumbsDown, null] }
+        isReshuuted: { type: boolean }
+        parentReshuut:
+          oneOf:
+            - { $ref: '#/components/schemas/ParentReshuut' }
+            - { type: 'null' }
         originalPost:
           oneOf:
             - { $ref: '#/components/schemas/PostSnapshot' }
             - { type: 'null' }
+    ParentReshuut:
+      description: Non-recursive parent share reference, including sharer identity and display media.
+      type: object
+      required: [id, author, mode, text, audioUrl, imageUrl, createdAt]
+      properties:
+        id: { type: integer }
+        author: { $ref: '#/components/schemas/Founder' }
+        mode: { type: string, enum: [text, audio] }
+        text: { type: [string, 'null'] }
+        audioUrl: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    ReshuutShareLink:
+      type: object
+      required: [url, deepLink]
+      properties:
+        url: { type: string, format: uri }
+        deepLink: { type: string, format: uri }
     VoiceCommentInput:
       type: object
       required: [audioObjectPath, durationSeconds]
@@ -1596,12 +1715,13 @@ components:
         createdAt: { type: string, format: date-time }
     Notification:
       type: object
-      required: [id, eventType, actor, post, createdAt]
+      required: [id, eventType, actor, post, createdAt, reshuutId]
       properties:
         id: { type: integer }
         eventType: { type: string, enum: [reaction, reshuut, comment, mention] }
         reactionType: { type: [string, 'null'], enum: [rocket, laughing, thumbsDown, null] }
         commentId: { type: [integer, 'null'] }
+        reshuutId: { type: [integer, 'null'] }
         createdAt: { type: string, format: date-time }
         actor: { $ref: '#/components/schemas/Founder' }
         post:

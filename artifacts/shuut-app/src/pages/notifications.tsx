@@ -70,7 +70,9 @@ export default function NotificationsPage() {
           {notifications.map((notification) => (
             <Link
               key={notification.id}
-              href={`/p/${notification.post.id}`}
+              href={notification.reshuutId
+                ? `/r/${notification.reshuutId}`
+                : `/p/${notification.post.id}`}
               className="flex gap-4 py-5 transition-colors hover:bg-secondary/40"
             >
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary text-primary">

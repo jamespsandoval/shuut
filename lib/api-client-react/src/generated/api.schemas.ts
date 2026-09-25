@@ -46,6 +46,7 @@ export type ModerationCaseTargetType = typeof ModerationCaseTargetType[keyof typ
 
 export const ModerationCaseTargetType = {
   post: 'post',
+  reshuut: 'reshuut',
   comment: 'comment',
   profile: 'profile',
 } as const;
@@ -239,6 +240,7 @@ export type EligibleModerationAppealTargetType = typeof EligibleModerationAppeal
 
 export const EligibleModerationAppealTargetType = {
   post: 'post',
+  reshuut: 'reshuut',
   comment: 'comment',
   profile: 'profile',
 } as const;
@@ -339,6 +341,7 @@ export type ReportInputTargetType = typeof ReportInputTargetType[keyof typeof Re
 
 export const ReportInputTargetType = {
   post: 'post',
+  reshuut: 'reshuut',
   comment: 'comment',
   profile: 'profile',
 } as const;
@@ -748,6 +751,42 @@ export const ReshuutModerationStatus = {
   removed: 'removed',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ReshuutViewerReaction = typeof ReshuutViewerReaction[keyof typeof ReshuutViewerReaction] | null;
+
+
+export const ReshuutViewerReaction = {
+  rocket: 'rocket',
+  laughing: 'laughing',
+  thumbsDown: 'thumbsDown',
+} as const;
+
+export type ParentReshuutMode = typeof ParentReshuutMode[keyof typeof ParentReshuutMode];
+
+
+export const ParentReshuutMode = {
+  text: 'text',
+  audio: 'audio',
+} as const;
+
+/**
+ * Non-recursive parent share reference, including sharer identity and display media.
+ */
+export interface ParentReshuut {
+  id: number;
+  author: Founder;
+  mode: ParentReshuutMode;
+  /** @nullable */
+  text: string | null;
+  /** @nullable */
+  audioUrl: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+  createdAt: string;
+}
+
 export type PostSnapshotTranscriptionStatus = typeof PostSnapshotTranscriptionStatus[keyof typeof PostSnapshotTranscriptionStatus];
 
 
@@ -823,6 +862,11 @@ export interface Reshuut {
   imageUrl: string | null;
   moderationStatus: ReshuutModerationStatus;
   createdAt: string;
+  reactions: ReactionSummary;
+  /** @nullable */
+  viewerReaction: ReshuutViewerReaction;
+  isReshuuted: boolean;
+  parentReshuut: ParentReshuut | null;
   originalPost: PostSnapshot | null;
 }
 
@@ -981,6 +1025,11 @@ export interface ReshuutInput {
   imageObjectPath?: string;
 }
 
+export interface ReshuutShareLink {
+  url: string;
+  deepLink: string;
+}
+
 export interface VoiceCommentInput {
   /** @pattern ^/objects/uploads/[A-Za-z0-9-]+$ */
   audioObjectPath: string;
@@ -1047,6 +1096,8 @@ export interface Notification {
   reactionType?: NotificationReactionType;
   /** @nullable */
   commentId?: number | null;
+  /** @nullable */
+  reshuutId: number | null;
   createdAt: string;
   actor: Founder;
   post: NotificationPost;

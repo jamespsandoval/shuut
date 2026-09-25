@@ -1,4 +1,4 @@
-- [Database schema safety](database-schema-safety.md) — preserve seeded founder content when legacy identity constraints trigger truncation prompts.
+- [Database schema safety](database-schema-safety.md) — preserve seeded content on truncation prompts; verify changed partial indexes after Drizzle push.
 - [Postmark sender](postmark-sender.md) — shuut.me is verified for Postmark sending; keep the contact recipient server-only.
 - [Development preview access](development-preview-access.md) — remixes may enable Private development URL, causing Replit’s login gate before SHÜÜT.
 - [Workspace React singletons](workspace-react-singletons.md) — context libraries shared with linked packages must be deduplicated in production builds.

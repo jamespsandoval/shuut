@@ -16,13 +16,14 @@ import { useColors } from '../../hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function eventCopy(item: Notification) {
+  const target = item.reshuutId != null ? 'reSHÜÜT' : 'SHÜÜT';
   if (item.eventType === 'reaction') {
     const names: Record<string, string> = { rocket: '🚀', laughing: '😂', thumbsDown: '👎' };
-    return `reacted ${names[item.reactionType ?? ''] ?? 'to'} to your SHÜÜT`;
+    return `reacted ${names[item.reactionType ?? ''] ?? 'to'} to your ${target}`;
   }
   if (item.eventType === 'reshuut') return 'tagged you in a reSHÜÜT of your SHÜÜT';
   if (item.eventType === 'mention') return 'tagged you in a SHÜÜT';
-  return 'left a voice comment on your SHÜÜT';
+  return `left a voice comment on your ${target}`;
 }
 
 function relativeTime(value: string) {
@@ -77,7 +78,10 @@ export default function NotificationsScreen() {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[styles.item, { borderBottomColor: colors.border }]}
-            onPress={() => router.push(`/post/${item.post.id}`)}
+            onPress={() => {
+              if (item.reshuutId !== null) router.push(`/reshuut/${item.reshuutId}`);
+              else router.push(`/post/${item.post.id}`);
+            }}
             accessibilityRole="button"
             accessibilityLabel={`${item.actor.name} ${eventCopy(item)}`}
           >
