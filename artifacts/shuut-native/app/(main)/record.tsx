@@ -20,7 +20,7 @@ import { shouldCancelRecordingForLifecycle } from '../../lib/voiceRecordingGuard
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { ImagePlus, X } from 'lucide-react-native';
-import { prepareNativePostPhoto, photoUploadError } from '../../lib/postPhoto';
+import { prepareNativePostPhoto, prepareWebPostPhoto, photoUploadError } from '../../lib/postPhoto';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -52,6 +52,7 @@ export default function RecordScreen() {
   const [mentionedFounders, setMentionedFounders] = useState<Founder[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [imageObjectPath, setImageObjectPath] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [permissionRevoked, setPermissionRevoked] = useState(false);
   const permissionWasRevokedRef = useRef(false);
@@ -405,12 +406,19 @@ export default function RecordScreen() {
     setMentionedFounders([]);
     setSelectedPhoto(null);
     setImageObjectPath(null);
+    setPhotoError(null);
     setInterruptionMessage(null);
     void AsyncStorage.removeItem(RECORDING_RECOVERY_KEY);
     router.dismissTo('/(main)/feed');
   };
 
   const choosePhoto = () => {
+    setPhotoError(null);
+    if (Platform.OS === 'web') {
+      // Browsers only permit file dialogs directly from a user gesture.
+      void capturePhoto(false);
+      return;
+    }
     Alert.alert('Attach a photo', 'Choose where to get your SHÜÜT photo.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Take photo', onPress: () => void capturePhoto(true) },
@@ -420,20 +428,22 @@ export default function RecordScreen() {
 
   const capturePhoto = async (useCamera: boolean) => {
     try {
-      const permission = useCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          useCamera ? 'Camera access needed' : 'Photo access needed',
-          permission.canAskAgain
-            ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach an image to your SHÜÜT.`
-            : `${useCamera ? 'Camera' : 'Photo'} access is disabled. Enable it in Settings to attach an image.`,
-          permission.canAskAgain
-            ? [{ text: 'Not now', style: 'cancel' }]
-            : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }],
-        );
-        return;
+      if (Platform.OS !== 'web') {
+        const permission = useCamera
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            useCamera ? 'Camera access needed' : 'Photo access needed',
+            permission.canAskAgain
+              ? `Allow ${useCamera ? 'camera' : 'photo'} access to attach an image to your SHÜÜT.`
+              : `${useCamera ? 'Camera' : 'Photo'} access is disabled. Enable it in Settings to attach an image.`,
+            permission.canAskAgain
+              ? [{ text: 'Not now', style: 'cancel' }]
+              : [{ text: 'Cancel', style: 'cancel' }, { text: 'Open Settings', onPress: () => void Linking.openSettings() }],
+          );
+          return;
+        }
       }
       const result = useCamera
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.82 })
@@ -445,18 +455,27 @@ export default function RecordScreen() {
         selectionLimit: 1,
       });
       if (!result.canceled && result.assets[0]) {
-        const prepared = await prepareNativePostPhoto(result.assets[0], 'shuut-photo');
-        setSelectedPhoto({
-          ...result.assets[0],
-          uri: prepared.file.uri,
-          mimeType: prepared.contentType,
-          fileName: prepared.name,
-        });
+        const asset = result.assets[0];
+        if (Platform.OS === 'web') {
+          const prepared = await prepareWebPostPhoto(asset, 'shuut-photo');
+          setSelectedPhoto({ ...asset, mimeType: prepared.contentType, fileName: prepared.name });
+        } else {
+          const prepared = await prepareNativePostPhoto(asset, 'shuut-photo');
+          setSelectedPhoto({
+            ...asset,
+            uri: prepared.file.uri,
+            mimeType: prepared.contentType,
+            fileName: prepared.name,
+          });
+        }
         setImageObjectPath(null);
+        setPhotoError(null);
       }
     } catch (error) {
       console.error('Could not choose SHÜÜT photo', error);
-      Alert.alert('Photo unavailable', error instanceof Error ? error.message : 'We could not open your photo library. Please try again.');
+      const message = error instanceof Error ? error.message : 'We could not open your photo library. Please try again.';
+      if (Platform.OS === 'web') setPhotoError(message);
+      else Alert.alert('Photo unavailable', message);
     }
   };
 
@@ -534,14 +553,26 @@ export default function RecordScreen() {
   const uploadPhoto = async (): Promise<string | undefined> => {
     if (!selectedPhoto) return undefined;
     if (imageObjectPath) return imageObjectPath;
-    const { file, name, contentType } = await prepareNativePostPhoto(selectedPhoto, 'shuut-photo');
+    const webPhoto = Platform.OS === 'web' ? await prepareWebPostPhoto(selectedPhoto, 'shuut-photo') : null;
+    const nativePhoto = webPhoto ? null : await prepareNativePostPhoto(selectedPhoto, 'shuut-photo');
+    const { file, name, contentType } = webPhoto ?? nativePhoto!;
     const { uploadURL, objectPath } = await requestUploadUrl.mutateAsync({
       data: { name, size: file.size, contentType },
     });
     const fullUrl = resolveApiUrl(uploadURL);
     if (!fullUrl) throw new Error('Photo upload URL was empty.');
-    const result = await file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': contentType } });
-    if (result.status < 200 || result.status >= 300) throw photoUploadError(result.status, result.body);
+    if (webPhoto) {
+      const response = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: webPhoto.file,
+        credentials: 'omit',
+      });
+      if (!response.ok) throw photoUploadError(response.status, await response.text());
+    } else if (nativePhoto) {
+      const result = await nativePhoto.file.upload(fullUrl, { httpMethod: 'PUT', headers: { 'Content-Type': contentType } });
+      if (result.status < 200 || result.status >= 300) throw photoUploadError(result.status, result.body);
+    }
     setImageObjectPath(objectPath);
     return objectPath;
   };
@@ -578,7 +609,12 @@ export default function RecordScreen() {
   const publishPost = async (recordingUri: string, recordingDuration: number) => {
     try {
       const objectPath = await uploadRecording(recordingUri);
-      const photoPath = await uploadPhoto();
+      const photoPath = await uploadPhoto().catch((error: unknown) => {
+        if (Platform.OS === 'web') {
+          setPhotoError(error instanceof Error ? error.message : 'Could not upload this photo. Please try again.');
+        }
+        throw error;
+      });
       const createdPost = await createPost.mutateAsync({
         data: {
           audioObjectPath: objectPath,
@@ -754,7 +790,7 @@ export default function RecordScreen() {
                     <Image source={{ uri: selectedPhoto.uri }} style={styles.photoPreview} contentFit="contain" />
                     <TouchableOpacity
                       style={[styles.removePhotoButton, { backgroundColor: colors.card }]}
-                      onPress={() => { setSelectedPhoto(null); setImageObjectPath(null); }}
+                      onPress={() => { setSelectedPhoto(null); setImageObjectPath(null); setPhotoError(null); }}
                       accessibilityLabel="Remove attached photo"
                     >
                       <X color={colors.foreground} size={16} />
@@ -765,6 +801,11 @@ export default function RecordScreen() {
                     <ImagePlus color={colors.primary} size={19} />
                     <Text style={[styles.photoPickerText, { color: colors.primary }]}>Add a photo</Text>
                   </TouchableOpacity>
+                )}
+                {photoError && (
+                  <Text style={{ color: colors.destructive, paddingHorizontal: 12, paddingBottom: 10 }} accessibilityRole="alert">
+                    {photoError}
+                  </Text>
                 )}
               </View>
               <MentionPicker selected={mentionedFounders} onChange={setMentionedFounders} />

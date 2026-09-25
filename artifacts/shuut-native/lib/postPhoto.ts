@@ -9,6 +9,23 @@ const extensions: Record<PostPhotoType, string> = {
   'image/webp': 'webp',
 };
 
+/** Expo's web picker returns a browser File; expo-file-system File is native-only. */
+export async function prepareWebPostPhoto(asset: ImagePickerAsset, prefix: string) {
+  const file = asset.file;
+  if (!file) throw new Error('Could not read the selected photo. Please choose it again.');
+  if (file.size < 1 || file.size > 15_000_000) throw new Error('Choose a photo under 15MB.');
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
+  const type: PostPhotoType | null =
+    bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'image/jpeg'
+    : bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71
+      && bytes[4] === 13 && bytes[5] === 10 && bytes[6] === 26 && bytes[7] === 10 ? 'image/png'
+    : ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP' ? 'image/webp'
+    : null;
+  if (!type) throw new Error('Choose a JPEG, PNG, or WebP photo.');
+  return { file, contentType: type, name: `${prefix}.${extensions[type]}` };
+}
+
 export async function prepareNativePostPhoto(
   asset: ImagePickerAsset,
   prefix: string,

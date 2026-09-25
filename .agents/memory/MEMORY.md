@@ -21,6 +21,7 @@
 - [Voice moderation safety](voice-moderation-safety.md) — voice content fails closed; removals retain source audio through a serialized 30-day appeal window.
 - [Private upload authorization](private-upload-authorization.md) — sidecar-signed PUT URLs do not bind MIME or size; use server-verified upload tokens for consent-sensitive media.
 - [iPhone photo formats](iphone-photo-formats.md) — compatible picker output can still be HEIC; validate bytes and convert on-device before JPEG uploads.
+- [Expo browser photo selection](expo-browser-photo-selection.md) — open web image pickers in the tap stack; use browser Files, not Expo's native file-system upload.
 - [App Review fixtures](app-review-fixtures.md) — fictional reviewer data is staging-only; production review uses real OTP and reviewer-created activity.
 - [Native App Store identity](native-app-store-identity.md) — preserve the first Replit-published bundle ID and never make runtime startup depend solely on build-shell variables.
 - [Native crash diagnostics](native-crash-diagnostics.md) — keep release artifacts provider-neutral for now; add Sentry only when the creator is ready to connect it.
