@@ -309,12 +309,15 @@ export function ReshuutCard({
       </View>
       {originalPost ? (
         <View style={[styles.original, { borderColor: colors.cardBorder, backgroundColor: colors.background }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TouchableOpacity
+            style={styles.originalLink}
+            onPress={() => router.push(`/post/${originalPost.id}`)}
+            accessibilityRole="link"
+            accessibilityLabel="View original SHÜÜT"
+          >
             <Text style={[styles.originalLabel, { color: colors.mutedForeground }]}>ORIGINAL SHÜÜT</Text>
-            <TouchableOpacity onPress={() => router.push(`/post/${originalPost.id}`)} accessibilityRole="link" accessibilityLabel="View original SHÜÜT">
-              <Text style={[styles.originalLabel, { color: colors.primary }]}>View original</Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={[styles.originalLabel, { color: colors.primary }]}>View original</Text>
+          </TouchableOpacity>
           <PostCard post={originalPost} refetchFeed={() => { void invalidateRelated(); }} embeddedOriginal />
         </View>
       ) : null}
@@ -392,6 +395,7 @@ const styles = StyleSheet.create({
   reshuutText: { fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22 },
   image: { width: '100%', height: 220, marginTop: 8 },
   original: { borderWidth: 1, borderRadius: 12, padding: 8, gap: 6 },
+  originalLink: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   originalLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.6 },
   reactions: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingTop: 2 },
   reaction: { minWidth: 38, height: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 18, paddingHorizontal: 5 },

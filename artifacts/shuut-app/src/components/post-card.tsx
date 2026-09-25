@@ -380,7 +380,9 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
     // A menu opening on pointer-down can also retarget the subsequent click to the card.
     if (isDetail || isEditing || event.defaultPrevented || pointerStartedInControl || !event.currentTarget.contains(event.target as Node)) return
     const target = event.target as Element
-    if (target.closest(POST_INTERACTIVE_SELECTOR)) return
+    const control = target.closest(POST_INTERACTIVE_SELECTOR)
+    // The enclosing reSHÜÜT frame ignores its own clicks, but is not a control inside this card.
+    if (control && event.currentTarget.contains(control)) return
     const selection = window.getSelection()
     if (selection?.toString() && event.currentTarget.contains(selection.anchorNode)) return
     setLocation(`/p/${post.id}`)
@@ -392,7 +394,8 @@ export function PostCard({ post, isDetail = false, isFocused = false, embeddedOr
       id={post.reshuut ? `reshuut-${post.reshuut.id}` : `post-${post.id}`}
       onClick={openPostFromCard}
       onPointerDownCapture={(event) => {
-        pointerStartedInControlRef.current = Boolean((event.target as Element).closest(POST_INTERACTIVE_SELECTOR))
+        const control = (event.target as Element).closest(POST_INTERACTIVE_SELECTOR)
+        pointerStartedInControlRef.current = Boolean(control && event.currentTarget.contains(control))
       }}
       onPointerCancel={() => { pointerStartedInControlRef.current = false }}
       onKeyDown={(event) => {
