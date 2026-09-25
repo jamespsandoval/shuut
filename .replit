@@ -30,3 +30,6 @@ defaultBucketID = "replit-objstore-1102ce56-bef3-415a-bd3e-24f55d7aa33c"
 
 [userenv.production]
 APP_REVIEW_LOGIN_EXPIRES_AT = "2026-10-25T16:41:24Z"
+
+[userenv.development]
+APP_REVIEW_LOGIN_DEV_EXPIRES_AT = "2026-09-27T17:04:33Z"

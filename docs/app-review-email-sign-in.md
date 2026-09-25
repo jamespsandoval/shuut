@@ -11,7 +11,7 @@ SHÜÜT normally signs in with a six-digit, one-use email code. For the pre-veri
 - [ ] On that build, sign out and sign in to `appstore@shuut.me` using the password; confirm it reaches the feed. Also confirm ordinary emails still use email-code sign-in and that the review account can choose **Use an email code instead**.
 - [ ] Confirm the published API stays reachable during review and provide a real person who can respond to Apple about access issues.
 
-The password endpoint never registers or verifies an account. It accepts only the review address with a verified, active account and completed onboarding; it shares the normal authentication rate limits and returns the usual mobile bearer session. It is disabled outside production or when the secret or expiry is absent. A forwarded-only mailbox is sufficient for the *owner's* initial account setup, but does not let Apple independently retrieve email codes; the review password is their primary access method.
+The password endpoint never registers or verifies an account. It accepts only the review address with a verified, active account and completed onboarding; it shares the normal authentication rate limits and returns the usual mobile bearer session. In production, the secret and production expiry are both required. A separate short-lived `APP_REVIEW_LOGIN_DEV_EXPIRES_AT` setting can enable a test on the **native development preview** against the development account; it does not verify or onboard the separate production account. The web app does not offer password sign-in. A forwarded-only mailbox is sufficient for the *owner's* initial account setup, but does not let Apple independently retrieve email codes; the review password is their primary access method.
 
 ## App Store Connect fields
 

@@ -18,10 +18,18 @@ test("reviewer password is restricted to the intended address and exact secret",
 });
 
 test("reviewer password fails closed when disabled, weak, or expired", () => {
-  assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, environment: "development" }), false);
+  assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, environment: "development", developmentExpiresAt: "" }), false);
   assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, secret: "" }), false);
   assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, secret: "short-password" }), false);
   assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, expiresAt: "" }), false);
   assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, expiresAt: "December 1, 2026" }), false);
   assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...enabled, now: Date.parse(enabled.expiresAt) }), false);
+});
+
+test("development reviewer login requires its own unexpired opt-in window", () => {
+  const dev = { ...enabled, environment: "development", developmentExpiresAt: "2026-10-02T00:00:00Z" };
+  assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, dev), true);
+  assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...dev, now: Date.parse(dev.developmentExpiresAt) }), false);
+  assert.equal(reviewerPasswordMatches("anyone@example.com", password, dev), false);
+  assert.equal(reviewerPasswordMatches("appstore@shuut.me", password, { ...dev, developmentExpiresAt: "invalid" }), false);
 });
