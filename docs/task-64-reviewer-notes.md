@@ -10,18 +10,22 @@ credentials in this document or in public metadata.
 The release owner must enter the following in App Store Connect’s secure
 reviewer-information fields, not here:
 
-- Reviewer email: **[RELEASE OWNER: ENTER REVIEWER EMAIL IN ASC]**
-- Inbox access / OTP handling: **[RELEASE OWNER: ENTER SECURE INBOX ACCESS IN ASC]**
+- Reviewer email: `appstore@shuut.me` (enter in the secure User name field)
+- Review password: **[RELEASE OWNER: ENTER ONLY IN ASC'S SECURE PASSWORD FIELD]**
 
-The app uses a real email one-time-password flow. The reviewer should request
-an OTP with the supplied email, retrieve it from the secure inbox, and enter it
-in the app. Do not use a development bypass or a fabricated code. Complete the
-onboarding flow.
+The owner must first email-verify and onboard this account through the real
+one-use email-code flow. On the new iPhone build, entering this email reveals
+the review password field. The supplied password signs the reviewer into the
+existing account; it does not create or verify one. Ordinary accounts continue
+to use emailed codes. The reviewer can choose **Use an email code instead** if
+they can access a fresh code delivered to this address. See the
+[App Review sign-in handoff](app-review-email-sign-in.md) before submission.
 
 ## One-minute walkthrough
 
-1. Sign in with the supplied email and OTP, complete the account setup, and
-   accept the current Terms and Community Guidelines.
+1. Sign in with the supplied reviewer email and password. The owner should
+   already have completed account setup and accepted the current Terms and
+   Community Guidelines.
 2. Open the recorder, grant microphone permission only when prompted by the
    user action, record a short voice post, and stop.
 3. Review the recording and transcript state. Choose whether to publish; the

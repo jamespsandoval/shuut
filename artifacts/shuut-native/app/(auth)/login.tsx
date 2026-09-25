@@ -165,6 +165,7 @@ export default function LoginScreen() {
               value={email}
               onChangeText={(value) => {
                 setEmail(value);
+                reviewerLogin.reset();
                 if (value.trim().toLowerCase() !== REVIEWER_EMAIL) setReviewerPassword('');
               }}
               onFocus={() => setShowRecentEmails(true)}
@@ -226,7 +227,10 @@ export default function LoginScreen() {
                 placeholder="Review password"
                 placeholderTextColor={colors.mutedForeground}
                 value={reviewerPassword}
-                onChangeText={setReviewerPassword}
+                onChangeText={(value) => {
+                  setReviewerPassword(value);
+                  reviewerLogin.reset();
+                }}
                 secureTextEntry
                 textContentType="password"
                 autoComplete="off"
