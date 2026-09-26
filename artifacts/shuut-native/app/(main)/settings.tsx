@@ -67,17 +67,25 @@ export default function SettingsScreen() {
     }
   };
 
+  const finishDeletedAccount = async () => {
+    queryClient.clear();
+    await signOut();
+    router.replace('/');
+  };
+
   const performDelete = async () => {
     if (deleteConfirmation !== 'DELETE') return;
     try {
       const result = await deleteAccount.mutateAsync();
       if (result.status === 'completed') {
-        queryClient.clear();
-        await signOut();
-        router.replace('/');
+        await finishDeletedAccount();
       } else if (result.status === 'pending') {
-        Alert.alert("Account Deletion", "Your account deletion is pending. It will be fully deleted soon.");
         setIsDeleteModalVisible(false);
+        Alert.alert(
+          'Account deletion started',
+          'Your profile and posts are no longer visible. Private-file cleanup will finish in the background. You will be signed out.',
+          [{ text: 'OK', onPress: () => void finishDeletedAccount() }],
+        );
       } else {
         Alert.alert("Account Deletion Failed", "We could not delete your account at this time.");
         setIsDeleteModalVisible(false);

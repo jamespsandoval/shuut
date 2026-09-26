@@ -53,7 +53,7 @@ import { enqueueModeration, enqueueUnreviewedReshuuts, runModerationSweep, setMo
 import { setTranscriptPolishProviderForTests } from "../src/lib/transcriptPolish";
 
 const prefix = `auth-security-${Date.now()}`;
-const userAgent = "SHUUT security regression test";
+const userAgent = `SHUUT security regression test ${prefix}`;
 const sentEmails: Array<{ To: string; Subject: string; TextBody: string; HtmlBody?: string; ReplyTo?: string }> = [];
 let baseUrl = "";
 let appOrigin = "";
@@ -349,7 +349,7 @@ async function request(
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("user-agent", userAgent);
-  headers.set("x-forwarded-for", `10.${(requestNumber++ % 250) + 1}.0.1`);
+  headers.set("x-forwarded-for", `10.${(Number(prefix.slice(-4)) % 200) + 1}.${(requestNumber++ % 250) + 1}.1`);
   if (init.json !== undefined) headers.set("content-type", "application/json");
   if (init.session) {
     headers.set("cookie", init.session.cookie);
@@ -425,7 +425,6 @@ before(async () => {
   realRegisterVerifier = webauthnVerifier.verifyRegistration;
   realAssertionVerifier = webauthnVerifier.verifyAuthentication;
   realStreamPrivate = ObjectStorageService.prototype.streamPrivate;
-  await db.delete(securityRateLimitsTable);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -2750,6 +2749,46 @@ test("failed post recording cleanup remains durable and retries to completion", 
   } finally {
     ObjectStorageService.prototype.deleteObject = realDeleteObject;
   }
+});
+
+test("fresh mobile account deletion completes immediately and permits registration again", async () => {
+  const email = `${prefix}-fresh-delete@example.test`;
+  const session = await register(email);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  const [founder] = await db.insert(foundersTable).values({
+    userId: user.id,
+    name: "Fresh Delete",
+    handle: `${prefix.replace(/[^a-z0-9]/g, "").slice(-16)}freshdel`,
+    bio: "",
+    avatarColor: "#000000",
+  }).returning();
+
+  const loginStart = await request("/api/auth/mobile/login", { method: "POST", json: { email } });
+  assert.equal(loginStart.status, 202);
+  const mobileLogin = await request("/api/auth/mobile/login/verify", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Your SHÜÜT sign-in code") },
+  });
+  assert.equal(mobileLogin.status, 200);
+  const { accessToken } = await mobileLogin.json() as { accessToken: string };
+  const authHeader = { authorization: `Bearer ${accessToken}` };
+
+  const deletion = await request("/api/account", { method: "DELETE", headers: authHeader });
+  assert.equal(deletion.status, 200);
+  assert.deepEqual(await deletion.json(), { status: "completed" });
+  assert.equal((await db.select().from(usersTable).where(eq(usersTable.id, user.id))).length, 0);
+  assert.equal((await db.select().from(foundersTable).where(eq(foundersTable.id, founder.id))).length, 0);
+  assert.equal((await request("/api/auth/me", { headers: authHeader })).status, 401);
+  assert.equal((await request("/api/auth/me", { headers: { cookie: session.cookie } })).status, 401);
+
+  const registration = await request("/api/auth/start", { method: "POST", json: { email } });
+  assert.equal(registration.status, 202);
+  assert.equal((await registration.json() as { flow: string }).flow, "register");
+  const verification = await request("/api/auth/verify-email", {
+    method: "POST",
+    json: { email, code: codeFor(email, "Verify your SHÜÜT account") },
+  });
+  assert.equal(verification.status, 200);
 });
 
 test("account deletion waits out issued upload URLs and blocks new uploads", async () => {
