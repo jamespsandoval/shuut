@@ -249,6 +249,18 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        <TouchableOpacity
+          style={[styles.logoutBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+          onPress={() => void handleLogout()}
+          disabled={logout.isPending}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          testID="settings-sign-out"
+        >
+          {logout.isPending ? <ActivityIndicator color={colors.primary} size="small" /> : <LogOut color={colors.primary} size={20} />}
+          <Text style={[styles.logoutBtnText, { color: colors.foreground }]}>Sign out</Text>
+        </TouchableOpacity>
+
         <View style={[styles.card, { borderColor: colors.destructive + '40', backgroundColor: colors.destructive + '05' }]}>
           <View style={styles.cardHeader}>
             <View style={[styles.iconContainer, { backgroundColor: colors.destructive + '1A' }]}>
@@ -266,10 +278,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.border }]} onPress={handleLogout}>
-          <LogOut color={colors.foreground} size={20} />
-          <Text style={[styles.logoutBtnText, { color: colors.foreground }]}>Log out</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       <Modal visible={isDeleteModalVisible} transparent animationType="fade">

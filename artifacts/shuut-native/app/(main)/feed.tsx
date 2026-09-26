@@ -8,6 +8,7 @@ import { Mic, Square } from 'lucide-react-native';
 import { FeedItemCard } from '../../components/FeedItemCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { useIsFocused } from '@react-navigation/native';
 
 const DEFAULT_FLOATING_MIC_SCROLL_THRESHOLD = 180;
 
@@ -15,6 +16,7 @@ export default function FeedScreen() {
   const [view, setView] = useState<'everyone' | 'following'>('everyone');
   const colors = useColors();
   const router = useRouter();
+  const isFocused = useIsFocused();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ newPostId?: string }>();
@@ -274,7 +276,7 @@ export default function FeedScreen() {
               </TouchableOpacity>
             : null}
       />
-      {showFloatingMic && (
+      {isFocused && showFloatingMic && (
         <TouchableOpacity
           style={[
             styles.floatingMicButton,
